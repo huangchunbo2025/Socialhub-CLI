@@ -171,6 +171,18 @@ a:hover {
     object-fit: contain;
 }
 
+.logo-img {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+}
+
+.logo-img-footer {
+    height: 48px;
+    width: auto;
+    object-fit: contain;
+}
+
 .nav-divider {
     color: rgba(255, 255, 255, 0.3);
     font-weight: 300;
@@ -893,17 +905,7 @@ a:hover {
 .footer-logo {
     display: flex;
     align-items: center;
-    gap: 10px;
-    color: white;
-    font-weight: 600;
-    font-size: 18px;
     margin-bottom: 12px;
-}
-
-.footer-logo .logo-icon {
-    width: 28px;
-    height: 28px;
-    color: var(--accent-light);
 }
 
 .footer-tagline {
