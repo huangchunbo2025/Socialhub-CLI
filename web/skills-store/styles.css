@@ -6,9 +6,9 @@
 :root {
     --primary: #121C3D;
     --primary-light: #1a2a5e;
-    --accent: #066aab;
-    --accent-light: #0884d8;
-    --accent-gradient: linear-gradient(135deg, #066aab 0%, #0aa5ff 100%);
+    --accent: #00C9A7;
+    --accent-light: #4ADE80;
+    --accent-gradient: linear-gradient(135deg, #00C9A7 0%, #4ADE80 50%, #A3E635 100%);
     --success: #10b981;
     --warning: #f59e0b;
     --error: #ef4444;
@@ -168,7 +168,7 @@ a:hover {
 .logo-icon {
     width: 32px;
     height: 32px;
-    color: var(--accent-light);
+    object-fit: contain;
 }
 
 .nav-divider {
