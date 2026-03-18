@@ -4,7 +4,7 @@ import typer
 from rich.console import Console
 
 from . import __version__
-from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, messages, points, segments, tags
+from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, messages, points, segments, skills, tags
 
 # Create main app
 app = typer.Typer(
@@ -27,6 +27,7 @@ app.add_typer(points.app, name="points", help="Points program commands")
 app.add_typer(messages.app, name="messages", help="Message management commands")
 app.add_typer(config_cmd.app, name="config", help="Configuration management")
 app.add_typer(ai.app, name="ai", help="AI assistant (natural language interface)")
+app.add_typer(skills.app, name="skills", help="Skills Store - Install official skills")
 
 
 def version_callback(value: bool) -> None:
