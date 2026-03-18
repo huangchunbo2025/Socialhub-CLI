@@ -28,9 +28,13 @@ def browse_skills(
     try:
         with SkillManager() as manager:
             console.print("\n[bold cyan]SocialHub.AI Skills Store[/bold cyan]")
-            console.print("[dim]Official certified skills only[/dim]\n")
+            console.print("[dim]Official certified skills only[/dim]")
 
             skills = manager.search(category=category)
+
+            # Check if in demo mode (after first request)
+            if manager.store._force_demo or manager.store._demo_mode:
+                console.print("[yellow]Demo Mode: Showing sample skills (Store unavailable)[/yellow]\n")
 
             if not skills:
                 print_info("No skills found")
