@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 
 from ..api.client import APIError, SocialHubClient
+from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
 from ..config import load_config
 from ..local.processor import DataProcessor
 from ..local.reader import LocalDataReader, read_customers_csv, read_orders_csv
@@ -39,6 +40,469 @@ def get_data_source():
     return config.mode
 
 
+def _get_mcp_overview(config, period: str) -> dict:
+    """Get analytics overview from MCP database."""
+    from datetime import datetime, timedelta
+
+    # Calculate date range based on period
+    today = datetime.now().date()
+    if period == "today":
+        days = 1
+    elif period == "7d":
+        days = 7
+    elif period == "30d":
+        days = 30
+    elif period == "90d":
+        days = 90
+    elif period == "365d":
+        days = 365
+    else:
+        days = 30
+
+    start_date = today - timedelta(days=days)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Query customer count
+        customer_result = client.query(
+            "SELECT COUNT(*) as total FROM dim_customer_info",
+            database=database
+        )
+        total_customers = 0
+        if isinstance(customer_result, list) and len(customer_result) > 0:
+            total_customers = customer_result[0].get("total", 0)
+
+        # Query recent overview data
+        overview_result = client.query(f"""
+            SELECT
+                SUM(add_custs_num) as new_customers,
+                SUM(total_order_num) as total_orders,
+                SUM(total_transaction_amt) as total_revenue
+            FROM ads_das_business_overview_d
+            WHERE biz_date >= '{start_date}'
+        """, database=database)
+
+        new_customers = 0
+        total_orders = 0
+        total_revenue = 0.0
+
+        if isinstance(overview_result, list) and len(overview_result) > 0:
+            row = overview_result[0]
+            new_customers = row.get("new_customers") or 0
+            total_orders = row.get("total_orders") or 0
+            total_revenue = float(row.get("total_revenue") or 0)
+
+        # Query active customers
+        active_result = client.query(f"""
+            SELECT COUNT(DISTINCT customer_code) as active
+            FROM dwd_v_order
+            WHERE order_date >= '{start_date}'
+        """, database=database)
+
+        active_customers = 0
+        if isinstance(active_result, list) and len(active_result) > 0:
+            active_customers = active_result[0].get("active", 0)
+
+        avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+
+        return {
+            "period": period,
+            "total_customers": total_customers,
+            "new_customers": new_customers,
+            "active_customers": active_customers,
+            "total_orders": total_orders,
+            "total_revenue": total_revenue,
+            "avg_order_value": avg_order_value,
+        }
+
+
+def _get_mcp_customers(config, period: str, channel: str) -> dict:
+    """Get customer analytics from MCP database."""
+    from datetime import datetime, timedelta
+
+    # Calculate date range
+    today = datetime.now().date()
+    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
+    start_date = today - timedelta(days=days)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Total customers
+        total_result = client.query(
+            "SELECT COUNT(*) as total FROM dim_customer_info",
+            database=database
+        )
+        total_customers = 0
+        if isinstance(total_result, list) and len(total_result) > 0:
+            total_customers = total_result[0].get("total", 0)
+
+        # Customer by type
+        type_result = client.query("""
+            SELECT
+                CASE
+                    WHEN member_level IS NOT NULL AND member_level != '' THEN 'member'
+                    ELSE 'registered'
+                END as customer_type,
+                COUNT(*) as count
+            FROM dim_customer_info
+            GROUP BY customer_type
+        """, database=database)
+
+        by_type = {}
+        if isinstance(type_result, list):
+            for row in type_result:
+                by_type[row.get("customer_type", "unknown")] = row.get("count", 0)
+
+        # New customers in period
+        new_result = client.query(f"""
+            SELECT COUNT(*) as new_count
+            FROM dim_customer_info
+            WHERE create_date >= '{start_date}'
+        """, database=database)
+        new_customers = 0
+        if isinstance(new_result, list) and len(new_result) > 0:
+            new_customers = new_result[0].get("new_count", 0)
+
+        # Active customers in period
+        active_result = client.query(f"""
+            SELECT COUNT(DISTINCT customer_code) as active
+            FROM dwd_v_order
+            WHERE order_date >= '{start_date}'
+        """, database=database)
+        active_customers = 0
+        if isinstance(active_result, list) and len(active_result) > 0:
+            active_customers = active_result[0].get("active", 0)
+
+        return {
+            "period": period,
+            "total_customers": total_customers,
+            "new_customers": new_customers,
+            "active_customers": active_customers,
+            "by_type": by_type,
+        }
+
+
+def _get_mcp_retention(config, days_list: list) -> list:
+    """Get retention analytics from MCP database."""
+    from datetime import datetime, timedelta
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    today = datetime.now().date()
+    results = []
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        for period_days in days_list:
+            # Get cohort: customers who made first purchase N days ago
+            cohort_start = today - timedelta(days=period_days * 2)
+            cohort_end = today - timedelta(days=period_days)
+
+            # Find customers in cohort
+            cohort_result = client.query(f"""
+                SELECT COUNT(DISTINCT customer_code) as cohort_size
+                FROM dwd_v_order
+                WHERE order_date BETWEEN '{cohort_start}' AND '{cohort_end}'
+            """, database=database)
+
+            cohort_size = 0
+            if isinstance(cohort_result, list) and len(cohort_result) > 0:
+                cohort_size = cohort_result[0].get("cohort_size", 0)
+
+            # Find retained customers (made another purchase after cohort period)
+            retained_result = client.query(f"""
+                SELECT COUNT(DISTINCT a.customer_code) as retained
+                FROM dwd_v_order a
+                WHERE a.order_date BETWEEN '{cohort_start}' AND '{cohort_end}'
+                AND EXISTS (
+                    SELECT 1 FROM dwd_v_order b
+                    WHERE b.customer_code = a.customer_code
+                    AND b.order_date > '{cohort_end}'
+                )
+            """, database=database)
+
+            retained_count = 0
+            if isinstance(retained_result, list) and len(retained_result) > 0:
+                retained_count = retained_result[0].get("retained", 0)
+
+            retention_rate = (retained_count / cohort_size * 100) if cohort_size > 0 else 0
+
+            results.append({
+                "period_days": period_days,
+                "cohort_size": cohort_size,
+                "retained_count": retained_count,
+                "retention_rate": retention_rate,
+            })
+
+    return results
+
+
+def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
+    """Get order analytics from MCP database."""
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
+    start_date = today - timedelta(days=days)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        if by == "channel":
+            result = client.query(f"""
+                SELECT
+                    COALESCE(source_name, 'unknown') as channel,
+                    COUNT(*) as order_count,
+                    SUM(total_amount) as total_sales,
+                    AVG(total_amount) as avg_order_value
+                FROM dwd_v_order
+                WHERE DATE(order_date) >= '{start_date}'
+                GROUP BY source_name
+                ORDER BY total_sales DESC
+            """, database=database)
+            # Return list directly for proper table display
+            return result if isinstance(result, list) else []
+
+        elif by == "province" or by == "store":
+            # Use store_name for regional distribution (province data is not available)
+            result = client.query(f"""
+                SELECT
+                    COALESCE(store_name, 'Online') as store,
+                    COUNT(*) as order_count,
+                    SUM(total_amount) as total_sales
+                FROM dwd_v_order
+                WHERE DATE(order_date) >= '{start_date}'
+                GROUP BY store_name
+                ORDER BY total_sales DESC
+                LIMIT 20
+            """, database=database)
+            # Return list directly for proper table display
+            return result if isinstance(result, list) else []
+
+        else:
+            # Overall metrics
+            result = client.query(f"""
+                SELECT
+                    COUNT(*) as total_orders,
+                    SUM(total_amount) as total_sales,
+                    AVG(total_amount) as avg_order_value,
+                    COUNT(DISTINCT customer_code) as unique_customers
+                FROM dwd_v_order
+                WHERE DATE(order_date) >= '{start_date}'
+            """, database=database)
+
+            data = {
+                "period": period,
+                "total_orders": 0,
+                "total_sales": 0.0,
+                "avg_order_value": 0.0,
+                "unique_customers": 0,
+            }
+
+            if isinstance(result, list) and len(result) > 0:
+                row = result[0]
+                data["total_orders"] = row.get("total_orders") or 0
+                data["total_sales"] = float(row.get("total_sales") or 0)
+                data["avg_order_value"] = float(row.get("avg_order_value") or 0)
+                data["unique_customers"] = row.get("unique_customers") or 0
+
+            # Repurchase rate
+            repurchase_result = client.query(f"""
+                SELECT
+                    COUNT(*) as repeat_customers
+                FROM (
+                    SELECT customer_code, COUNT(*) as order_cnt
+                    FROM dwd_v_order
+                    WHERE DATE(order_date) >= '{start_date}'
+                    GROUP BY customer_code
+                    HAVING order_cnt > 1
+                ) t
+            """, database=database)
+
+            if isinstance(repurchase_result, list) and len(repurchase_result) > 0:
+                repeat_customers = repurchase_result[0].get("repeat_customers", 0)
+                if data["unique_customers"] > 0:
+                    data["repurchase_rate"] = round(repeat_customers / data["unique_customers"] * 100, 2)
+                else:
+                    data["repurchase_rate"] = 0
+
+            return data
+
+
+def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str = None) -> list:
+    """Get campaign analytics from MCP database."""
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
+    start_date = today - timedelta(days=days)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Query campaign data from available tables
+        where_clause = f"WHERE create_time >= '{start_date}'"
+        if campaign_id:
+            where_clause += f" AND activity_id = '{campaign_id}'"
+        if name:
+            where_clause += f" AND activity_name LIKE '%{name}%'"
+
+        result = client.query(f"""
+            SELECT
+                activity_id,
+                activity_name,
+                activity_type,
+                status,
+                start_time,
+                end_time,
+                target_count,
+                reach_count,
+                click_count,
+                convert_count
+            FROM ads_das_activity_channel_effect_d
+            {where_clause}
+            ORDER BY create_time DESC
+            LIMIT 50
+        """, database=database)
+
+        if isinstance(result, list):
+            return result
+        return []
+
+
+def _get_mcp_points(config, period: str) -> dict:
+    """Get points analytics from MCP database."""
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
+    start_date = today - timedelta(days=days)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Query points statistics
+        result = client.query(f"""
+            SELECT
+                SUM(CASE WHEN change_type = 'earn' THEN points ELSE 0 END) as total_earned,
+                SUM(CASE WHEN change_type = 'redeem' THEN points ELSE 0 END) as total_redeemed,
+                COUNT(DISTINCT member_id) as active_members,
+                COUNT(*) as total_transactions
+            FROM dwd_member_points_log
+            WHERE create_time >= '{start_date}'
+        """, database=database)
+
+        data = {
+            "period": period,
+            "total_earned": 0,
+            "total_redeemed": 0,
+            "active_members": 0,
+            "total_transactions": 0,
+        }
+
+        if isinstance(result, list) and len(result) > 0:
+            row = result[0]
+            data["total_earned"] = row.get("total_earned") or 0
+            data["total_redeemed"] = row.get("total_redeemed") or 0
+            data["active_members"] = row.get("active_members") or 0
+            data["total_transactions"] = row.get("total_transactions") or 0
+
+        return data
+
+
+def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
+    """Get coupon analytics from MCP database."""
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
+    start_date = today - timedelta(days=days)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Query coupon statistics
+        result = client.query(f"""
+            SELECT
+                COUNT(*) as total_issued,
+                SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as total_used,
+                SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as total_expired,
+                COUNT(DISTINCT customer_code) as unique_customers
+            FROM dwd_coupon_instance
+            WHERE create_time >= '{start_date}'
+        """, database=database)
+
+        data = {
+            "period": period,
+            "total_issued": 0,
+            "total_used": 0,
+            "total_expired": 0,
+            "unique_customers": 0,
+            "usage_rate": 0.0,
+        }
+
+        if isinstance(result, list) and len(result) > 0:
+            row = result[0]
+            data["total_issued"] = row.get("total_issued") or 0
+            data["total_used"] = row.get("total_used") or 0
+            data["total_expired"] = row.get("total_expired") or 0
+            data["unique_customers"] = row.get("unique_customers") or 0
+            if data["total_issued"] > 0:
+                data["usage_rate"] = round(data["total_used"] / data["total_issued"] * 100, 2)
+
+        return data
+
+
 @app.command("overview")
 def analytics_overview(
     period: str = typer.Option("7d", "--period", "-p", help="Time period (today, 7d, 30d, 90d, 365d, ytd)"),
@@ -51,7 +515,17 @@ def analytics_overview(
     """Show analytics overview dashboard."""
     config = load_config()
 
-    if config.mode == "api":
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_overview(config, period)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
         try:
             with SocialHubClient() as client:
                 result = client.get_analytics_overview(
@@ -98,7 +572,17 @@ def analytics_customers(
     """Analyze customer metrics."""
     config = load_config()
 
-    if config.mode == "api":
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_customers(config, period, channel)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
         try:
             with SocialHubClient() as client:
                 result = client.get_customer_analytics(period=period, channel=channel)
@@ -139,7 +623,17 @@ def analytics_retention(
 
     config = load_config()
 
-    if config.mode == "api":
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_retention(config, days_list)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
         try:
             with SocialHubClient() as client:
                 result = client.get_retention_analytics(days=days_list)
@@ -177,7 +671,17 @@ def analytics_orders(
     """Analyze order metrics."""
     config = load_config()
 
-    if config.mode == "api":
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_orders(config, period, metric, by)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
         try:
             with SocialHubClient() as client:
                 result = client.get_order_analytics(period=period, metric=metric)
@@ -219,7 +723,17 @@ def analytics_campaigns(
     """Analyze marketing campaign performance."""
     config = load_config()
 
-    if config.mode == "api":
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_campaigns(config, period, campaign_id, name)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
         try:
             with SocialHubClient() as client:
                 result = client.get_campaign_analytics(
@@ -233,7 +747,7 @@ def analytics_campaigns(
             raise typer.Exit(1)
     else:
         # Local mode - not supported without campaign data
-        print_error("Campaign analytics requires API mode")
+        print_error("Campaign analytics requires API or MCP mode")
         raise typer.Exit(1)
 
     if funnel and isinstance(data, dict):
@@ -259,17 +773,27 @@ def analytics_points(
     """Analyze points program metrics."""
     config = load_config()
 
-    if config.mode != "api":
-        print_error("Points analytics requires API mode")
-        raise typer.Exit(1)
-
-    try:
-        with SocialHubClient() as client:
-            # Get points statistics
-            result = client.get("/api/v1/analytics/points", params={"period": period})
-            data = result.get("data", result)
-    except APIError as e:
-        print_error(f"API Error: {e.message}")
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_points(config, period)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
+        try:
+            with SocialHubClient() as client:
+                # Get points statistics
+                result = client.get("/api/v1/analytics/points", params={"period": period})
+                data = result.get("data", result)
+        except APIError as e:
+            print_error(f"API Error: {e.message}")
+            raise typer.Exit(1)
+    else:
+        print_error("Points analytics requires API or MCP mode")
         raise typer.Exit(1)
 
     format_output(data, format, output)
@@ -285,19 +809,29 @@ def analytics_coupons(
     """Analyze coupon usage metrics."""
     config = load_config()
 
-    if config.mode != "api":
-        print_error("Coupon analytics requires API mode")
-        raise typer.Exit(1)
-
-    try:
-        with SocialHubClient() as client:
-            params = {"period": period}
-            if roi:
-                params["include_roi"] = "true"
-            result = client.get("/api/v1/analytics/coupons", params=params)
-            data = result.get("data", result)
-    except APIError as e:
-        print_error(f"API Error: {e.message}")
+    if config.mode == "mcp":
+        # MCP mode - query real database
+        try:
+            data = _get_mcp_coupons(config, period, roi)
+        except MCPError as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            print_error(f"MCP Error: {e}")
+            raise typer.Exit(1)
+    elif config.mode == "api":
+        try:
+            with SocialHubClient() as client:
+                params = {"period": period}
+                if roi:
+                    params["include_roi"] = "true"
+                result = client.get("/api/v1/analytics/coupons", params=params)
+                data = result.get("data", result)
+        except APIError as e:
+            print_error(f"API Error: {e.message}")
+            raise typer.Exit(1)
+    else:
+        print_error("Coupon analytics requires API or MCP mode")
         raise typer.Exit(1)
 
     format_output(data, format, output)
@@ -495,7 +1029,7 @@ def generate_report(
             webbrowser.open(f'file://{report_path}')
             console.print("[cyan]Report opened in browser[/cyan]")
 
-        console.print(f"\n[bold green]✓ Report generated successfully![/bold green]")
+        console.print(f"\n[bold green][OK] Report generated successfully![/bold green]")
         console.print(f"[dim]To save as PDF: Open in browser → Ctrl+P → Save as PDF[/dim]")
 
     except FileNotFoundError as e:

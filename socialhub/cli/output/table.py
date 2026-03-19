@@ -150,8 +150,9 @@ def print_overview(data: dict[str, Any], title: str = "Analytics Overview") -> N
         "new_customers": ("New Customers", "{:,}"),
         "active_customers": ("Active Customers", "{:,}"),
         "total_orders": ("Total Orders", "{:,}"),
-        "total_revenue": ("Total Revenue", "¥{:,.2f}"),
-        "average_order_value": ("Avg Order Value", "¥{:,.2f}"),
+        "total_revenue": ("Total Revenue", "CNY {:,.2f}"),
+        "average_order_value": ("Avg Order Value", "CNY {:,.2f}"),
+        "avg_order_value": ("Avg Order Value", "CNY {:,.2f}"),
         "conversion_rate": ("Conversion Rate", "{:.2f}%"),
         "retention_rate": ("Retention Rate", "{:.2f}%"),
         "repurchase_rate": ("Repurchase Rate", "{:.2f}%"),
@@ -230,19 +231,19 @@ def print_status_badge(status: str) -> Text:
 
 def print_success(message: str) -> None:
     """Print success message."""
-    console.print(f"[green]✓[/green] {message}")
+    console.print(f"[green][OK][/green] {message}")
 
 
 def print_error(message: str) -> None:
     """Print error message."""
-    console.print(f"[red]✗[/red] {message}")
+    console.print(f"[red][ERROR][/red] {message}")
 
 
 def print_warning(message: str) -> None:
     """Print warning message."""
-    console.print(f"[yellow]![/yellow] {message}")
+    console.print(f"[yellow][WARN][/yellow] {message}")
 
 
 def print_info(message: str) -> None:
     """Print info message."""
-    console.print(f"[blue]ℹ[/blue] {message}")
+    console.print(f"[blue][INFO][/blue] {message}")

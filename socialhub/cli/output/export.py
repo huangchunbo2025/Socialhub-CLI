@@ -170,4 +170,4 @@ def format_output(
 
 def print_export_success(path: str) -> None:
     """Print export success message."""
-    console.print(f"[green]✓[/green] Data exported to: [cyan]{path}[/cyan]")
+    console.print(f"[green][OK][/green] Data exported to: [cyan]{path}[/cyan]")

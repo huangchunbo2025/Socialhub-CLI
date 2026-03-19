@@ -41,13 +41,23 @@ class AIConfig(BaseModel):
     openai_model: str = Field(default="gpt-3.5-turbo", description="OpenAI model name")
 
 
+class MCPConfig(BaseModel):
+    """MCP (Model Context Protocol) configuration."""
+
+    sse_url: str = Field(default="http://135.232.192.121:8064/mcpgateway-prod/mcp/analytics-db/sse", description="MCP SSE endpoint")
+    post_url: str = Field(default="http://135.232.192.121:8064/mcpgateway-prod/mcp/analytics-db/message", description="MCP message endpoint")
+    tenant_id: str = Field(default="demoen", description="MCP tenant ID")
+    database: str = Field(default="das_demoen", description="Default database name")
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
-    mode: str = Field(default="api", description="Operation mode: 'api' or 'local'")
+    mode: str = Field(default="mcp", description="Operation mode: 'api', 'local', or 'mcp'")
     api: APIConfig = Field(default_factory=APIConfig)
     local: LocalConfig = Field(default_factory=LocalConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
     default_format: str = Field(default="table", description="Default output format")
     page_size: int = Field(default=50, description="Default page size for list commands")
 

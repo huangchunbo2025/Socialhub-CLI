@@ -55,7 +55,7 @@ def browse_skills(
                 installed = registry.get_installed(skill.name)
                 name_display = skill.name
                 if installed:
-                    name_display = f"{skill.name} [green]✓[/green]"
+                    name_display = f"{skill.name} [green][OK][/green]"
 
                 # Rating stars
                 rating = "★" * int(skill.rating) + "☆" * (5 - int(skill.rating))
@@ -95,7 +95,7 @@ def search_skills(
             console.print(f"\n[bold]Search results for '{query}':[/bold]\n")
 
             for skill in skills:
-                certified_badge = "[green]✓ Certified[/green]" if skill.certified else ""
+                certified_badge = "[green][Certified][/green]" if skill.certified else ""
                 console.print(f"[cyan]{skill.name}[/cyan] v{skill.version} {certified_badge}")
                 console.print(f"  {skill.description}")
                 console.print(f"  [dim]Category: {skill.category.value} | Downloads: {skill.downloads:,}[/dim]")
@@ -124,7 +124,7 @@ def skill_info(
             console.print(Panel(
                 f"[bold]{skill.display_name or skill.name}[/bold]\n"
                 f"v{skill.version} by {skill.author}\n"
-                f"[green]✓ Certified by SocialHub.AI[/green]" if skill.certified else "",
+                f"[green][Certified by SocialHub.AI][/green]" if skill.certified else "",
                 title=f"Skill: {skill.name}",
                 border_style="cyan",
             ))
