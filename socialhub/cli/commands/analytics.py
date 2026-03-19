@@ -10,7 +10,15 @@ from ..api.client import APIError, SocialHubClient
 from ..config import load_config
 from ..local.processor import DataProcessor
 from ..local.reader import LocalDataReader, read_customers_csv, read_orders_csv
-from ..output.chart import create_bar_chart, print_funnel_chart
+from ..output.chart import (
+    create_bar_chart,
+    print_funnel_chart,
+    save_bar_chart,
+    save_pie_chart,
+    save_line_chart,
+    generate_dashboard,
+)
+from ..output.report import generate_html_report
 from ..output.export import export_data, format_output, print_export_success
 from ..output.table import (
     print_dataframe,
@@ -293,3 +301,206 @@ def analytics_coupons(
         raise typer.Exit(1)
 
     format_output(data, format, output)
+
+
+@app.command("chart")
+def generate_chart(
+    chart_type: str = typer.Argument(..., help="Chart type: bar, pie, line, funnel, dashboard"),
+    data_source: str = typer.Option("customers", "--data", "-d", help="Data source: customers, orders"),
+    metric: str = typer.Option("count", "--metric", "-m", help="Metric: count, total_spent, orders"),
+    group_by: str = typer.Option("customer_type", "--group", "-g", help="Group by field"),
+    output: str = typer.Option("chart.png", "--output", "-o", help="Output file path"),
+    title: Optional[str] = typer.Option(None, "--title", "-t", help="Chart title"),
+) -> None:
+    """Generate analysis charts and save as image.
+
+    Examples:
+        sh analytics chart bar --data=customers --group=customer_type
+        sh analytics chart pie --data=orders --metric=total_spent --group=channel
+        sh analytics chart dashboard --output=report.png
+    """
+    config = load_config()
+
+    try:
+        # Load data based on source
+        if data_source == "customers":
+            df = read_customers_csv("customers.csv", config.local.data_dir)
+        elif data_source == "orders":
+            df = read_orders_csv("orders.csv", config.local.data_dir)
+        else:
+            print_error(f"Unknown data source: {data_source}")
+            raise typer.Exit(1)
+
+        # Calculate metrics based on grouping
+        if metric == "count":
+            chart_data = df.groupby(group_by).size().to_dict()
+        elif metric == "total_spent":
+            if "total_spent" in df.columns:
+                chart_data = df.groupby(group_by)["total_spent"].sum().to_dict()
+            elif "amount" in df.columns:
+                chart_data = df.groupby(group_by)["amount"].sum().to_dict()
+            else:
+                print_error("No spending column found in data")
+                raise typer.Exit(1)
+        elif metric == "orders":
+            if "total_orders" in df.columns:
+                chart_data = df.groupby(group_by)["total_orders"].sum().to_dict()
+            else:
+                chart_data = df.groupby(group_by).size().to_dict()
+        else:
+            print_error(f"Unknown metric: {metric}")
+            raise typer.Exit(1)
+
+        # Generate chart title
+        chart_title = title or f"{data_source.title()} by {group_by.replace('_', ' ').title()}"
+
+        # Generate chart based on type
+        if chart_type == "bar":
+            save_bar_chart(chart_data, output, title=chart_title)
+        elif chart_type == "pie":
+            save_pie_chart(chart_data, output, title=chart_title)
+        elif chart_type == "line":
+            # For line chart, need time series data
+            if "date" in df.columns or "created_at" in df.columns:
+                date_col = "date" if "date" in df.columns else "created_at"
+                df[date_col] = df[date_col].astype(str).str[:10]
+                line_data = df.groupby(date_col).size().to_dict()
+                dates = list(line_data.keys())
+                values = list(line_data.values())
+                save_line_chart({"Count": values}, dates, output, title=chart_title)
+            else:
+                print_error("Line chart requires date column")
+                raise typer.Exit(1)
+        elif chart_type == "dashboard":
+            # Generate comprehensive dashboard
+            customers_df = read_customers_csv("customers.csv", config.local.data_dir)
+            orders_df = read_orders_csv("orders.csv", config.local.data_dir)
+
+            dashboard_data = {
+                "customer_types": customers_df.groupby("customer_type").size().to_dict(),
+                "channels": customers_df["channels"].str.split(";").explode().value_counts().head(5).to_dict(),
+                "top_customers": customers_df.nlargest(5, "total_spent").set_index("name")["total_spent"].to_dict(),
+            }
+
+            # Add sales trend if orders have dates
+            if "date" in orders_df.columns or "order_date" in orders_df.columns:
+                date_col = "date" if "date" in orders_df.columns else "order_date"
+                orders_df[date_col] = orders_df[date_col].astype(str).str[:10]
+                trend = orders_df.groupby(date_col)["amount"].sum()
+                dashboard_data["sales_trend"] = {
+                    "dates": trend.index.tolist()[-10:],
+                    "values": trend.values.tolist()[-10:],
+                }
+
+            generate_dashboard(dashboard_data, output, title=chart_title or "Analytics Dashboard")
+        elif chart_type == "funnel":
+            # Create a sample funnel from customer journey
+            total = len(df)
+            funnel_stages = [
+                ("Total Customers", total),
+                ("Active (30d)", int(total * 0.7)),
+                ("Made Purchase", int(total * 0.5)),
+                ("Repeat Purchase", int(total * 0.3)),
+                ("VIP", int(total * 0.1)),
+            ]
+            from ..output.chart import save_funnel_chart
+            save_funnel_chart(funnel_stages, output, title=chart_title or "Customer Funnel")
+        else:
+            print_error(f"Unknown chart type: {chart_type}. Use: bar, pie, line, funnel, dashboard")
+            raise typer.Exit(1)
+
+    except FileNotFoundError as e:
+        print_error(f"Data file not found: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Error generating chart: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("report")
+def generate_report(
+    output: str = typer.Option("report.html", "--output", "-o", help="Output HTML file path"),
+    title: str = typer.Option("SocialHub 数据分析报告", "--title", "-t", help="Report title"),
+    include_customers: bool = typer.Option(True, "--customers/--no-customers", help="Include customer list"),
+    include_orders: bool = typer.Option(True, "--orders/--no-orders", help="Include order list"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open report in browser"),
+) -> None:
+    """Generate comprehensive HTML analysis report.
+
+    The report can be printed as PDF using browser's print function (Ctrl+P).
+
+    Examples:
+        sh analytics report
+        sh analytics report --output=monthly_report.html --title="3月分析报告"
+        sh analytics report --no-customers --no-orders
+    """
+    config = load_config()
+
+    try:
+        # Load all data
+        customers_df = read_customers_csv("customers.csv", config.local.data_dir)
+        orders_df = read_orders_csv("orders.csv", config.local.data_dir)
+
+        # Prepare report data
+        report_data = {}
+
+        # Overview statistics
+        report_data['overview'] = {
+            'total_customers': len(customers_df),
+            'total_orders': customers_df['total_orders'].sum() if 'total_orders' in customers_df.columns else len(orders_df),
+            'total_revenue': customers_df['total_spent'].sum() if 'total_spent' in customers_df.columns else orders_df['amount'].sum() if 'amount' in orders_df.columns else 0,
+            'avg_order_value': orders_df['amount'].mean() if 'amount' in orders_df.columns else 0,
+            'new_customers': len(customers_df[customers_df['customer_type'] == 'registered']) if 'customer_type' in customers_df.columns else 0,
+            'active_customers': len(customers_df[customers_df['total_orders'] > 0]) if 'total_orders' in customers_df.columns else len(customers_df),
+        }
+
+        # Customer type distribution
+        if 'customer_type' in customers_df.columns:
+            report_data['customer_types'] = customers_df.groupby('customer_type').size().to_dict()
+
+        # Channel distribution
+        if 'channels' in customers_df.columns:
+            report_data['channels'] = customers_df['channels'].str.split(';').explode().value_counts().head(5).to_dict()
+
+        # Top customers
+        if 'total_spent' in customers_df.columns and 'name' in customers_df.columns:
+            top_customers = customers_df.nlargest(5, 'total_spent')
+            report_data['top_customers'] = dict(zip(top_customers['name'], top_customers['total_spent']))
+
+        # Sales trend
+        if 'order_date' in orders_df.columns or 'date' in orders_df.columns:
+            date_col = 'order_date' if 'order_date' in orders_df.columns else 'date'
+            orders_df[date_col] = orders_df[date_col].astype(str).str[:10]
+            if 'amount' in orders_df.columns:
+                trend = orders_df.groupby(date_col)['amount'].sum()
+                report_data['sales_trend'] = {
+                    'dates': trend.index.tolist()[-10:],
+                    'values': trend.values.tolist()[-10:],
+                }
+
+        # Customer list
+        if include_customers:
+            report_data['customers'] = customers_df.head(20).to_dict(orient='records')
+
+        # Order list
+        if include_orders:
+            report_data['orders'] = orders_df.head(20).to_dict(orient='records')
+
+        # Generate report
+        report_path = generate_html_report(report_data, output, title=title)
+
+        # Open in browser
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f'file://{report_path}')
+            console.print("[cyan]Report opened in browser[/cyan]")
+
+        console.print(f"\n[bold green]✓ Report generated successfully![/bold green]")
+        console.print(f"[dim]To save as PDF: Open in browser → Ctrl+P → Save as PDF[/dim]")
+
+    except FileNotFoundError as e:
+        print_error(f"Data file not found: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Error generating report: {e}")
+        raise typer.Exit(1)

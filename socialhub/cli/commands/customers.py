@@ -84,7 +84,8 @@ def get_customer(
         # Local mode
         try:
             df = read_customers_csv("customers.csv", config.local.data_dir)
-            customer = df[df["id"].astype(str) == str(customer_id)]
+            # Case-insensitive ID lookup
+            customer = df[df["id"].astype(str).str.upper() == str(customer_id).upper()]
 
             if customer.empty:
                 print_error(f"Customer not found: {customer_id}")

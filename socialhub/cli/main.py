@@ -1,5 +1,6 @@
 """SocialHub.AI CLI - Main entry point."""
 
+import sys
 import typer
 from rich.console import Console
 
@@ -10,11 +11,18 @@ from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, 
 app = typer.Typer(
     name="sh",
     help="SocialHub.AI CLI - Customer Engagement Platform command line tool",
-    no_args_is_help=True,
+    no_args_is_help=False,
     rich_markup_mode="rich",
 )
 
 console = Console()
+
+# Valid CLI commands
+VALID_COMMANDS = {
+    "analytics", "customers", "segments", "tags", "campaigns",
+    "coupons", "points", "messages", "config", "ai", "skills",
+    "--help", "-h", "--version", "-v"
+}
 
 # Register command groups
 app.add_typer(analytics.app, name="analytics", help="Data analytics commands")
@@ -64,8 +72,49 @@ def main(
 
 
 def cli() -> None:
-    """CLI entry point."""
-    app()
+    """CLI entry point with smart natural language detection."""
+    args = sys.argv[1:]
+
+    # No arguments - show help
+    if not args:
+        app()
+        return
+
+    first_arg = args[0]
+
+    # Check if it's a valid command
+    if first_arg in VALID_COMMANDS:
+        app()
+        return
+
+    # Otherwise, treat as natural language query
+    # Join all arguments as the query
+    query = " ".join(args)
+    console.print(f"\n[dim]智能识别: {query}[/dim]")
+
+    # Call AI to process and execute
+    from .commands.ai import call_ai_api, SYSTEM_PROMPT
+    import subprocess
+    import re
+
+    response = call_ai_api(query)
+
+    # Display response
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+    console.print(Panel(Markdown(response), title="AI 助手", border_style="cyan"))
+
+    # Extract and execute command
+    if "```bash" in response:
+        commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
+        if commands:
+            cmd = commands[0].strip()
+            if typer.confirm(f"\n执行命令: {cmd}?", default=True):
+                python_exe = sys.executable
+                if cmd.startswith("sh "):
+                    cmd = cmd.replace("sh ", f'"{python_exe}" -m socialhub.cli.main ', 1)
+                console.print(f"\n[dim]执行: {cmd}[/dim]\n")
+                subprocess.run(cmd, shell=True)
 
 
 if __name__ == "__main__":
