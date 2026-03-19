@@ -74,6 +74,10 @@
 
 | 时间 | 任务ID | 状态 | 备注 |
 |------|--------|------|------|
+| 2026-03-19 22:05 | daily-overview | done | Manual run |
+| 2026-03-19 22:04 | daily-overview | failed | Manual run failed |
+| 2026-03-19 22:02 | daily-overview | failed | Manual run failed |
+| 2026-03-19 22:01 | daily-channel-report | failed | Manual run failed |
 | - | - | - | 暂无执行记录 |
 
 ---
@@ -98,7 +102,7 @@
 
 | 检查时间 | 待执行任务数 | 执行任务数 | 备注 |
 |----------|--------------|------------|------|
-| - | - | - | 等待首次检查 |
+| 2026-03-19 22:01 | - | 1 | Task: daily-channel-report |
 
 ---
 
@@ -116,4 +120,4 @@ heartbeat:
 ---
 
 *最后更新: 2024-03-19*
-*下次检查: 等待触发*
+*下次检查: 等待下次触发*
