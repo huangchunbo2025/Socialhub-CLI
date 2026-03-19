@@ -5,9 +5,12 @@ import sys
 from pathlib import Path
 import typer
 from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.table import Table
 
 from . import __version__
-from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, mcp, messages, points, segments, skills, tags
+from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, heartbeat, mcp, messages, points, segments, skills, tags
 
 # History file for storing last command
 HISTORY_FILE = Path.home() / ".socialhub" / "history.json"
@@ -15,7 +18,7 @@ HISTORY_FILE = Path.home() / ".socialhub" / "history.json"
 # Create main app
 app = typer.Typer(
     name="sh",
-    help="SocialHub.AI CLI - Customer Engagement Platform command line tool",
+    help="SocialHub.AI CLI - Customer Intelligence Platform command line tool",
     no_args_is_help=False,
     rich_markup_mode="rich",
 )
@@ -25,7 +28,7 @@ console = Console()
 # Valid CLI commands
 VALID_COMMANDS = {
     "analytics", "customers", "segments", "tags", "campaigns",
-    "coupons", "points", "messages", "config", "ai", "skills", "mcp",
+    "coupons", "points", "messages", "config", "ai", "skills", "mcp", "heartbeat",
     "--help", "-h", "--version", "-v"
 }
 
@@ -42,6 +45,7 @@ app.add_typer(config_cmd.app, name="config", help="Configuration management")
 app.add_typer(ai.app, name="ai", help="AI assistant (natural language interface)")
 app.add_typer(skills.app, name="skills", help="Skills Store - Install official skills")
 app.add_typer(mcp.app, name="mcp", help="MCP analytics database (connect to SocialHub.AI)")
+app.add_typer(heartbeat.app, name="heartbeat", help="Scheduled task management")
 
 
 def version_callback(value: bool) -> None:
@@ -63,7 +67,7 @@ def main(
     ),
 ) -> None:
     """
-    SocialHub.AI CLI - Customer Engagement Platform
+    SocialHub.AI CLI - Customer Intelligence Platform
 
     A command-line tool for data analysts and marketing managers to:
 
@@ -108,13 +112,56 @@ REPEAT_PHRASES = {
 }
 
 
+def show_welcome() -> None:
+    """Display welcome banner."""
+    # ASCII art logo - Windows GBK compatible
+    logo = """
+  ____             _       _ _   _       _        _    ___
+ / ___|  ___   ___(_) __ _| | | | |_   _| |__    / \\  |_ _|
+ \\___ \\ / _ \\ / __| |/ _` | | |_| | | | | '_ \\  / _ \\  | |
+  ___) | (_) | (__| | (_| | |  _  | |_| | |_) |/ ___ \\ | |
+ |____/ \\___/ \\___|_|\\__,_|_|_| |_|\\__,_|_.__//_/   \\_\\___|
+    """
+
+    # Create styled logo
+    logo_text = Text(logo, style="bold cyan")
+
+    # Version and tagline
+    info = Text()
+    info.append(f"v{__version__}", style="dim")
+    info.append(" | ", style="dim")
+    info.append("Customer Intelligence Platform", style="italic")
+
+    # Quick start commands table
+    quick_start = Table(show_header=False, box=None, padding=(0, 2))
+    quick_start.add_column("Command", style="green")
+    quick_start.add_column("Description", style="dim")
+
+    quick_start.add_row("socialhub analytics overview", "Business overview")
+    quick_start.add_row("socialhub analytics orders", "Order analysis")
+    quick_start.add_row("socialhub mcp sql", "Interactive SQL")
+    quick_start.add_row("socialhub ai chat \"...\"", "AI assistant")
+    quick_start.add_row("socialhub <query>", "Smart mode")
+    quick_start.add_row("socialhub --help", "All commands")
+
+    # Print welcome
+    console.print()
+    console.print(logo_text, justify="center")
+    console.print(info, justify="center")
+    console.print()
+    console.print(Panel(quick_start, title="[bold]Quick Start[/bold]", border_style="blue", padding=(1, 2)))
+    console.print()
+    console.print("[dim]Enter a command to get started, or type natural language for smart queries[/dim]", justify="center")
+    console.print()
+
+
 def cli() -> None:
     """CLI entry point with smart natural language detection."""
     args = sys.argv[1:]
 
-    # No arguments - show help
+    # No arguments - show welcome banner
     if not args:
-        app()
+        show_welcome()
         return
 
     first_arg = args[0]
@@ -165,7 +212,6 @@ def cli() -> None:
     if scheduled_task:
         # Display response without markers
         display_response = re.sub(r"\[SCHEDULE_TASK\].*?\[/SCHEDULE_TASK\]", "", response, flags=re.DOTALL)
-        from rich.panel import Panel
         from rich.markdown import Markdown
         console.print(Panel(Markdown(display_response), title="AI 助手 - 定时任务", border_style="green"))
 
@@ -187,7 +233,6 @@ def cli() -> None:
     steps = extract_plan_steps(response)
 
     # Display response
-    from rich.panel import Panel
     from rich.markdown import Markdown
 
     if steps:
