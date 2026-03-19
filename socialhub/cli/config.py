@@ -29,12 +29,25 @@ class LocalConfig(BaseModel):
     data_dir: str = Field(default="./data", description="Local data directory")
 
 
+class AIConfig(BaseModel):
+    """AI configuration for Azure OpenAI."""
+
+    provider: str = Field(default="azure", description="AI provider: 'azure' or 'openai'")
+    azure_endpoint: str = Field(default="https://socialhub-openai-service.openai.azure.com", description="Azure OpenAI endpoint")
+    azure_api_key: str = Field(default="", description="Azure OpenAI API key")
+    azure_deployment: str = Field(default="gpt-4o", description="Azure deployment name")
+    azure_api_version: str = Field(default="2024-08-01-preview", description="Azure API version")
+    openai_api_key: str = Field(default="", description="OpenAI API key (if using OpenAI)")
+    openai_model: str = Field(default="gpt-3.5-turbo", description="OpenAI model name")
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
     mode: str = Field(default="api", description="Operation mode: 'api' or 'local'")
     api: APIConfig = Field(default_factory=APIConfig)
     local: LocalConfig = Field(default_factory=LocalConfig)
+    ai: AIConfig = Field(default_factory=AIConfig)
     default_format: str = Field(default="table", description="Default output format")
     page_size: int = Field(default=50, description="Default page size for list commands")
 

@@ -15,91 +15,142 @@ from ..config import load_config
 app = typer.Typer(help="AI assistant for natural language queries")
 console = Console()
 
-# AI configuration
-AI_CONFIG = {
-    "api_url": os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions"),
-    "api_key": os.getenv("OPENAI_API_KEY", ""),
-    "model": os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
-}
+
+def get_ai_config() -> dict:
+    """Get AI configuration from config file or environment."""
+    config = load_config()
+    ai_config = config.ai
+
+    return {
+        "provider": os.getenv("AI_PROVIDER", ai_config.provider),
+        "azure_endpoint": os.getenv("AZURE_OPENAI_ENDPOINT", ai_config.azure_endpoint),
+        "azure_api_key": os.getenv("AZURE_OPENAI_API_KEY", ai_config.azure_api_key),
+        "azure_deployment": os.getenv("AZURE_OPENAI_DEPLOYMENT", ai_config.azure_deployment),
+        "azure_api_version": os.getenv("AZURE_OPENAI_API_VERSION", ai_config.azure_api_version),
+        "openai_api_key": os.getenv("OPENAI_API_KEY", ai_config.openai_api_key),
+        "openai_model": os.getenv("OPENAI_MODEL", ai_config.openai_model),
+    }
 
 SYSTEM_PROMPT = """你是 SocialHub.AI CLI 的智能助手，帮助用户使用命令行工具进行数据分析和营销管理。
 
+所有命令都必须以 "sh " 前缀开头！
+
 可用的命令包括：
 1. 数据分析 (analytics)
-   - analytics overview --period=7d|30d|365d  # 概览分析
-   - analytics customers --period=30d  # 客户分析
-   - analytics retention --days=7,14,30  # 留存分析
-   - analytics orders --period=30d --by=channel|province  # 订单分析
+   - sh analytics overview --period=7d|30d|365d  # 概览分析
+   - sh analytics customers --period=30d  # 客户分析
+   - sh analytics retention --days=7,14,30  # 留存分析
+   - sh analytics orders --period=30d --by=channel|province  # 订单分析
+   - sh analytics chart bar --data=customers --group=customer_type --output=chart.png  # 生成柱状图
+   - sh analytics chart pie --data=customers --group=customer_type --output=pie.png  # 生成饼图
+   - sh analytics chart dashboard --output=dashboard.png  # 生成分析仪表板
+   - sh analytics chart funnel --output=funnel.png  # 生成漏斗图
+   - sh analytics report --output=report.html  # 生成HTML分析报告（可打印为PDF）
+   - sh analytics report --title="月度分析报告" --output=monthly.html  # 自定义标题的报告
 
 2. 客户管理 (customers)
-   - customers list --type=member|registered|visitor  # 客户列表
-   - customers search --phone=xxx --email=xxx  # 搜索客户
-   - customers get <customer_id>  # 客户详情
-   - customers export --output=file.csv  # 导出客户
+   - sh customers list --type=member|registered|visitor  # 客户列表
+   - sh customers search --phone=xxx --email=xxx  # 搜索客户
+   - sh customers get <customer_id>  # 客户详情
+   - sh customers export --output=file.csv  # 导出客户
 
 3. 分群管理 (segments)
-   - segments list  # 分群列表
-   - segments create --name="名称" --rules='{"key":"value"}'  # 创建分群
-   - segments export <segment_id> --output=file.csv  # 导出分群
+   - sh segments list  # 分群列表
+   - sh segments create --name="名称" --rules='{"key":"value"}'  # 创建分群
+   - sh segments export <segment_id> --output=file.csv  # 导出分群
 
 4. 标签管理 (tags)
-   - tags list --type=rfm|aipl|static  # 标签列表
-   - tags create --name="标签名" --type=static --values="值1,值2"  # 创建标签
+   - sh tags list --type=rfm|aipl|static  # 标签列表
+   - sh tags create --name="标签名" --type=static --values="值1,值2"  # 创建标签
 
 5. 营销活动 (campaigns)
-   - campaigns list --status=draft|running|finished  # 活动列表
-   - campaigns analysis <campaign_id> --funnel  # 活动分析
-   - campaigns calendar --month=2024-03  # 营销日历
+   - sh campaigns list --status=draft|running|finished  # 活动列表
+   - sh campaigns analysis <campaign_id> --funnel  # 活动分析
+   - sh campaigns calendar --month=2024-03  # 营销日历
 
 6. 优惠券 (coupons)
-   - coupons rules list  # 优惠券规则
-   - coupons list --status=unused|used|expired  # 优惠券列表
-   - coupons analysis <rule_id>  # 优惠券分析
+   - sh coupons rules list  # 优惠券规则
+   - sh coupons list --status=unused|used|expired  # 优惠券列表
+   - sh coupons analysis <rule_id>  # 优惠券分析
 
 7. 积分 (points)
-   - points rules list  # 积分规则
-   - points balance <member_id>  # 积分余额
-   - points history <member_id>  # 积分历史
+   - sh points rules list  # 积分规则
+   - sh points balance <member_id>  # 积分余额
+   - sh points history <member_id>  # 积分历史
 
 8. 消息 (messages)
-   - messages templates list --channel=sms|email|wechat  # 消息模板
-   - messages records --status=success|failed  # 发送记录
-   - messages stats --period=7d  # 消息统计
+   - sh messages templates list --channel=sms|email|wechat  # 消息模板
+   - sh messages records --status=success|failed  # 发送记录
+   - sh messages stats --period=7d  # 消息统计
 
 根据用户的自然语言请求，返回：
-1. 对应的 CLI 命令（以 ```bash 代码块格式）
+1. 对应的 CLI 命令（以 ```bash 代码块格式，命令必须以 "sh " 开头，例如 "sh customers list --type=member"）
 2. 简要说明命令的作用
 3. 如果用户的请求不清楚，询问更多信息
+
+重要：所有命令必须以 "sh " 前缀开头！
 
 回复使用中文。
 """
 
 
 def call_ai_api(user_message: str, api_key: Optional[str] = None) -> str:
-    """Call AI API to process natural language."""
-    key = api_key or AI_CONFIG["api_key"]
-
-    if not key:
-        return "错误：未配置 AI API Key。请设置环境变量 OPENAI_API_KEY 或使用 --api-key 参数。"
+    """Call AI API to process natural language (supports Azure OpenAI and OpenAI)."""
+    ai_config = get_ai_config()
+    provider = ai_config["provider"]
 
     try:
-        response = httpx.post(
-            AI_CONFIG["api_url"],
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": AI_CONFIG["model"],
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                "temperature": 0.7,
-                "max_tokens": 1000,
-            },
-            timeout=30,
-        )
+        if provider == "azure":
+            # Azure OpenAI
+            key = api_key or ai_config["azure_api_key"]
+            if not key:
+                return "错误：未配置 Azure OpenAI API Key。请运行 'sh config set ai.azure_api_key YOUR_KEY' 或设置环境变量 AZURE_OPENAI_API_KEY。"
+
+            endpoint = ai_config["azure_endpoint"]
+            deployment = ai_config["azure_deployment"]
+            api_version = ai_config["azure_api_version"]
+
+            url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+
+            response = httpx.post(
+                url,
+                headers={
+                    "api-key": key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 1000,
+                },
+                timeout=60,
+            )
+        else:
+            # Standard OpenAI
+            key = api_key or ai_config["openai_api_key"]
+            if not key:
+                return "错误：未配置 OpenAI API Key。请运行 'sh config set ai.openai_api_key YOUR_KEY' 或设置环境变量 OPENAI_API_KEY。"
+
+            response = httpx.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": ai_config["openai_model"],
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 1000,
+                },
+                timeout=60,
+            )
 
         if response.status_code != 200:
             return f"API 错误: {response.status_code} - {response.text}"
@@ -137,14 +188,16 @@ def ai_chat(
     # Extract and optionally execute command
     if execute and "```bash" in response:
         import re
+        import sys
         commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
         if commands:
             cmd = commands[0].strip()
             if typer.confirm(f"\n执行命令: {cmd}?"):
                 import subprocess
-                # Replace 'sh' with python module call
+                # Replace 'sh' with full python path
+                python_exe = sys.executable
                 if cmd.startswith("sh "):
-                    cmd = cmd.replace("sh ", "python -m socialhub.cli.main ", 1)
+                    cmd = cmd.replace("sh ", f'"{python_exe}" -m socialhub.cli.main ', 1)
                 console.print(f"\n[dim]执行: {cmd}[/dim]\n")
                 subprocess.run(cmd, shell=True)
 
