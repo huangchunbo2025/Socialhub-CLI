@@ -200,73 +200,85 @@ def cli() -> None:
 
     console.print(f"\n[dim]Smart mode: {query}[/dim]")
 
-    # Call AI to process and execute
-    from .commands.ai import call_ai_api, extract_plan_steps, execute_plan, execute_command, extract_scheduled_task, save_scheduled_task
-    import re
+    try:
+        # Call AI to process and execute
+        from .commands.ai import call_ai_api, extract_plan_steps, execute_plan, execute_command, extract_scheduled_task, save_scheduled_task
+        import re
 
-    response = call_ai_api(query)
+        response = call_ai_api(query)
 
-    # Check for scheduled task
-    scheduled_task = extract_scheduled_task(response)
-    if scheduled_task:
-        # Display response without markers
-        display_response = re.sub(r"\[SCHEDULE_TASK\].*?\[/SCHEDULE_TASK\]", "", response, flags=re.DOTALL)
+        # Check if response indicates an error
+        if response.startswith("Error:"):
+            console.print(f"[red]{response}[/red]")
+            return
+
+        # Check for scheduled task
+        scheduled_task = extract_scheduled_task(response)
+        if scheduled_task:
+            # Display response without markers
+            display_response = re.sub(r"\[SCHEDULE_TASK\].*?\[/SCHEDULE_TASK\]", "", response, flags=re.DOTALL)
+            from rich.markdown import Markdown
+            console.print(Panel(Markdown(display_response), title="AI Assistant - Scheduled Task", border_style="green"))
+
+            console.print(f"\n[bold]Scheduled task detected:[/bold]")
+            console.print(f"  Task name: {scheduled_task.get('name', '-')}")
+            console.print(f"  Frequency: {scheduled_task.get('frequency', '-')}")
+            console.print(f"  Command: {scheduled_task.get('command', '-')}")
+            console.print(f"  AI Insights: {scheduled_task.get('insights', 'false')}")
+            console.print()
+
+            if typer.confirm("Add this task to Heartbeat.md?", default=True):
+                if save_scheduled_task(scheduled_task):
+                    console.print("[green][OK] Scheduled task added to Heartbeat.md[/green]")
+                else:
+                    console.print("[red]Failed to add scheduled task[/red]")
+            return
+
+        # Check for multi-step plan
+        steps = extract_plan_steps(response)
+
+        # Display response
         from rich.markdown import Markdown
-        console.print(Panel(Markdown(display_response), title="AI Assistant - Scheduled Task", border_style="green"))
 
-        console.print(f"\n[bold]Scheduled task detected:[/bold]")
-        console.print(f"  Task name: {scheduled_task.get('name', '-')}")
-        console.print(f"  Frequency: {scheduled_task.get('frequency', '-')}")
-        console.print(f"  Command: {scheduled_task.get('command', '-')}")
-        console.print(f"  AI Insights: {scheduled_task.get('insights', 'false')}")
-        console.print()
+        if steps:
+            # Display plan without markers
+            display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
+            console.print(Panel(Markdown(display_response), title="AI Assistant - Analysis Plan", border_style="cyan"))
 
-        if typer.confirm("Add this task to Heartbeat.md?", default=True):
-            if save_scheduled_task(scheduled_task):
-                console.print("[green][OK] Scheduled task added to Heartbeat.md[/green]")
+            # Show step summary and ask for confirmation
+            console.print(f"\n[bold]Detected {len(steps)} execution steps:[/bold]")
+            for step in steps:
+                console.print(f"  {step['number']}. {step['description']}")
+
+            console.print()
+            if typer.confirm("Execute this plan?", default=True):
+                # Save commands to history before executing
+                commands = [step["command"] for step in steps]
+                save_history(query, commands)
+                execute_plan(steps, original_query=query)
             else:
-                console.print("[red]Failed to add scheduled task[/red]")
-        return
-
-    # Check for multi-step plan
-    steps = extract_plan_steps(response)
-
-    # Display response
-    from rich.markdown import Markdown
-
-    if steps:
-        # Display plan without markers
-        display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
-        console.print(Panel(Markdown(display_response), title="AI Assistant - Analysis Plan", border_style="cyan"))
-
-        # Show step summary and ask for confirmation
-        console.print(f"\n[bold]Detected {len(steps)} execution steps:[/bold]")
-        for step in steps:
-            console.print(f"  {step['number']}. {step['description']}")
-
-        console.print()
-        if typer.confirm("Execute this plan?", default=True):
-            # Save commands to history before executing
-            commands = [step["command"] for step in steps]
-            save_history(query, commands)
-            execute_plan(steps, original_query=query)
+                console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
         else:
-            console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
-    else:
-        console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
+            console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
 
-        # Extract and execute single command
-        if "```bash" in response:
-            commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
-            if commands:
-                cmd = commands[0].strip()
-                if typer.confirm(f"\nExecute command: {cmd}?", default=True):
-                    # Save to history
-                    save_history(query, [cmd])
-                    console.print(f"\n[dim]Executing: {cmd}[/dim]\n")
-                    success, output = execute_command(cmd)
-                    if output:
-                        console.print(output)
+            # Extract and execute single command
+            if "```bash" in response:
+                commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
+                if commands:
+                    cmd = commands[0].strip()
+                    if typer.confirm(f"\nExecute command: {cmd}?", default=True):
+                        # Save to history
+                        save_history(query, [cmd])
+                        console.print(f"\n[dim]Executing: {cmd}[/dim]\n")
+                        success, output = execute_command(cmd)
+                        if output:
+                            console.print(output)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled[/yellow]")
+    except Exception as e:
+        console.print(f"\n[red]Error: {e}[/red]")
+        console.print("[dim]Please try again or check your network connection.[/dim]")
 
 
 if __name__ == "__main__":
