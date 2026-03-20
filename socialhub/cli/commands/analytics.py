@@ -12,15 +12,6 @@ from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
 from ..config import load_config
 from ..local.processor import DataProcessor
 from ..local.reader import LocalDataReader, read_customers_csv, read_orders_csv
-from ..output.chart import (
-    create_bar_chart,
-    print_funnel_chart,
-    save_bar_chart,
-    save_pie_chart,
-    save_line_chart,
-    generate_dashboard,
-)
-from ..output.report import generate_html_report
 from ..output.export import export_data, format_output, print_export_success
 from ..output.table import (
     print_dataframe,
@@ -34,6 +25,130 @@ from ..output.table import (
 app = typer.Typer(help="Data analytics commands")
 console = Console()
 
+# =============================================================================
+# SECURITY: Input Validation & SQL Safety
+# =============================================================================
+
+# Whitelist of valid period values
+VALID_PERIODS = frozenset({"all", "today", "7d", "30d", "90d", "365d"})
+
+# Whitelist of valid 'by' grouping options
+VALID_GROUP_BY = frozenset({"channel", "province", "store", "date", "month"})
+
+
+def _validate_period(period: str) -> str:
+    """Validate period parameter against whitelist.
+
+    Returns the validated period or raises ValueError.
+    """
+    if period not in VALID_PERIODS:
+        raise ValueError(f"Invalid period '{period}'. Must be one of: {', '.join(sorted(VALID_PERIODS))}")
+    return period
+
+
+def _validate_group_by(by: str) -> str:
+    """Validate 'by' grouping parameter against whitelist."""
+    if by and by not in VALID_GROUP_BY:
+        raise ValueError(f"Invalid grouping '{by}'. Must be one of: {', '.join(sorted(VALID_GROUP_BY))}")
+    return by
+
+
+def _compute_date_range(period: str):
+    """Compute safe date range from validated period.
+
+    Returns (start_date, end_date) tuple. start_date is None for 'all' period.
+    Dates are Python date objects, safe for SQL interpolation.
+    """
+    from datetime import datetime, timedelta
+
+    period = _validate_period(period)
+    today = datetime.now().date()
+
+    if period == "all":
+        return None, today
+
+    days_map = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
+    days = days_map.get(period, 365)
+    start_date = today - timedelta(days=days)
+
+    return start_date, today
+
+
+def _safe_date_filter(column: str, start_date, operator: str = ">=") -> str:
+    """Build a safe SQL date filter clause.
+
+    Args:
+        column: Column name (must be alphanumeric/underscore only)
+        start_date: Date object or None
+        operator: Comparison operator (only >= and > allowed)
+
+    Returns:
+        SQL WHERE clause or empty string if no filter needed
+    """
+    if start_date is None:
+        return ""
+
+    # Validate column name (alphanumeric and underscore only)
+    import re
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
+        raise ValueError(f"Invalid column name: {column}")
+
+    # Validate operator
+    if operator not in (">=", ">", "<=", "<", "="):
+        raise ValueError(f"Invalid operator: {operator}")
+
+    # Format date safely (Python date object -> ISO format string)
+    date_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+
+    # Validate date format (YYYY-MM-DD)
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        raise ValueError(f"Invalid date format: {date_str}")
+
+    return f"WHERE {column} {operator} '{date_str}'"
+
+
+def _safe_date_between(column: str, start_date, end_date) -> str:
+    """Build a safe SQL BETWEEN clause for dates.
+
+    Args:
+        column: Column name (must be alphanumeric/underscore only)
+        start_date: Start date object
+        end_date: End date object
+
+    Returns:
+        SQL WHERE clause with BETWEEN
+    """
+    import re
+
+    # Validate column name
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
+        raise ValueError(f"Invalid column name: {column}")
+
+    # Format dates safely
+    start_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+    end_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
+
+    # Validate date formats
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', start_str):
+        raise ValueError(f"Invalid start date format: {start_str}")
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', end_str):
+        raise ValueError(f"Invalid end date format: {end_str}")
+
+    return f"WHERE {column} BETWEEN '{start_str}' AND '{end_str}'"
+
+
+def _validate_days_list(days_list: list) -> list:
+    """Validate a list of day periods for retention analysis."""
+    validated = []
+    for d in days_list:
+        if isinstance(d, int) and 1 <= d <= 365:
+            validated.append(d)
+        elif isinstance(d, str) and d.isdigit():
+            val = int(d)
+            if 1 <= val <= 365:
+                validated.append(val)
+    return validated
+
 
 def get_data_source():
     """Get data source based on config mode."""
@@ -43,24 +158,8 @@ def get_data_source():
 
 def _get_mcp_overview(config, period: str) -> dict:
     """Get analytics overview from MCP database."""
-    from datetime import datetime, timedelta
-
-    # Calculate date range based on period
-    today = datetime.now().date()
-    if period == "today":
-        days = 1
-    elif period == "7d":
-        days = 7
-    elif period == "30d":
-        days = 30
-    elif period == "90d":
-        days = 90
-    elif period == "365d":
-        days = 365
-    else:
-        days = 30
-
-    start_date = today - timedelta(days=days)
+    # Validate and compute safe date range
+    start_date, _ = _compute_date_range(period)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -81,14 +180,15 @@ def _get_mcp_overview(config, period: str) -> dict:
         if isinstance(customer_result, list) and len(customer_result) > 0:
             total_customers = customer_result[0].get("total", 0)
 
-        # Query recent overview data
+        # Query overview data (with safe date filter)
+        date_filter = _safe_date_filter("biz_date", start_date)
         overview_result = client.query(f"""
             SELECT
                 SUM(add_custs_num) as new_customers,
                 SUM(total_order_num) as total_orders,
                 SUM(total_transaction_amt) as total_revenue
             FROM ads_das_business_overview_d
-            WHERE biz_date >= '{start_date}'
+            {date_filter}
         """, database=database)
 
         new_customers = 0
@@ -101,11 +201,12 @@ def _get_mcp_overview(config, period: str) -> dict:
             total_orders = row.get("total_orders") or 0
             total_revenue = float(row.get("total_revenue") or 0)
 
-        # Query active customers
+        # Query active customers (with safe date filter)
+        order_date_filter = _safe_date_filter("order_date", start_date)
         active_result = client.query(f"""
             SELECT COUNT(DISTINCT customer_code) as active
             FROM dwd_v_order
-            WHERE order_date >= '{start_date}'
+            {order_date_filter}
         """, database=database)
 
         active_customers = 0
@@ -127,12 +228,8 @@ def _get_mcp_overview(config, period: str) -> dict:
 
 def _get_mcp_customers(config, period: str, channel: str) -> dict:
     """Get customer analytics from MCP database."""
-    from datetime import datetime, timedelta
-
-    # Calculate date range
-    today = datetime.now().date()
-    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
-    start_date = today - timedelta(days=days)
+    # Validate and compute safe date range
+    start_date, _ = _compute_date_range(period)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -170,21 +267,23 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
             for row in type_result:
                 by_type[row.get("customer_type", "unknown")] = row.get("count", 0)
 
-        # New customers in period
+        # New customers in period (safe date filter)
+        new_date_filter = _safe_date_filter("create_date", start_date)
         new_result = client.query(f"""
             SELECT COUNT(*) as new_count
             FROM dim_customer_info
-            WHERE create_date >= '{start_date}'
+            {new_date_filter}
         """, database=database)
         new_customers = 0
         if isinstance(new_result, list) and len(new_result) > 0:
             new_customers = new_result[0].get("new_count", 0)
 
-        # Active customers in period
+        # Active customers in period (safe date filter)
+        active_date_filter = _safe_date_filter("order_date", start_date)
         active_result = client.query(f"""
             SELECT COUNT(DISTINCT customer_code) as active
             FROM dwd_v_order
-            WHERE order_date >= '{start_date}'
+            {active_date_filter}
         """, database=database)
         active_customers = 0
         if isinstance(active_result, list) and len(active_result) > 0:
@@ -202,6 +301,10 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
 def _get_mcp_retention(config, days_list: list) -> list:
     """Get retention analytics from MCP database."""
     from datetime import datetime, timedelta
+    import re
+
+    # Validate days_list
+    days_list = _validate_days_list(days_list)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -221,11 +324,20 @@ def _get_mcp_retention(config, days_list: list) -> list:
             cohort_start = today - timedelta(days=period_days * 2)
             cohort_end = today - timedelta(days=period_days)
 
-            # Find customers in cohort
+            # Safe date formatting
+            cohort_start_str = cohort_start.isoformat()
+            cohort_end_str = cohort_end.isoformat()
+
+            # Validate date formats
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', cohort_start_str) or \
+               not re.match(r'^\d{4}-\d{2}-\d{2}$', cohort_end_str):
+                continue  # Skip invalid dates
+
+            # Find customers in cohort (using validated dates)
             cohort_result = client.query(f"""
                 SELECT COUNT(DISTINCT customer_code) as cohort_size
                 FROM dwd_v_order
-                WHERE order_date BETWEEN '{cohort_start}' AND '{cohort_end}'
+                WHERE order_date BETWEEN '{cohort_start_str}' AND '{cohort_end_str}'
             """, database=database)
 
             cohort_size = 0
@@ -236,11 +348,11 @@ def _get_mcp_retention(config, days_list: list) -> list:
             retained_result = client.query(f"""
                 SELECT COUNT(DISTINCT a.customer_code) as retained
                 FROM dwd_v_order a
-                WHERE a.order_date BETWEEN '{cohort_start}' AND '{cohort_end}'
+                WHERE a.order_date BETWEEN '{cohort_start_str}' AND '{cohort_end_str}'
                 AND EXISTS (
                     SELECT 1 FROM dwd_v_order b
                     WHERE b.customer_code = a.customer_code
-                    AND b.order_date > '{cohort_end}'
+                    AND b.order_date > '{cohort_end_str}'
                 )
             """, database=database)
 
@@ -262,11 +374,13 @@ def _get_mcp_retention(config, days_list: list) -> list:
 
 def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
     """Get order analytics from MCP database."""
-    from datetime import datetime, timedelta
+    # Validate inputs
+    start_date, _ = _compute_date_range(period)
+    if by:
+        _validate_group_by(by)
 
-    today = datetime.now().date()
-    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
-    start_date = today - timedelta(days=days)
+    # Build safe date filter
+    date_filter = _safe_date_filter("order_date", start_date)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -286,7 +400,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                     SUM(total_amount) as total_sales,
                     AVG(total_amount) as avg_order_value
                 FROM dwd_v_order
-                WHERE DATE(order_date) >= '{start_date}'
+                {date_filter}
                 GROUP BY source_name
                 ORDER BY total_sales DESC
             """, database=database)
@@ -301,7 +415,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                     COUNT(*) as order_count,
                     SUM(total_amount) as total_sales
                 FROM dwd_v_order
-                WHERE DATE(order_date) >= '{start_date}'
+                {date_filter}
                 GROUP BY store_name
                 ORDER BY total_sales DESC
                 LIMIT 20
@@ -318,7 +432,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                     AVG(total_amount) as avg_order_value,
                     COUNT(DISTINCT customer_code) as unique_customers
                 FROM dwd_v_order
-                WHERE DATE(order_date) >= '{start_date}'
+                {date_filter}
             """, database=database)
 
             data = {
@@ -343,7 +457,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                 FROM (
                     SELECT customer_code, COUNT(*) as order_cnt
                     FROM dwd_v_order
-                    WHERE DATE(order_date) >= '{start_date}'
+                    {date_filter}
                     GROUP BY customer_code
                     HAVING order_cnt > 1
                 ) t
@@ -359,13 +473,25 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
             return data
 
 
+def _sanitize_string_input(value: str, max_length: int = 100) -> str:
+    """Sanitize string input for SQL queries.
+
+    Removes dangerous characters and limits length.
+    """
+    if not value:
+        return ""
+    import re
+    # Remove any characters that could be used for SQL injection
+    sanitized = re.sub(r"['\";\\%_\-\-]", "", str(value))
+    return sanitized[:max_length]
+
+
 def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str = None) -> list:
     """Get campaign analytics from MCP database."""
-    from datetime import datetime, timedelta
+    import re
 
-    today = datetime.now().date()
-    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
-    start_date = today - timedelta(days=days)
+    # Validate and compute safe date range
+    start_date, _ = _compute_date_range(period)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -377,12 +503,26 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Query campaign data from available tables
-        where_clause = f"WHERE create_time >= '{start_date}'"
+        # Build safe WHERE clause
+        conditions = []
+        if start_date:
+            date_str = start_date.isoformat()
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+                conditions.append(f"create_time >= '{date_str}'")
+
         if campaign_id:
-            where_clause += f" AND activity_id = '{campaign_id}'"
+            # Sanitize campaign_id (alphanumeric only)
+            safe_id = _sanitize_string_input(campaign_id, 50)
+            if safe_id:
+                conditions.append(f"activity_id = '{safe_id}'")
+
         if name:
-            where_clause += f" AND activity_name LIKE '%{name}%'"
+            # Sanitize name for LIKE query
+            safe_name = _sanitize_string_input(name, 100)
+            if safe_name:
+                conditions.append(f"activity_name LIKE '%{safe_name}%'")
+
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         result = client.query(f"""
             SELECT
@@ -409,11 +549,9 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
 
 def _get_mcp_points(config, period: str) -> dict:
     """Get points analytics from MCP database."""
-    from datetime import datetime, timedelta
-
-    today = datetime.now().date()
-    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
-    start_date = today - timedelta(days=days)
+    # Validate and compute safe date range
+    start_date, _ = _compute_date_range(period)
+    date_filter = _safe_date_filter("create_time", start_date)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -425,7 +563,7 @@ def _get_mcp_points(config, period: str) -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Query points statistics
+        # Query points statistics with safe date filter
         result = client.query(f"""
             SELECT
                 SUM(CASE WHEN change_type = 'earn' THEN points ELSE 0 END) as total_earned,
@@ -433,7 +571,7 @@ def _get_mcp_points(config, period: str) -> dict:
                 COUNT(DISTINCT member_id) as active_members,
                 COUNT(*) as total_transactions
             FROM dwd_member_points_log
-            WHERE create_time >= '{start_date}'
+            {date_filter}
         """, database=database)
 
         data = {
@@ -456,11 +594,9 @@ def _get_mcp_points(config, period: str) -> dict:
 
 def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
     """Get coupon analytics from MCP database."""
-    from datetime import datetime, timedelta
-
-    today = datetime.now().date()
-    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}.get(period, 30)
-    start_date = today - timedelta(days=days)
+    # Validate and compute safe date range
+    start_date, _ = _compute_date_range(period)
+    date_filter = _safe_date_filter("create_time", start_date)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -472,7 +608,7 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Query coupon statistics
+        # Query coupon statistics with safe date filter
         result = client.query(f"""
             SELECT
                 COUNT(*) as total_issued,
@@ -480,7 +616,7 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
                 SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as total_expired,
                 COUNT(DISTINCT customer_code) as unique_customers
             FROM dwd_coupon_instance
-            WHERE create_time >= '{start_date}'
+            {date_filter}
         """, database=database)
 
         data = {
@@ -506,10 +642,10 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
 
 def _get_mcp_report_data(config) -> dict:
     """Get report data from MCP database."""
-    from datetime import datetime, timedelta
-
-    today = datetime.now().date()
-    start_date = today - timedelta(days=30)
+    # Use safe date computation (30d period)
+    start_date, _ = _compute_date_range("30d")
+    date_filter_biz = _safe_date_filter("biz_date", start_date)
+    date_filter_order = _safe_date_filter("order_date", start_date)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -538,7 +674,7 @@ def _get_mcp_report_data(config) -> dict:
                 SUM(total_order_num) as total_orders,
                 SUM(total_transaction_amt) as total_revenue
             FROM ads_das_business_overview_d
-            WHERE biz_date >= '{start_date}'
+            {date_filter_biz}
         """, database=database)
 
         new_customers = 0
@@ -577,14 +713,17 @@ def _get_mcp_report_data(config) -> dict:
         if isinstance(type_result, list) and len(type_result) > 0:
             report_data['customer_types'] = {row['customer_type']: row['count'] for row in type_result}
 
-        # Top customers by spending
+        # Top customers by spending (using safe date filter)
+        # Build WHERE clause manually since column has table alias
+        start_date_str = start_date.isoformat() if start_date else None
+        order_where = f"WHERE o.order_date >= '{start_date_str}'" if start_date_str else ""
         top_result = client.query(f"""
             SELECT
                 c.customer_name as name,
                 SUM(o.payment_amount) as total_spent
             FROM dwd_v_order o
             JOIN dim_customer_info c ON o.customer_code = c.customer_code
-            WHERE o.order_date >= '{start_date}'
+            {order_where}
             GROUP BY c.customer_name
             ORDER BY total_spent DESC
             LIMIT 5
@@ -593,13 +732,13 @@ def _get_mcp_report_data(config) -> dict:
         if isinstance(top_result, list) and len(top_result) > 0:
             report_data['top_customers'] = {row['name']: float(row['total_spent'] or 0) for row in top_result}
 
-        # Sales trend (last 10 days)
+        # Sales trend (last 10 days) - using safe date filter
         trend_result = client.query(f"""
             SELECT
                 DATE(order_date) as date,
                 SUM(payment_amount) as amount
             FROM dwd_v_order
-            WHERE order_date >= '{start_date}'
+            {date_filter_order}
             GROUP BY DATE(order_date)
             ORDER BY date
             LIMIT 10
@@ -627,7 +766,7 @@ def _get_mcp_report_data(config) -> dict:
         if isinstance(customers_result, list):
             report_data['customers'] = customers_result
 
-        # Recent orders
+        # Recent orders - using safe date filter
         orders_result = client.query(f"""
             SELECT
                 order_code as order_id,
@@ -637,7 +776,7 @@ def _get_mcp_report_data(config) -> dict:
                 order_status as status,
                 DATE(order_date) as order_date
             FROM dwd_v_order
-            WHERE order_date >= '{start_date}'
+            {date_filter_order}
             ORDER BY order_date DESC
             LIMIT 20
         """, database=database)
@@ -896,15 +1035,15 @@ def analytics_campaigns(
         raise typer.Exit(1)
 
     if funnel and isinstance(data, dict):
-        # Show funnel visualization
-        stages = [
-            ("Target", data.get("target_count", 0)),
-            ("Reached", data.get("reached_count", 0)),
-            ("Opened", data.get("opened_count", 0)),
-            ("Clicked", data.get("clicked_count", 0)),
-            ("Converted", data.get("converted_count", 0)),
-        ]
-        print_funnel_chart(stages, title=f"Campaign Funnel: {data.get('campaign_name', 'Unknown')}")
+        # Show funnel data as table
+        funnel_data = {
+            "Target": f"{data.get('target_count', 0):,}",
+            "Reached": f"{data.get('reached_count', 0):,}",
+            "Opened": f"{data.get('opened_count', 0):,}",
+            "Clicked": f"{data.get('clicked_count', 0):,}",
+            "Converted": f"{data.get('converted_count', 0):,}",
+        }
+        print_dict(funnel_data, title=f"Campaign Funnel: {data.get('campaign_name', 'Unknown')}")
     else:
         format_output(data, format, output)
 
@@ -982,305 +1121,133 @@ def analytics_coupons(
     format_output(data, format, output)
 
 
-@app.command("chart")
-def generate_chart(
-    chart_type: str = typer.Argument(..., help="Chart type: bar, pie, line, funnel, dashboard"),
-    data_source: str = typer.Option("customers", "--data", "-d", help="Data source: customers, orders"),
-    metric: str = typer.Option("count", "--metric", "-m", help="Metric: count, total_spent, orders"),
-    group_by: str = typer.Option("customer_type", "--group", "-g", help="Group by field"),
-    output: str = typer.Option("chart.png", "--output", "-o", help="Output file path"),
-    title: Optional[str] = typer.Option(None, "--title", "-t", help="Chart title"),
-) -> None:
-    """Generate analysis charts and save as image.
-
-    Examples:
-        sh analytics chart bar --data=customers --group=customer_type
-        sh analytics chart pie --data=orders --metric=total_spent --group=channel
-        sh analytics chart dashboard --output=report.png
-    """
-    config = load_config()
-
-    try:
-        # Load data based on source
-        if data_source == "customers":
-            df = read_customers_csv("customers.csv", config.local.data_dir)
-        elif data_source == "orders":
-            df = read_orders_csv("orders.csv", config.local.data_dir)
-        else:
-            print_error(f"Unknown data source: {data_source}")
-            raise typer.Exit(1)
-
-        # Calculate metrics based on grouping
-        if metric == "count":
-            chart_data = df.groupby(group_by).size().to_dict()
-        elif metric == "total_spent":
-            if "total_spent" in df.columns:
-                chart_data = df.groupby(group_by)["total_spent"].sum().to_dict()
-            elif "amount" in df.columns:
-                chart_data = df.groupby(group_by)["amount"].sum().to_dict()
-            else:
-                print_error("No spending column found in data")
-                raise typer.Exit(1)
-        elif metric == "orders":
-            if "total_orders" in df.columns:
-                chart_data = df.groupby(group_by)["total_orders"].sum().to_dict()
-            else:
-                chart_data = df.groupby(group_by).size().to_dict()
-        else:
-            print_error(f"Unknown metric: {metric}")
-            raise typer.Exit(1)
-
-        # Generate chart title
-        chart_title = title or f"{data_source.title()} by {group_by.replace('_', ' ').title()}"
-
-        # Generate chart based on type
-        if chart_type == "bar":
-            save_bar_chart(chart_data, output, title=chart_title)
-        elif chart_type == "pie":
-            save_pie_chart(chart_data, output, title=chart_title)
-        elif chart_type == "line":
-            # For line chart, need time series data
-            if "date" in df.columns or "created_at" in df.columns:
-                date_col = "date" if "date" in df.columns else "created_at"
-                df[date_col] = df[date_col].astype(str).str[:10]
-                line_data = df.groupby(date_col).size().to_dict()
-                dates = list(line_data.keys())
-                values = list(line_data.values())
-                save_line_chart({"Count": values}, dates, output, title=chart_title)
-            else:
-                print_error("Line chart requires date column")
-                raise typer.Exit(1)
-        elif chart_type == "dashboard":
-            # Generate comprehensive dashboard
-            customers_df = read_customers_csv("customers.csv", config.local.data_dir)
-            orders_df = read_orders_csv("orders.csv", config.local.data_dir)
-
-            dashboard_data = {
-                "customer_types": customers_df.groupby("customer_type").size().to_dict(),
-                "channels": customers_df["channels"].str.split(";").explode().value_counts().head(5).to_dict(),
-                "top_customers": customers_df.nlargest(5, "total_spent").set_index("name")["total_spent"].to_dict(),
-            }
-
-            # Add sales trend if orders have dates
-            if "date" in orders_df.columns or "order_date" in orders_df.columns:
-                date_col = "date" if "date" in orders_df.columns else "order_date"
-                orders_df[date_col] = orders_df[date_col].astype(str).str[:10]
-                trend = orders_df.groupby(date_col)["amount"].sum()
-                dashboard_data["sales_trend"] = {
-                    "dates": trend.index.tolist()[-10:],
-                    "values": trend.values.tolist()[-10:],
-                }
-
-            generate_dashboard(dashboard_data, output, title=chart_title or "Analytics Dashboard")
-        elif chart_type == "funnel":
-            # Create a sample funnel from customer journey
-            total = len(df)
-            funnel_stages = [
-                ("Total Customers", total),
-                ("Active (30d)", int(total * 0.7)),
-                ("Made Purchase", int(total * 0.5)),
-                ("Repeat Purchase", int(total * 0.3)),
-                ("VIP", int(total * 0.1)),
-            ]
-            from ..output.chart import save_funnel_chart
-            save_funnel_chart(funnel_stages, output, title=chart_title or "Customer Funnel")
-        else:
-            print_error(f"Unknown chart type: {chart_type}. Use: bar, pie, line, funnel, dashboard")
-            raise typer.Exit(1)
-
-    except FileNotFoundError as e:
-        print_error(f"Data file not found: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        print_error(f"Error generating chart: {e}")
-        raise typer.Exit(1)
-
-
-def convert_html_to_pdf(html_path: str, pdf_path: str) -> bool:
-    """Convert HTML file to PDF using available tools."""
-    # Try weasyprint first
-    try:
-        from weasyprint import HTML
-        HTML(filename=html_path).write_pdf(pdf_path)
-        return True
-    except ImportError:
-        pass
-    except Exception as e:
-        console.print(f"[yellow]WeasyPrint error: {e}[/yellow]")
-
-    # Try pdfkit (requires wkhtmltopdf)
-    try:
-        import pdfkit
-        pdfkit.from_file(html_path, pdf_path)
-        return True
-    except ImportError:
-        pass
-    except Exception as e:
-        console.print(f"[yellow]pdfkit error: {e}[/yellow]")
-
-    # Try using Chrome/Edge headless
-    try:
-        import subprocess
-        import shutil
-
-        # Try Chrome
-        chrome_paths = [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            shutil.which("chrome"),
-            shutil.which("google-chrome"),
-        ]
-
-        # Try Edge
-        edge_paths = [
-            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-            shutil.which("msedge"),
-        ]
-
-        browser_path = None
-        for path in chrome_paths + edge_paths:
-            if path and Path(path).exists():
-                browser_path = path
-                break
-
-        if browser_path:
-            # Convert to file:// URL
-            file_url = f"file:///{html_path.replace(chr(92), '/')}"
-            result = subprocess.run([
-                browser_path,
-                "--headless",
-                "--disable-gpu",
-                f"--print-to-pdf={pdf_path}",
-                "--no-pdf-header-footer",
-                file_url
-            ], capture_output=True, timeout=30)
-            if result.returncode == 0 and Path(pdf_path).exists():
-                return True
-    except Exception as e:
-        console.print(f"[yellow]Browser PDF error: {e}[/yellow]")
-
-    return False
-
-
 @app.command("report")
-def generate_report(
-    output: str = typer.Option("Doc/report.html", "--output", "-o", help="Output HTML file path"),
-    title: str = typer.Option("SocialHub Analytics Report", "--title", "-t", help="Report title"),
-    include_customers: bool = typer.Option(True, "--customers/--no-customers", help="Include customer list"),
-    include_orders: bool = typer.Option(True, "--orders/--no-orders", help="Include order list"),
-    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open report in browser"),
-    pdf: bool = typer.Option(False, "--pdf", help="Also generate PDF version"),
+def generate_analytics_report(
+    topic: str = typer.Option("客户分析报告", "--topic", "-t", help="Report topic"),
+    output: str = typer.Option("analytics_report.md", "--output", "-o", help="Output file path"),
+    period: str = typer.Option("365d", "--period", "-p", help="Data period (7d, 30d, 90d, 365d)"),
+    formats: str = typer.Option("all", "--formats", "-f", help="Output formats (md, html, pdf, all)"),
 ) -> None:
-    """Generate comprehensive HTML analysis report.
+    """Generate data-driven analytics report with insights.
 
-    Use --pdf flag to automatically generate PDF version.
+    This command fetches real data from MCP and generates a comprehensive
+    report with visualizations and strategic recommendations.
 
     Examples:
-        sh analytics report
-        sh analytics report --output=Doc/monthly_report.html --title="Monthly Report"
-        sh analytics report --pdf  # Generate both HTML and PDF
-        sh analytics report --no-customers --no-orders
+        sh analytics report --topic="客户分布分析" --output=report.md
+        sh analytics report --topic="市场拓展策略" --period=90d --formats=all
     """
+    import json
+    import re
+    import sys
+
     config = load_config()
 
-    # Ensure output directory exists
-    output_path = Path(output)
-    if output_path.parent.name and not output_path.parent.exists():
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+    if config.mode != "mcp":
+        print_error("Analytics report requires MCP mode. Use: sh config set mode mcp")
+        raise typer.Exit(1)
+
+    console.print("[dim]Fetching analytics data...[/dim]")
+
+    # Collect all data
+    data = {}
 
     try:
-        if config.mode == "mcp":
-            # MCP mode - query real database
-            report_data = _get_mcp_report_data(config)
+        # 1. Overview data
+        data.update(_get_mcp_overview(config, period))
 
-            # Apply filters
-            if not include_customers:
-                report_data.pop('customers', None)
-            if not include_orders:
-                report_data.pop('orders', None)
+        # 2. Channel data
+        mcp_config = MCPClientConfig(
+            sse_url=config.mcp.sse_url,
+            post_url=config.mcp.post_url,
+            tenant_id=config.mcp.tenant_id,
+        )
+        database = config.mcp.database
 
-        else:
-            # Local mode - read from CSV files
-            customers_df = read_customers_csv("customers.csv", config.local.data_dir)
-            orders_df = read_orders_csv("orders.csv", config.local.data_dir)
+        # Use safe date computation
+        start_date, _ = _compute_date_range(period)
 
-            # Prepare report data
-            report_data = {}
+        # Build safe date filter
+        date_filter = _safe_date_filter("order_date", start_date)
 
-            # Overview statistics
-            report_data['overview'] = {
-                'total_customers': len(customers_df),
-                'total_orders': customers_df['total_orders'].sum() if 'total_orders' in customers_df.columns else len(orders_df),
-                'total_revenue': customers_df['total_spent'].sum() if 'total_spent' in customers_df.columns else orders_df['amount'].sum() if 'amount' in orders_df.columns else 0,
-                'avg_order_value': orders_df['amount'].mean() if 'amount' in orders_df.columns else 0,
-                'new_customers': len(customers_df[customers_df['customer_type'] == 'registered']) if 'customer_type' in customers_df.columns else 0,
-                'active_customers': len(customers_df[customers_df['total_orders'] > 0]) if 'total_orders' in customers_df.columns else len(customers_df),
-            }
+        with MCPClient(mcp_config) as client:
+            client.initialize()
 
-            # Customer type distribution
-            if 'customer_type' in customers_df.columns:
-                report_data['customer_types'] = customers_df.groupby('customer_type').size().to_dict()
+            # Channel distribution (using source_name as channel)
+            channel_result = client.query(f"""
+                SELECT
+                    COALESCE(source_name, 'unknown') as channel,
+                    COUNT(*) as order_count,
+                    SUM(total_amount) as total_sales,
+                    AVG(total_amount) as avg_order_value
+                FROM dwd_v_order
+                {date_filter}
+                GROUP BY source_name
+                ORDER BY total_sales DESC
+                LIMIT 15
+            """, database=database)
+            data['channels'] = channel_result if channel_result else []
 
-            # Channel distribution
-            if 'channels' in customers_df.columns:
-                report_data['channels'] = customers_df['channels'].str.split(';').explode().value_counts().head(5).to_dict()
+            # Retention data
+            retention_result = []
+            for days_period in [7, 30, 90]:
+                period_start = today - timedelta(days=days_period)
+                ret_result = client.query(f"""
+                    SELECT
+                        COUNT(DISTINCT CASE WHEN first_order_date >= '{period_start}' THEN customer_code END) as cohort_size,
+                        COUNT(DISTINCT CASE WHEN first_order_date >= '{period_start}' AND order_count > 1 THEN customer_code END) as retained_count
+                    FROM (
+                        SELECT
+                            customer_code,
+                            MIN(order_date) as first_order_date,
+                            COUNT(*) as order_count
+                        FROM dwd_v_order
+                        GROUP BY customer_code
+                    ) t
+                """, database=database)
 
-            # Top customers
-            if 'total_spent' in customers_df.columns and 'name' in customers_df.columns:
-                top_customers = customers_df.nlargest(5, 'total_spent')
-                report_data['top_customers'] = dict(zip(top_customers['name'], top_customers['total_spent']))
+                if ret_result and len(ret_result) > 0:
+                    cohort_size = ret_result[0].get("cohort_size", 0) or 0
+                    retained = ret_result[0].get("retained_count", 0) or 0
+                    rate = (retained / cohort_size * 100) if cohort_size > 0 else 0
+                    retention_result.append({
+                        "period_days": days_period,
+                        "cohort_size": cohort_size,
+                        "retained_count": retained,
+                        "retention_rate": rate
+                    })
+            data['retention'] = retention_result
 
-            # Sales trend
-            if 'order_date' in orders_df.columns or 'date' in orders_df.columns:
-                date_col = 'order_date' if 'order_date' in orders_df.columns else 'date'
-                orders_df[date_col] = orders_df[date_col].astype(str).str[:10]
-                if 'amount' in orders_df.columns:
-                    trend = orders_df.groupby(date_col)['amount'].sum()
-                    report_data['sales_trend'] = {
-                        'dates': trend.index.tolist()[-10:],
-                        'values': trend.values.tolist()[-10:],
-                    }
+        console.print(f"[dim]Data fetched: {data.get('total_customers', 0):,} customers, {data.get('total_orders', 0):,} orders[/dim]")
 
-            # Customer list
-            if include_customers:
-                report_data['customers'] = customers_df.head(20).to_dict(orient='records')
+        # Generate report using the skill
+        console.print("[dim]Generating report...[/dim]")
 
-            # Order list
-            if include_orders:
-                report_data['orders'] = orders_df.head(20).to_dict(orient='records')
+        # Import and use the report generator
+        sys.path.insert(0, str(Path(__file__).parent.parent / 'skills' / 'store' / 'report-generator'))
+        import importlib
+        try:
+            import main as report_main
+            importlib.reload(report_main)
 
-        # Generate report
-        report_path = generate_html_report(report_data, output, title=title)
+            result = report_main.generate_data_report(
+                topic=topic,
+                output=output,
+                period=period,
+                formats=formats,
+                data_json=json.dumps(data)
+            )
 
-        # Generate PDF if requested
-        pdf_path = None
-        if pdf:
-            pdf_path = str(Path(output).with_suffix('.pdf'))
-            console.print(f"[dim]Generating PDF...[/dim]")
-            if convert_html_to_pdf(report_path, pdf_path):
-                console.print(f"[green]PDF saved: {pdf_path}[/green]")
-            else:
-                console.print("[yellow]PDF generation failed. Install weasyprint: pip install weasyprint[/yellow]")
-                console.print("[dim]Or use browser print (Ctrl+P) to save as PDF[/dim]")
-                pdf_path = None
+            console.print(f"\n[bold green]Report generated successfully![/bold green]")
+            console.print(result)
 
-        # Open in browser
-        if open_browser:
-            import webbrowser
-            webbrowser.open(f'file://{report_path}')
-            console.print("[cyan]Report opened in browser[/cyan]")
-
-        console.print(f"\n[bold green][OK] Report generated successfully![/bold green]")
-        if not pdf:
-            console.print(f"[dim]To save as PDF: Use --pdf flag or browser print (Ctrl+P)[/dim]")
+        except Exception as e:
+            print_error(f"Error generating report: {e}")
+            raise typer.Exit(1)
 
     except MCPError as e:
         print_error(f"MCP Error: {e}")
         raise typer.Exit(1)
-    except FileNotFoundError as e:
-        print_error(f"Data file not found: {e}")
-        raise typer.Exit(1)
     except Exception as e:
-        print_error(f"Error generating report: {e}")
+        print_error(f"Error: {e}")
         raise typer.Exit(1)

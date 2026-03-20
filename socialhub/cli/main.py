@@ -28,7 +28,7 @@ console = Console()
 # Valid CLI commands
 VALID_COMMANDS = {
     "analytics", "customers", "segments", "tags", "campaigns",
-    "coupons", "points", "messages", "config", "ai", "skills", "mcp", "heartbeat",
+    "coupons", "points", "messages", "config", "ai", "skills", "skill", "mcp", "heartbeat",
     "--help", "-h", "--version", "-v"
 }
 
@@ -44,6 +44,7 @@ app.add_typer(messages.app, name="messages", help="Message management commands")
 app.add_typer(config_cmd.app, name="config", help="Configuration management")
 app.add_typer(ai.app, name="ai", help="AI assistant (natural language interface)")
 app.add_typer(skills.app, name="skills", help="Skills Store - Install official skills")
+app.add_typer(skills.app, name="skill", help="Skills Store (alias)", hidden=True)  # Alias for 'skills'
 app.add_typer(mcp.app, name="mcp", help="MCP analytics database (connect to SocialHub.AI)")
 app.add_typer(heartbeat.app, name="heartbeat", help="Scheduled task management")
 
@@ -86,7 +87,8 @@ def load_history() -> dict:
     try:
         if HISTORY_FILE.exists():
             return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except:
+    except (json.JSONDecodeError, OSError, IOError):
+        # Silently ignore history load failures (non-critical)
         pass
     return {"last_query": "", "last_commands": []}
 
@@ -100,7 +102,8 @@ def save_history(query: str, commands: list = None) -> None:
         if commands:
             history["last_commands"] = commands
         HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False), encoding="utf-8")
-    except:
+    except (OSError, IOError, json.JSONDecodeError):
+        # Silently ignore history save failures (non-critical)
         pass
 
 

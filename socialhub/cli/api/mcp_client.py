@@ -15,10 +15,15 @@ console = Console()
 
 @dataclass
 class MCPConfig:
-    """MCP service configuration."""
-    sse_url: str = "http://135.232.192.121:8064/mcpgateway-prod/mcp/analytics-db/sse"
-    post_url: str = "http://135.232.192.121:8064/mcpgateway-prod/mcp/analytics-db/message"
-    tenant_id: str = "demoen"
+    """MCP service configuration.
+
+    SECURITY: No default URLs - must be explicitly configured via:
+    1. Config file (~/.socialhub/config.json)
+    2. Environment variables (MCP_SSE_URL, MCP_POST_URL, MCP_TENANT_ID)
+    """
+    sse_url: str = ""  # Required - no hardcoded default
+    post_url: str = ""  # Required - no hardcoded default
+    tenant_id: str = ""  # Required - no hardcoded default
     timeout: int = 60
 
 
@@ -35,10 +40,32 @@ class MCPClient:
         self._connected = False
         self._initialized = False
 
+    def _validate_config(self) -> None:
+        """Validate that required configuration is provided.
+
+        Raises MCPError if configuration is missing.
+        """
+        missing = []
+        if not self.config.sse_url:
+            missing.append("sse_url (or MCP_SSE_URL env var)")
+        if not self.config.post_url:
+            missing.append("post_url (or MCP_POST_URL env var)")
+        if not self.config.tenant_id:
+            missing.append("tenant_id (or MCP_TENANT_ID env var)")
+
+        if missing:
+            raise MCPError(
+                f"MCP configuration missing: {', '.join(missing)}. "
+                "Please configure via 'sh config set mcp.<field>' or environment variables."
+            )
+
     def connect(self, show_status: bool = True) -> bool:
         """Connect to MCP service via SSE."""
         if self._connected:
             return True
+
+        # Validate configuration before attempting connection
+        self._validate_config()
 
         self._running = True
         self._sse_thread = threading.Thread(target=self._sse_listener, daemon=True)
@@ -161,7 +188,8 @@ class MCPClient:
                 json=message,
                 timeout=5,
             )
-        except:
+        except (httpx.HTTPError, httpx.TimeoutException, OSError):
+            # Notifications are fire-and-forget, ignore failures
             pass
 
     def initialize(self) -> dict:
