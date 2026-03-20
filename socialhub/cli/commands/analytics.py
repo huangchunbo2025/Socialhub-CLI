@@ -504,6 +504,150 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
         return data
 
 
+def _get_mcp_report_data(config) -> dict:
+    """Get report data from MCP database."""
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    start_date = today - timedelta(days=30)
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    report_data = {}
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Overview statistics
+        customer_result = client.query(
+            "SELECT COUNT(*) as total FROM dim_customer_info",
+            database=database
+        )
+        total_customers = 0
+        if isinstance(customer_result, list) and len(customer_result) > 0:
+            total_customers = customer_result[0].get("total", 0)
+
+        overview_result = client.query(f"""
+            SELECT
+                SUM(add_custs_num) as new_customers,
+                SUM(total_order_num) as total_orders,
+                SUM(total_transaction_amt) as total_revenue
+            FROM ads_das_business_overview_d
+            WHERE biz_date >= '{start_date}'
+        """, database=database)
+
+        new_customers = 0
+        total_orders = 0
+        total_revenue = 0.0
+
+        if isinstance(overview_result, list) and len(overview_result) > 0:
+            row = overview_result[0]
+            new_customers = row.get("new_customers") or 0
+            total_orders = row.get("total_orders") or 0
+            total_revenue = float(row.get("total_revenue") or 0)
+
+        avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+
+        report_data['overview'] = {
+            'total_customers': total_customers,
+            'new_customers': new_customers,
+            'total_orders': total_orders,
+            'total_revenue': total_revenue,
+            'avg_order_value': avg_order_value,
+            'active_customers': total_customers,
+        }
+
+        # Customer type distribution
+        type_result = client.query("""
+            SELECT
+                CASE
+                    WHEN member_level IS NOT NULL AND member_level != '' THEN 'member'
+                    ELSE 'registered'
+                END as customer_type,
+                COUNT(*) as count
+            FROM dim_customer_info
+            GROUP BY customer_type
+        """, database=database)
+
+        if isinstance(type_result, list) and len(type_result) > 0:
+            report_data['customer_types'] = {row['customer_type']: row['count'] for row in type_result}
+
+        # Top customers by spending
+        top_result = client.query(f"""
+            SELECT
+                c.customer_name as name,
+                SUM(o.payment_amount) as total_spent
+            FROM dwd_v_order o
+            JOIN dim_customer_info c ON o.customer_code = c.customer_code
+            WHERE o.order_date >= '{start_date}'
+            GROUP BY c.customer_name
+            ORDER BY total_spent DESC
+            LIMIT 5
+        """, database=database)
+
+        if isinstance(top_result, list) and len(top_result) > 0:
+            report_data['top_customers'] = {row['name']: float(row['total_spent'] or 0) for row in top_result}
+
+        # Sales trend (last 10 days)
+        trend_result = client.query(f"""
+            SELECT
+                DATE(order_date) as date,
+                SUM(payment_amount) as amount
+            FROM dwd_v_order
+            WHERE order_date >= '{start_date}'
+            GROUP BY DATE(order_date)
+            ORDER BY date
+            LIMIT 10
+        """, database=database)
+
+        if isinstance(trend_result, list) and len(trend_result) > 0:
+            report_data['sales_trend'] = {
+                'dates': [str(row['date']) for row in trend_result],
+                'values': [float(row['amount'] or 0) for row in trend_result],
+            }
+
+        # Recent customers
+        customers_result = client.query("""
+            SELECT
+                customer_code as id,
+                customer_name as name,
+                CASE WHEN member_level IS NOT NULL THEN 'member' ELSE 'registered' END as customer_type,
+                0 as total_orders,
+                0 as total_spent,
+                0 as points_balance
+            FROM dim_customer_info
+            LIMIT 20
+        """, database=database)
+
+        if isinstance(customers_result, list):
+            report_data['customers'] = customers_result
+
+        # Recent orders
+        orders_result = client.query(f"""
+            SELECT
+                order_code as order_id,
+                customer_name,
+                payment_amount as amount,
+                channel,
+                order_status as status,
+                DATE(order_date) as order_date
+            FROM dwd_v_order
+            WHERE order_date >= '{start_date}'
+            ORDER BY order_date DESC
+            LIMIT 20
+        """, database=database)
+
+        if isinstance(orders_result, list):
+            report_data['orders'] = orders_result
+
+    return report_data
+
+
 @app.command("overview")
 def analytics_overview(
     period: str = typer.Option("7d", "--period", "-p", help="Time period (today, 7d, 30d, 90d, 365d, ytd)"),
@@ -977,54 +1121,65 @@ def generate_report(
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Load all data
-        customers_df = read_customers_csv("customers.csv", config.local.data_dir)
-        orders_df = read_orders_csv("orders.csv", config.local.data_dir)
+        if config.mode == "mcp":
+            # MCP mode - query real database
+            report_data = _get_mcp_report_data(config)
 
-        # Prepare report data
-        report_data = {}
+            # Apply filters
+            if not include_customers:
+                report_data.pop('customers', None)
+            if not include_orders:
+                report_data.pop('orders', None)
 
-        # Overview statistics
-        report_data['overview'] = {
-            'total_customers': len(customers_df),
-            'total_orders': customers_df['total_orders'].sum() if 'total_orders' in customers_df.columns else len(orders_df),
-            'total_revenue': customers_df['total_spent'].sum() if 'total_spent' in customers_df.columns else orders_df['amount'].sum() if 'amount' in orders_df.columns else 0,
-            'avg_order_value': orders_df['amount'].mean() if 'amount' in orders_df.columns else 0,
-            'new_customers': len(customers_df[customers_df['customer_type'] == 'registered']) if 'customer_type' in customers_df.columns else 0,
-            'active_customers': len(customers_df[customers_df['total_orders'] > 0]) if 'total_orders' in customers_df.columns else len(customers_df),
-        }
+        else:
+            # Local mode - read from CSV files
+            customers_df = read_customers_csv("customers.csv", config.local.data_dir)
+            orders_df = read_orders_csv("orders.csv", config.local.data_dir)
 
-        # Customer type distribution
-        if 'customer_type' in customers_df.columns:
-            report_data['customer_types'] = customers_df.groupby('customer_type').size().to_dict()
+            # Prepare report data
+            report_data = {}
 
-        # Channel distribution
-        if 'channels' in customers_df.columns:
-            report_data['channels'] = customers_df['channels'].str.split(';').explode().value_counts().head(5).to_dict()
+            # Overview statistics
+            report_data['overview'] = {
+                'total_customers': len(customers_df),
+                'total_orders': customers_df['total_orders'].sum() if 'total_orders' in customers_df.columns else len(orders_df),
+                'total_revenue': customers_df['total_spent'].sum() if 'total_spent' in customers_df.columns else orders_df['amount'].sum() if 'amount' in orders_df.columns else 0,
+                'avg_order_value': orders_df['amount'].mean() if 'amount' in orders_df.columns else 0,
+                'new_customers': len(customers_df[customers_df['customer_type'] == 'registered']) if 'customer_type' in customers_df.columns else 0,
+                'active_customers': len(customers_df[customers_df['total_orders'] > 0]) if 'total_orders' in customers_df.columns else len(customers_df),
+            }
 
-        # Top customers
-        if 'total_spent' in customers_df.columns and 'name' in customers_df.columns:
-            top_customers = customers_df.nlargest(5, 'total_spent')
-            report_data['top_customers'] = dict(zip(top_customers['name'], top_customers['total_spent']))
+            # Customer type distribution
+            if 'customer_type' in customers_df.columns:
+                report_data['customer_types'] = customers_df.groupby('customer_type').size().to_dict()
 
-        # Sales trend
-        if 'order_date' in orders_df.columns or 'date' in orders_df.columns:
-            date_col = 'order_date' if 'order_date' in orders_df.columns else 'date'
-            orders_df[date_col] = orders_df[date_col].astype(str).str[:10]
-            if 'amount' in orders_df.columns:
-                trend = orders_df.groupby(date_col)['amount'].sum()
-                report_data['sales_trend'] = {
-                    'dates': trend.index.tolist()[-10:],
-                    'values': trend.values.tolist()[-10:],
-                }
+            # Channel distribution
+            if 'channels' in customers_df.columns:
+                report_data['channels'] = customers_df['channels'].str.split(';').explode().value_counts().head(5).to_dict()
 
-        # Customer list
-        if include_customers:
-            report_data['customers'] = customers_df.head(20).to_dict(orient='records')
+            # Top customers
+            if 'total_spent' in customers_df.columns and 'name' in customers_df.columns:
+                top_customers = customers_df.nlargest(5, 'total_spent')
+                report_data['top_customers'] = dict(zip(top_customers['name'], top_customers['total_spent']))
 
-        # Order list
-        if include_orders:
-            report_data['orders'] = orders_df.head(20).to_dict(orient='records')
+            # Sales trend
+            if 'order_date' in orders_df.columns or 'date' in orders_df.columns:
+                date_col = 'order_date' if 'order_date' in orders_df.columns else 'date'
+                orders_df[date_col] = orders_df[date_col].astype(str).str[:10]
+                if 'amount' in orders_df.columns:
+                    trend = orders_df.groupby(date_col)['amount'].sum()
+                    report_data['sales_trend'] = {
+                        'dates': trend.index.tolist()[-10:],
+                        'values': trend.values.tolist()[-10:],
+                    }
+
+            # Customer list
+            if include_customers:
+                report_data['customers'] = customers_df.head(20).to_dict(orient='records')
+
+            # Order list
+            if include_orders:
+                report_data['orders'] = orders_df.head(20).to_dict(orient='records')
 
         # Generate report
         report_path = generate_html_report(report_data, output, title=title)
@@ -1038,6 +1193,9 @@ def generate_report(
         console.print(f"\n[bold green][OK] Report generated successfully![/bold green]")
         console.print(f"[dim]To save as PDF: Open in browser → Ctrl+P → Save as PDF[/dim]")
 
+    except MCPError as e:
+        print_error(f"MCP Error: {e}")
+        raise typer.Exit(1)
     except FileNotFoundError as e:
         print_error(f"Data file not found: {e}")
         raise typer.Exit(1)
