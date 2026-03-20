@@ -282,14 +282,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="container">
         <div class="header">
             <h1>{title}</h1>
-            <p class="subtitle">生成时间: {generated_at} | SocialHub.AI Analytics Report</p>
+            <p class="subtitle">Generated: {generated_at} | SocialHub.AI Analytics Report</p>
         </div>
 
         {content}
 
         <div class="footer">
             <p>Powered by SocialHub.AI CLI | Stop Adding AI, We Are AI.</p>
-            <p>如需打印为 PDF，请使用浏览器的打印功能 (Ctrl+P) 并选择"另存为 PDF"</p>
+            <p>To print as PDF, use browser print function (Ctrl+P) and select "Save as PDF"</p>
         </div>
     </div>
 </body>
@@ -302,12 +302,12 @@ def generate_overview_section(data: dict) -> str:
     stats_html = '<div class="stats-grid">'
 
     stat_items = [
-        ("total_customers", "客户总数", "人"),
-        ("total_orders", "订单总数", "单"),
-        ("total_revenue", "总收入", "元"),
-        ("avg_order_value", "平均客单价", "元"),
-        ("new_customers", "新增客户", "人"),
-        ("active_customers", "活跃客户", "人"),
+        ("total_customers", "Total Customers", ""),
+        ("total_orders", "Total Orders", ""),
+        ("total_revenue", "Total Revenue", ""),
+        ("avg_order_value", "Avg Order Value", ""),
+        ("new_customers", "New Customers", ""),
+        ("active_customers", "Active Customers", ""),
     ]
 
     for key, label, unit in stat_items:
@@ -331,7 +331,7 @@ def generate_overview_section(data: dict) -> str:
 def generate_table_section(data: list[dict], title: str, columns: list[tuple[str, str]]) -> str:
     """Generate a table section."""
     if not data:
-        return f'<p>暂无{title}数据</p>'
+        return f'<p>No {title} data available</p>'
 
     html = f'<table><thead><tr>'
     for col_key, col_name in columns:
@@ -352,7 +352,7 @@ def generate_table_section(data: list[dict], title: str, columns: list[tuple[str
     html += '</tbody></table>'
 
     if len(data) > 20:
-        html += f'<p style="color: #718096; margin-top: 10px; font-size: 12px;">显示前 20 条记录，共 {len(data)} 条</p>'
+        html += f'<p style="color: #718096; margin-top: 10px; font-size: 12px;">Showing first 20 records of {len(data)} total</p>'
 
     return html
 
@@ -360,7 +360,7 @@ def generate_table_section(data: list[dict], title: str, columns: list[tuple[str
 def generate_html_report(
     report_data: dict[str, Any],
     output_path: str,
-    title: str = "数据分析报告",
+    title: str = "Analytics Report",
 ) -> str:
     """Generate a comprehensive HTML report.
 
@@ -382,7 +382,7 @@ def generate_html_report(
     if 'overview' in report_data:
         content_parts.append(f'''
         <div class="section">
-            <h2>📊 数据概览</h2>
+            <h2>📊 Overview</h2>
             {generate_overview_section(report_data['overview'])}
         </div>
         ''')
@@ -391,46 +391,46 @@ def generate_html_report(
     charts_html = []
 
     if 'customer_types' in report_data:
-        chart_img = create_pie_chart_base64(report_data['customer_types'], "客户类型分布")
+        chart_img = create_pie_chart_base64(report_data['customer_types'], "Customer Types Distribution")
         if chart_img:
             charts_html.append(f'''
             <div class="chart-container">
-                <img src="{chart_img}" alt="客户类型分布">
+                <img src="{chart_img}" alt="Customer Types Distribution">
             </div>
             ''')
 
     if 'channels' in report_data:
-        chart_img = create_bar_chart_base64(report_data['channels'], "渠道分布")
+        chart_img = create_bar_chart_base64(report_data['channels'], "Channel Distribution")
         if chart_img:
             charts_html.append(f'''
             <div class="chart-container">
-                <img src="{chart_img}" alt="渠道分布">
+                <img src="{chart_img}" alt="Channel Distribution">
             </div>
             ''')
 
     if 'sales_trend' in report_data:
         trend = report_data['sales_trend']
-        chart_img = create_line_chart_base64(trend.get('dates', []), trend.get('values', []), "销售趋势")
+        chart_img = create_line_chart_base64(trend.get('dates', []), trend.get('values', []), "Sales Trend")
         if chart_img:
             charts_html.append(f'''
             <div class="chart-container">
-                <img src="{chart_img}" alt="销售趋势">
+                <img src="{chart_img}" alt="Sales Trend">
             </div>
             ''')
 
     if 'top_customers' in report_data:
-        chart_img = create_bar_chart_base64(report_data['top_customers'], "Top 客户消费")
+        chart_img = create_bar_chart_base64(report_data['top_customers'], "Top Customer Spending")
         if chart_img:
             charts_html.append(f'''
             <div class="chart-container">
-                <img src="{chart_img}" alt="Top客户">
+                <img src="{chart_img}" alt="Top Customers">
             </div>
             ''')
 
     if charts_html:
         content_parts.append(f'''
         <div class="section">
-            <h2>📈 可视化图表</h2>
+            <h2>📈 Charts</h2>
             <div class="chart-row">
                 {"".join(charts_html)}
             </div>
@@ -441,33 +441,33 @@ def generate_html_report(
     if 'customers' in report_data and report_data['customers']:
         columns = [
             ('id', 'ID'),
-            ('name', '姓名'),
-            ('customer_type', '类型'),
-            ('total_orders', '订单数'),
-            ('total_spent', '消费金额'),
-            ('points_balance', '积分'),
+            ('name', 'Name'),
+            ('customer_type', 'Type'),
+            ('total_orders', 'Orders'),
+            ('total_spent', 'Total Spent'),
+            ('points_balance', 'Points'),
         ]
         content_parts.append(f'''
         <div class="section">
-            <h2>👥 客户列表</h2>
-            {generate_table_section(report_data['customers'], '客户', columns)}
+            <h2>👥 Customers</h2>
+            {generate_table_section(report_data['customers'], 'customer', columns)}
         </div>
         ''')
 
     # Orders Table
     if 'orders' in report_data and report_data['orders']:
         columns = [
-            ('order_id', '订单号'),
-            ('customer_name', '客户'),
-            ('amount', '金额'),
-            ('channel', '渠道'),
-            ('status', '状态'),
-            ('order_date', '日期'),
+            ('order_id', 'Order ID'),
+            ('customer_name', 'Customer'),
+            ('amount', 'Amount'),
+            ('channel', 'Channel'),
+            ('status', 'Status'),
+            ('order_date', 'Date'),
         ]
         content_parts.append(f'''
         <div class="section">
-            <h2>📦 订单列表</h2>
-            {generate_table_section(report_data['orders'], '订单', columns)}
+            <h2>📦 Orders</h2>
+            {generate_table_section(report_data['orders'], 'order', columns)}
         </div>
         ''')
 
@@ -485,7 +485,7 @@ def generate_html_report(
 
         content_parts.append(f'''
         <div class="section">
-            <h2>🎯 客户分群</h2>
+            <h2>🎯 Customer Segments</h2>
             {segments_html}
         </div>
         ''')

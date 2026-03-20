@@ -106,9 +106,8 @@ def save_history(query: str, commands: list = None) -> None:
 
 # Phrases that mean "repeat last command"
 REPEAT_PHRASES = {
-    "再执行一次", "重新执行", "再来一次", "再试一次",
-    "重复", "再跑一次", "重跑", "上一个", "!!",
-    "repeat", "again", "retry", "redo"
+    "repeat", "again", "retry", "redo", "run again",
+    "execute again", "one more time", "!!"
 }
 
 
@@ -183,10 +182,10 @@ def cli() -> None:
 
         if last_commands:
             # Re-execute last commands directly
-            console.print(f"\n[dim]重新执行上次命令...[/dim]")
+            console.print(f"\n[dim]Re-executing last command...[/dim]")
             from .commands.ai import execute_command
             for cmd in last_commands:
-                console.print(f"\n[cyan]执行: {cmd}[/cyan]\n")
+                console.print(f"\n[cyan]Executing: {cmd}[/cyan]\n")
                 success, output = execute_command(cmd)
                 if output:
                     console.print(output)
@@ -194,12 +193,12 @@ def cli() -> None:
         elif last_query:
             # Use last query
             query = last_query
-            console.print(f"\n[dim]重新执行: {query}[/dim]")
+            console.print(f"\n[dim]Re-executing: {query}[/dim]")
         else:
-            console.print("[yellow]没有找到上次执行的命令。请输入具体的查询。[/yellow]")
+            console.print("[yellow]No previous command found. Please enter a query.[/yellow]")
             return
 
-    console.print(f"\n[dim]智能识别: {query}[/dim]")
+    console.print(f"\n[dim]Smart mode: {query}[/dim]")
 
     # Call AI to process and execute
     from .commands.ai import call_ai_api, extract_plan_steps, execute_plan, execute_command, extract_scheduled_task, save_scheduled_task
@@ -213,20 +212,20 @@ def cli() -> None:
         # Display response without markers
         display_response = re.sub(r"\[SCHEDULE_TASK\].*?\[/SCHEDULE_TASK\]", "", response, flags=re.DOTALL)
         from rich.markdown import Markdown
-        console.print(Panel(Markdown(display_response), title="AI 助手 - 定时任务", border_style="green"))
+        console.print(Panel(Markdown(display_response), title="AI Assistant - Scheduled Task", border_style="green"))
 
-        console.print(f"\n[bold]检测到定时任务配置:[/bold]")
-        console.print(f"  任务名称: {scheduled_task.get('name', '-')}")
-        console.print(f"  执行频率: {scheduled_task.get('frequency', '-')}")
-        console.print(f"  执行命令: {scheduled_task.get('command', '-')}")
-        console.print(f"  AI洞察: {scheduled_task.get('insights', 'false')}")
+        console.print(f"\n[bold]Scheduled task detected:[/bold]")
+        console.print(f"  Task name: {scheduled_task.get('name', '-')}")
+        console.print(f"  Frequency: {scheduled_task.get('frequency', '-')}")
+        console.print(f"  Command: {scheduled_task.get('command', '-')}")
+        console.print(f"  AI Insights: {scheduled_task.get('insights', 'false')}")
         console.print()
 
-        if typer.confirm("是否将此任务添加到 Heartbeat.md?", default=True):
+        if typer.confirm("Add this task to Heartbeat.md?", default=True):
             if save_scheduled_task(scheduled_task):
-                console.print("[green][OK] 定时任务已添加到 Heartbeat.md[/green]")
+                console.print("[green][OK] Scheduled task added to Heartbeat.md[/green]")
             else:
-                console.print("[red]添加定时任务失败[/red]")
+                console.print("[red]Failed to add scheduled task[/red]")
         return
 
     # Check for multi-step plan
@@ -238,33 +237,33 @@ def cli() -> None:
     if steps:
         # Display plan without markers
         display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
-        console.print(Panel(Markdown(display_response), title="AI 助手 - 分析计划", border_style="cyan"))
+        console.print(Panel(Markdown(display_response), title="AI Assistant - Analysis Plan", border_style="cyan"))
 
         # Show step summary and ask for confirmation
-        console.print(f"\n[bold]检测到 {len(steps)} 个执行步骤:[/bold]")
+        console.print(f"\n[bold]Detected {len(steps)} execution steps:[/bold]")
         for step in steps:
             console.print(f"  {step['number']}. {step['description']}")
 
         console.print()
-        if typer.confirm("是否执行以上计划?", default=True):
+        if typer.confirm("Execute this plan?", default=True):
             # Save commands to history before executing
             commands = [step["command"] for step in steps]
             save_history(query, commands)
             execute_plan(steps, original_query=query)
         else:
-            console.print("[yellow]计划未执行。您可以手动运行上述命令。[/yellow]")
+            console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
     else:
-        console.print(Panel(Markdown(response), title="AI 助手", border_style="cyan"))
+        console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
 
         # Extract and execute single command
         if "```bash" in response:
             commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
             if commands:
                 cmd = commands[0].strip()
-                if typer.confirm(f"\n执行命令: {cmd}?", default=True):
+                if typer.confirm(f"\nExecute command: {cmd}?", default=True):
                     # Save to history
                     save_history(query, [cmd])
-                    console.print(f"\n[dim]执行: {cmd}[/dim]\n")
+                    console.print(f"\n[dim]Executing: {cmd}[/dim]\n")
                     success, output = execute_command(cmd)
                     if output:
                         console.print(output)

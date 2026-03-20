@@ -35,120 +35,120 @@ def get_ai_config() -> dict:
         "openai_model": os.getenv("OPENAI_MODEL", ai_config.openai_model),
     }
 
-SYSTEM_PROMPT = """你是 SocialHub.AI CLI 的智能助手，帮助用户使用命令行工具进行数据分析和营销管理。
+SYSTEM_PROMPT = """You are the intelligent assistant for SocialHub.AI CLI, helping users with data analysis and marketing management via command line.
 
-所有命令都必须以 "sh " 前缀开头！
+All commands must start with "sh " prefix!
 
-可用的命令包括：
-1. 数据分析 (analytics)
-   - sh analytics overview --period=7d|30d|365d  # 概览分析
-   - sh analytics customers --period=30d  # 客户分析
-   - sh analytics retention --days=7,14,30  # 留存分析
-   - sh analytics orders --period=30d --by=channel|province  # 订单分析
-   - sh analytics chart bar --data=customers --group=customer_type --output=chart.png  # 生成柱状图
-   - sh analytics chart pie --data=customers --group=customer_type --output=pie.png  # 生成饼图
-   - sh analytics chart dashboard --output=dashboard.png  # 生成分析仪表板
-   - sh analytics chart funnel --output=funnel.png  # 生成漏斗图
-   - sh analytics report --output=report.html  # 生成HTML分析报告（可打印为PDF）
-   - sh analytics report --title="月度分析报告" --output=monthly.html  # 自定义标题的报告
+Available commands include:
+1. Data Analytics (analytics)
+   - sh analytics overview --period=7d|30d|365d  # Overview analysis
+   - sh analytics customers --period=30d  # Customer analysis
+   - sh analytics retention --days=7,14,30  # Retention analysis
+   - sh analytics orders --period=30d --by=channel|province  # Order analysis
+   - sh analytics chart bar --data=customers --group=customer_type --output=chart.png  # Bar chart
+   - sh analytics chart pie --data=customers --group=customer_type --output=pie.png  # Pie chart
+   - sh analytics chart dashboard --output=dashboard.png  # Analytics dashboard
+   - sh analytics chart funnel --output=funnel.png  # Funnel chart
+   - sh analytics report --output=report.html  # HTML analytics report (printable to PDF)
+   - sh analytics report --title="Monthly Report" --output=monthly.html  # Custom title report
 
-2. 客户管理 (customers)
-   - sh customers list --type=member|registered|visitor  # 客户列表
-   - sh customers search --phone=xxx --email=xxx  # 搜索客户
-   - sh customers get <customer_id>  # 客户详情
-   - sh customers export --output=file.csv  # 导出客户
+2. Customer Management (customers)
+   - sh customers list --type=member|registered|visitor  # Customer list
+   - sh customers search --phone=xxx --email=xxx  # Search customers
+   - sh customers get <customer_id>  # Customer details
+   - sh customers export --output=file.csv  # Export customers
 
-3. 分群管理 (segments)
-   - sh segments list  # 分群列表
-   - sh segments create --name="名称" --rules='{"key":"value"}'  # 创建分群
-   - sh segments export <segment_id> --output=file.csv  # 导出分群
+3. Segment Management (segments)
+   - sh segments list  # Segment list
+   - sh segments create --name="Name" --rules='{"key":"value"}'  # Create segment
+   - sh segments export <segment_id> --output=file.csv  # Export segment
 
-4. 标签管理 (tags)
-   - sh tags list --type=rfm|aipl|static  # 标签列表
-   - sh tags create --name="标签名" --type=static --values="值1,值2"  # 创建标签
+4. Tag Management (tags)
+   - sh tags list --type=rfm|aipl|static  # Tag list
+   - sh tags create --name="TagName" --type=static --values="val1,val2"  # Create tag
 
-5. 营销活动 (campaigns)
-   - sh campaigns list --status=draft|running|finished  # 活动列表
-   - sh campaigns analysis <campaign_id> --funnel  # 活动分析
-   - sh campaigns calendar --month=2024-03  # 营销日历
+5. Marketing Campaigns (campaigns)
+   - sh campaigns list --status=draft|running|finished  # Campaign list
+   - sh campaigns analysis <campaign_id> --funnel  # Campaign analysis
+   - sh campaigns calendar --month=2024-03  # Marketing calendar
 
-6. 优惠券 (coupons)
-   - sh coupons rules list  # 优惠券规则
-   - sh coupons list --status=unused|used|expired  # 优惠券列表
-   - sh coupons analysis <rule_id>  # 优惠券分析
+6. Coupons (coupons)
+   - sh coupons rules list  # Coupon rules
+   - sh coupons list --status=unused|used|expired  # Coupon list
+   - sh coupons analysis <rule_id>  # Coupon analysis
 
-7. 积分 (points)
-   - sh points rules list  # 积分规则
-   - sh points balance <member_id>  # 积分余额
-   - sh points history <member_id>  # 积分历史
+7. Points (points)
+   - sh points rules list  # Points rules
+   - sh points balance <member_id>  # Points balance
+   - sh points history <member_id>  # Points history
 
-8. 消息 (messages)
-   - sh messages templates list --channel=sms|email|wechat  # 消息模板
-   - sh messages records --status=success|failed  # 发送记录
-   - sh messages stats --period=7d  # 消息统计
+8. Messages (messages)
+   - sh messages templates list --channel=sms|email|wechat  # Message templates
+   - sh messages records --status=success|failed  # Send records
+   - sh messages stats --period=7d  # Message statistics
 
-## 回复格式规则
+## Response Format Rules
 
-当用户请求需要多个步骤完成时，使用以下格式输出计划：
+When user requests require multiple steps, use the following format:
 
 ```
 [PLAN_START]
-步骤 1: <步骤描述>
+Step 1: <step description>
 ```bash
-<命令>
+<command>
 ```
 
-步骤 2: <步骤描述>
+Step 2: <step description>
 ```bash
-<命令>
+<command>
 ```
 
-...更多步骤...
+...more steps...
 [PLAN_END]
 
-<洞察说明或分析建议>
+<insights or analysis recommendations>
 ```
 
-当用户请求只需要单个命令时，直接输出：
+When user request only needs a single command, output directly:
 ```bash
-<命令>
+<command>
 ```
-并附上简要说明。
+with a brief explanation.
 
-## 定时任务
+## Scheduled Tasks
 
-当用户要求设置定时任务时，使用 [SCHEDULE_TASK] 标记输出任务配置：
+When user requests scheduling a task, use [SCHEDULE_TASK] marker:
 
 ```
 [SCHEDULE_TASK]
-- ID: <任务唯一标识>
-- 名称: <任务名称>
-- 频率: <每天/每周/每小时 HH:MM>
-- 命令: <要执行的sh命令>
-- 说明: <任务描述>
-- 洞察: <是否需要AI洞察分析 true/false>
+- ID: <unique task identifier>
+- Name: <task name>
+- Frequency: <Daily/Weekly/Hourly HH:MM>
+- Command: <sh command to execute>
+- Description: <task description>
+- Insights: <whether to generate AI insights true/false>
 [/SCHEDULE_TASK]
 ```
 
-示例：用户说"每天晚上8点生成渠道分析报告"
+Example: User says "generate channel analysis report daily at 8pm"
 ```
 [SCHEDULE_TASK]
 - ID: daily-channel-report
-- 名称: 每日渠道分析报告
-- 频率: 每天 20:00
-- 命令: sh analytics orders --by=channel && sh analytics report --title="渠道分析报告" --output=channel_report.html
-- 说明: 每天晚上8点自动生成客户渠道分析报告
-- 洞察: true
+- Name: Daily Channel Analysis Report
+- Frequency: Daily 20:00
+- Command: sh analytics orders --by=channel && sh analytics report --title="Channel Analysis Report" --output=channel_report.html
+- Description: Auto-generate channel analysis report daily at 8pm
+- Insights: true
 [/SCHEDULE_TASK]
-任务已添加到定时计划中，将在每天 20:00 自动执行并生成 AI 洞察分析。
+Task has been added to the schedule and will run daily at 20:00 with AI insights.
 ```
 
-重要规则：
-1. 所有命令必须以 "sh " 前缀开头！
-2. 多步骤分析必须使用 [PLAN_START] 和 [PLAN_END] 标记包裹
-3. 每个步骤必须有清晰的描述和对应的命令
-4. 定时任务必须使用 [SCHEDULE_TASK] 标记
-5. 回复使用中文
+Important rules:
+1. All commands must start with "sh " prefix!
+2. Multi-step analysis must be wrapped with [PLAN_START] and [PLAN_END] markers
+3. Each step must have a clear description and corresponding command
+4. Scheduled tasks must use [SCHEDULE_TASK] marker
+5. Reply in English
 """
 
 
@@ -175,7 +175,7 @@ def call_ai_api(user_message: str, api_key: Optional[str] = None, max_retries: i
                 # Azure OpenAI
                 key = api_key or ai_config["azure_api_key"]
                 if not key:
-                    return "错误：未配置 Azure OpenAI API Key。请运行 'sh config set ai.azure_api_key YOUR_KEY' 或设置环境变量 AZURE_OPENAI_API_KEY。"
+                    return "Error: Azure OpenAI API Key not configured. Run 'sh config set ai.azure_api_key YOUR_KEY' or set AZURE_OPENAI_API_KEY environment variable."
 
                 endpoint = ai_config["azure_endpoint"]
                 deployment = ai_config["azure_deployment"]
@@ -203,7 +203,7 @@ def call_ai_api(user_message: str, api_key: Optional[str] = None, max_retries: i
                 # Standard OpenAI
                 key = api_key or ai_config["openai_api_key"]
                 if not key:
-                    return "错误：未配置 OpenAI API Key。请运行 'sh config set ai.openai_api_key YOUR_KEY' 或设置环境变量 OPENAI_API_KEY。"
+                    return "Error: OpenAI API Key not configured. Run 'sh config set ai.openai_api_key YOUR_KEY' or set OPENAI_API_KEY environment variable."
 
                 response = httpx.post(
                     "https://api.openai.com/v1/chat/completions",
@@ -224,29 +224,29 @@ def call_ai_api(user_message: str, api_key: Optional[str] = None, max_retries: i
                 )
 
             if response.status_code != 200:
-                return f"API 错误: {response.status_code} - {response.text}"
+                return f"API Error: {response.status_code} - {response.text}"
 
             result = response.json()
             return result["choices"][0]["message"]["content"]
 
         except httpx.TimeoutException:
-            last_error = "API 请求超时"
+            last_error = "API request timeout"
             if attempt < max_retries - 1:
                 wait_time = (attempt + 1) * 2  # 2s, 4s, 6s
-                console.print(f"[yellow]API 请求超时，{wait_time}秒后重试 ({attempt + 1}/{max_retries})...[/yellow]")
+                console.print(f"[yellow]API request timeout, retrying in {wait_time}s ({attempt + 1}/{max_retries})...[/yellow]")
                 time.sleep(wait_time)
             continue
         except httpx.ConnectError:
-            last_error = "网络连接失败"
+            last_error = "Network connection failed"
             if attempt < max_retries - 1:
                 wait_time = (attempt + 1) * 2
-                console.print(f"[yellow]网络连接失败，{wait_time}秒后重试 ({attempt + 1}/{max_retries})...[/yellow]")
+                console.print(f"[yellow]Network connection failed, retrying in {wait_time}s ({attempt + 1}/{max_retries})...[/yellow]")
                 time.sleep(wait_time)
             continue
         except Exception as e:
-            return f"错误：{str(e)}"
+            return f"Error: {str(e)}"
 
-    return f"错误：{last_error}，已重试 {max_retries} 次。"
+    return f"Error: {last_error}, retried {max_retries} times."
 
 
 def extract_scheduled_task(response: str) -> dict:
@@ -264,11 +264,11 @@ def extract_scheduled_task(response: str) -> dict:
     # Parse task fields
     patterns = {
         "id": r"-\s*ID:\s*(.+)",
-        "name": r"-\s*名称:\s*(.+)",
-        "frequency": r"-\s*频率:\s*(.+)",
-        "command": r"-\s*命令:\s*(.+)",
-        "description": r"-\s*说明:\s*(.+)",
-        "insights": r"-\s*洞察:\s*(.+)",
+        "name": r"-\s*Name:\s*(.+)",
+        "frequency": r"-\s*Frequency:\s*(.+)",
+        "command": r"-\s*Command:\s*(.+)",
+        "description": r"-\s*Description:\s*(.+)",
+        "insights": r"-\s*Insights:\s*(.+)",
     }
 
     for key, pattern in patterns.items():
@@ -292,23 +292,23 @@ def save_scheduled_task(task: dict) -> bool:
     try:
         content = heartbeat_path.read_text(encoding="utf-8")
 
-        # Find the position to insert (before "## 执行日志")
-        insert_marker = "## 执行日志"
+        # Find the position to insert (before "## Execution Log")
+        insert_marker = "## Execution Log"
         if insert_marker not in content:
-            insert_marker = "## 添加新任务模板"
+            insert_marker = "## Add New Task Template"
 
         # Create task entry
         task_entry = f"""
 ### {len(re.findall(r'### \d+\.', content)) + 1}. {task.get('name', 'New Task')}
 - **ID**: {task.get('id', 'task-' + datetime.now().strftime('%Y%m%d%H%M%S'))}
-- **频率**: {task.get('frequency', '每天 00:00')}
-- **状态**: `pending`
-- **命令**:
+- **Frequency**: {task.get('frequency', 'Daily 00:00')}
+- **Status**: `pending`
+- **Command**:
   ```bash
   {task.get('command', 'sh analytics overview')}
   ```
-- **说明**: {task.get('description', '')}
-- **AI洞察**: {task.get('insights', 'false')}
+- **Description**: {task.get('description', '')}
+- **AI Insights**: {task.get('insights', 'false')}
 
 ---
 
@@ -324,7 +324,7 @@ def save_scheduled_task(task: dict) -> bool:
         return True
 
     except Exception as e:
-        console.print(f"[red]保存定时任务失败: {e}[/red]")
+        console.print(f"[red]Failed to save scheduled task: {e}[/red]")
         return False
 
 
@@ -345,17 +345,17 @@ def extract_plan_steps(response: str) -> list[dict]:
 
     # Try multiple patterns to match steps
     # Pattern 1: With ```bash code blocks
-    step_pattern1 = r"步骤\s*(\d+)[：:]\s*(.+?)\n```bash\n(.+?)\n```"
+    step_pattern1 = r"Step\s*(\d+)[：:]\s*(.+?)\n```bash\n(.+?)\n```"
     matches = re.findall(step_pattern1, plan_text, re.DOTALL)
 
     if not matches:
         # Pattern 2: Command on next line after description (no code block)
-        step_pattern2 = r"步骤\s*(\d+)[：:]\s*(.+?)\n+\s*(sh\s+[^\n]+)"
+        step_pattern2 = r"Step\s*(\d+)[：:]\s*(.+?)\n+\s*(sh\s+[^\n]+)"
         matches = re.findall(step_pattern2, plan_text, re.DOTALL)
 
     if not matches:
         # Pattern 3: Command in code block without bash marker
-        step_pattern3 = r"步骤\s*(\d+)[：:]\s*(.+?)\n```\n(.+?)\n```"
+        step_pattern3 = r"Step\s*(\d+)[：:]\s*(.+?)\n```\n(.+?)\n```"
         matches = re.findall(step_pattern3, plan_text, re.DOTALL)
 
     for match in matches:
@@ -394,9 +394,9 @@ def execute_command(cmd: str) -> tuple[bool, str]:
         output = result.stdout if result.stdout else result.stderr
         return result.returncode == 0, output
     except subprocess.TimeoutExpired:
-        return False, "命令执行超时"
+        return False, "Command execution timeout"
     except Exception as e:
-        return False, f"执行错误: {str(e)}"
+        return False, f"Execution error: {str(e)}"
 
 
 def generate_insights(query: str, results: list[dict]) -> str:
@@ -410,24 +410,24 @@ def generate_insights(query: str, results: list[dict]) -> str:
     if not results_text:
         return ""
 
-    insight_prompt = f"""用户查询: {query}
+    insight_prompt = f"""User query: {query}
 
-以下是执行分析后得到的数据结果:
+The following are the data results from the analysis:
 {results_text}
 
-请基于以上数据，提供简洁的洞察分析:
-1. 关键发现 (2-3点)
-2. 趋势分析
-3. 业务建议 (1-2条可执行建议)
+Please provide concise insight analysis based on the above data:
+1. Key findings (2-3 points)
+2. Trend analysis
+3. Business recommendations (1-2 actionable suggestions)
 
-直接输出洞察内容，不要输出命令。用中文回复，简洁专业。"""
+Output insights directly, no commands. Be concise and professional."""
 
     return call_ai_api(insight_prompt)
 
 
 def execute_plan(steps: list[dict], original_query: str = "") -> None:
     """Execute a multi-step plan with progress display."""
-    console.print(f"\n[bold cyan]开始执行 {len(steps)} 个步骤...[/bold cyan]\n")
+    console.print(f"\n[bold cyan]Executing {len(steps)} steps...[/bold cyan]\n")
 
     # Collect results for insights
     all_results = []
@@ -438,8 +438,8 @@ def execute_plan(steps: list[dict], original_query: str = "") -> None:
         command = step["command"]
 
         # Display step header
-        console.print(f"[bold yellow]步骤 {step_num}:[/bold yellow] {description}")
-        console.print(f"[dim]命令: {command}[/dim]\n")
+        console.print(f"[bold yellow]Step {step_num}:[/bold yellow] {description}")
+        console.print(f"[dim]Command: {command}[/dim]\n")
 
         # Execute command
         with Progress(
@@ -448,7 +448,7 @@ def execute_plan(steps: list[dict], original_query: str = "") -> None:
             console=console,
             transient=True,
         ) as progress:
-            progress.add_task(description=f"执行中...", total=None)
+            progress.add_task(description=f"Executing...", total=None)
             success, output = execute_command(command)
 
         # Collect result
@@ -461,27 +461,27 @@ def execute_plan(steps: list[dict], original_query: str = "") -> None:
 
         # Display result
         if success:
-            console.print(f"[green][OK][/green] 步骤 {step_num} 完成\n")
+            console.print(f"[green][OK][/green] Step {step_num} completed\n")
             if output:
                 console.print(output)
         else:
-            console.print(f"[red][FAIL][/red] 步骤 {step_num} 失败\n")
+            console.print(f"[red][FAIL][/red] Step {step_num} failed\n")
             if output:
                 console.print(f"[red]{output}[/red]")
 
             # Ask whether to continue
             if step_num < len(steps):
-                if not typer.confirm("是否继续执行后续步骤?", default=False):
-                    console.print("[yellow]执行已取消[/yellow]")
+                if not typer.confirm("Continue with remaining steps?", default=False):
+                    console.print("[yellow]Execution cancelled[/yellow]")
                     return
 
         console.print()  # Add spacing between steps
 
-    console.print("[bold green]所有步骤执行完成![/bold green]\n")
+    console.print("[bold green]All steps completed![/bold green]\n")
 
     # Generate insights if we have results and original query
     if original_query and any(r["success"] for r in all_results):
-        console.print("[bold cyan]正在生成洞察分析...[/bold cyan]\n")
+        console.print("[bold cyan]Generating insights...[/bold cyan]\n")
 
         with Progress(
             SpinnerColumn(),
@@ -489,34 +489,34 @@ def execute_plan(steps: list[dict], original_query: str = "") -> None:
             console=console,
             transient=True,
         ) as progress:
-            progress.add_task(description="AI 分析中...", total=None)
+            progress.add_task(description="AI analyzing...", total=None)
             insights = generate_insights(original_query, all_results)
 
-        if insights and "错误" not in insights:
+        if insights and "Error" not in insights:
             console.print(Panel(
                 Markdown(insights),
-                title="[bold magenta]AI 洞察分析[/bold magenta]",
+                title="[bold magenta]AI Insights[/bold magenta]",
                 border_style="magenta",
             ))
 
 
 @app.command("chat")
 def ai_chat(
-    query: str = typer.Argument(..., help="自然语言查询"),
+    query: str = typer.Argument(..., help="Natural language query"),
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", help="OpenAI API Key"),
-    execute: bool = typer.Option(False, "--execute", "-e", help="自动执行生成的命令"),
-    auto: bool = typer.Option(False, "--auto", "-a", help="自动执行多步骤计划（需确认）"),
+    execute: bool = typer.Option(False, "--execute", "-e", help="Auto-execute generated commands"),
+    auto: bool = typer.Option(False, "--auto", "-a", help="Auto-execute multi-step plan (with confirmation)"),
 ) -> None:
     """
-    使用自然语言与 CLI 交互。
+    Interact with CLI using natural language.
 
-    示例:
-        ai chat "分析最近30天的客户留存"
-        ai chat "查看所有VIP会员"
-        ai chat "导出高价值客户到Excel"
-        ai chat "查看历史订单的分布及趋势" --auto
+    Examples:
+        ai chat "analyze customer retention for last 30 days"
+        ai chat "show all VIP members"
+        ai chat "export high-value customers to Excel"
+        ai chat "show order distribution and trends" --auto
     """
-    console.print(f"\n[dim]正在分析: {query}[/dim]\n")
+    console.print(f"\n[dim]Analyzing: {query}[/dim]\n")
 
     response = call_ai_api(query, api_key)
 
@@ -526,30 +526,30 @@ def ai_chat(
     if steps:
         # Display plan without the markers
         display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
-        console.print(Panel(Markdown(display_response), title="AI 助手 - 分析计划", border_style="cyan"))
+        console.print(Panel(Markdown(display_response), title="AI Assistant - Analysis Plan", border_style="cyan"))
 
         # Ask for confirmation to execute plan
         if auto or execute:
-            console.print(f"\n[bold]检测到 {len(steps)} 个执行步骤:[/bold]")
+            console.print(f"\n[bold]Detected {len(steps)} execution steps:[/bold]")
             for step in steps:
                 console.print(f"  {step['number']}. {step['description']}")
 
             console.print()
-            if typer.confirm("是否执行以上计划?", default=True):
+            if typer.confirm("Execute this plan?", default=True):
                 execute_plan(steps, original_query=query)
             else:
-                console.print("[yellow]计划未执行。您可以手动运行上述命令。[/yellow]")
+                console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
     else:
         # Display response as markdown
-        console.print(Panel(Markdown(response), title="AI 助手", border_style="cyan"))
+        console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
 
         # Extract and optionally execute single command
         if (execute or auto) and "```bash" in response:
             commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
             if commands:
                 cmd = commands[0].strip()
-                if typer.confirm(f"\n执行命令: {cmd}?"):
-                    console.print(f"\n[dim]执行: {cmd}[/dim]\n")
+                if typer.confirm(f"\nExecute command: {cmd}?"):
+                    console.print(f"\n[dim]Executing: {cmd}[/dim]\n")
                     success, output = execute_command(cmd)
                     if output:
                         console.print(output)
@@ -557,63 +557,63 @@ def ai_chat(
 
 @app.command("help")
 def ai_help(
-    topic: str = typer.Argument("general", help="帮助主题"),
+    topic: str = typer.Argument("general", help="Help topic"),
 ) -> None:
-    """获取特定功能的帮助说明。"""
+    """Get help for specific features."""
     help_topics = {
         "general": """
-## SocialHub.AI CLI 使用指南
+## SocialHub.AI CLI User Guide
 
-### 快速开始
+### Quick Start
 ```bash
-# 查看所有命令
+# View all commands
 python -m socialhub.cli.main --help
 
-# 数据分析
+# Data analytics
 python -m socialhub.cli.main analytics overview
 
-# 客户管理
+# Customer management
 python -m socialhub.cli.main customers list
 ```
 
-### AI 助手
-使用自然语言与 CLI 交互：
+### AI Assistant
+Interact with CLI using natural language:
 ```bash
-python -m socialhub.cli.main ai chat "你的问题"
+python -m socialhub.cli.main ai chat "your question"
 ```
         """,
         "analytics": """
-## 数据分析命令
+## Data Analytics Commands
 
-### 概览分析
+### Overview Analysis
 ```bash
 python -m socialhub.cli.main analytics overview --period=7d
 python -m socialhub.cli.main analytics overview --from=2024-01-01 --to=2024-03-01
 ```
 
-### 客户分析
+### Customer Analysis
 ```bash
 python -m socialhub.cli.main analytics customers --period=30d
 python -m socialhub.cli.main analytics retention --days=7,14,30
 ```
 
-### 订单分析
+### Order Analysis
 ```bash
 python -m socialhub.cli.main analytics orders --period=30d
 python -m socialhub.cli.main analytics orders --by=channel
 ```
         """,
         "customers": """
-## 客户管理命令
+## Customer Management Commands
 
-### 查询客户
+### Query Customers
 ```bash
 python -m socialhub.cli.main customers list --type=member
 python -m socialhub.cli.main customers search --phone=138
 python -m socialhub.cli.main customers get C001
 ```
 
-### 导出客户
+### Export Customers
 ```bash
 python -m socialhub.cli.main customers export --output=customers.csv
 python -m socialhub.cli.main customers export --type=member --output=members.xlsx
@@ -626,23 +626,23 @@ python -m socialhub.cli.main customers export --type=member --output=members.xls
 
 
 # Shortcuts for common queries
-@app.command("分析")
+@app.command("analyze")
 def analyze_shortcut(
-    target: str = typer.Argument("概览", help="分析目标: 概览/客户/订单/留存"),
-    period: str = typer.Option("30d", "--period", "-p", help="时间周期"),
+    target: str = typer.Argument("overview", help="Analysis target: overview/customers/orders/retention"),
+    period: str = typer.Option("30d", "--period", "-p", help="Time period"),
 ) -> None:
-    """快捷分析命令（中文）。"""
+    """Quick analysis command shortcut."""
     from . import analytics
 
     target_map = {
-        "概览": lambda: analytics.analytics_overview(period=period, format="table", from_date=None, to_date=None, customer_type="all", output=None),
-        "客户": lambda: analytics.analytics_customers(period=period, channel="all", format="table", output=None),
-        "订单": lambda: analytics.analytics_orders(period=period, metric="sales", repurchase_rate=False, by=None, format="table", output=None),
-        "留存": lambda: analytics.analytics_retention(days="7,14,30", format="table", output=None),
+        "overview": lambda: analytics.analytics_overview(period=period, format="table", from_date=None, to_date=None, customer_type="all", output=None),
+        "customers": lambda: analytics.analytics_customers(period=period, channel="all", format="table", output=None),
+        "orders": lambda: analytics.analytics_orders(period=period, metric="sales", repurchase_rate=False, by=None, format="table", output=None),
+        "retention": lambda: analytics.analytics_retention(days="7,14,30", format="table", output=None),
     }
 
     if target in target_map:
         target_map[target]()
     else:
-        console.print(f"[yellow]未知分析目标: {target}[/yellow]")
-        console.print("可选: 概览, 客户, 订单, 留存")
+        console.print(f"[yellow]Unknown analysis target: {target}[/yellow]")
+        console.print("Options: overview, customers, orders, retention")
