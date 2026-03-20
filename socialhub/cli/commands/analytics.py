@@ -1096,6 +1096,73 @@ def generate_chart(
         raise typer.Exit(1)
 
 
+def convert_html_to_pdf(html_path: str, pdf_path: str) -> bool:
+    """Convert HTML file to PDF using available tools."""
+    # Try weasyprint first
+    try:
+        from weasyprint import HTML
+        HTML(filename=html_path).write_pdf(pdf_path)
+        return True
+    except ImportError:
+        pass
+    except Exception as e:
+        console.print(f"[yellow]WeasyPrint error: {e}[/yellow]")
+
+    # Try pdfkit (requires wkhtmltopdf)
+    try:
+        import pdfkit
+        pdfkit.from_file(html_path, pdf_path)
+        return True
+    except ImportError:
+        pass
+    except Exception as e:
+        console.print(f"[yellow]pdfkit error: {e}[/yellow]")
+
+    # Try using Chrome/Edge headless
+    try:
+        import subprocess
+        import shutil
+
+        # Try Chrome
+        chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            shutil.which("chrome"),
+            shutil.which("google-chrome"),
+        ]
+
+        # Try Edge
+        edge_paths = [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            shutil.which("msedge"),
+        ]
+
+        browser_path = None
+        for path in chrome_paths + edge_paths:
+            if path and Path(path).exists():
+                browser_path = path
+                break
+
+        if browser_path:
+            # Convert to file:// URL
+            file_url = f"file:///{html_path.replace(chr(92), '/')}"
+            result = subprocess.run([
+                browser_path,
+                "--headless",
+                "--disable-gpu",
+                f"--print-to-pdf={pdf_path}",
+                "--no-pdf-header-footer",
+                file_url
+            ], capture_output=True, timeout=30)
+            if result.returncode == 0 and Path(pdf_path).exists():
+                return True
+    except Exception as e:
+        console.print(f"[yellow]Browser PDF error: {e}[/yellow]")
+
+    return False
+
+
 @app.command("report")
 def generate_report(
     output: str = typer.Option("Doc/report.html", "--output", "-o", help="Output HTML file path"),
@@ -1103,14 +1170,16 @@ def generate_report(
     include_customers: bool = typer.Option(True, "--customers/--no-customers", help="Include customer list"),
     include_orders: bool = typer.Option(True, "--orders/--no-orders", help="Include order list"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open report in browser"),
+    pdf: bool = typer.Option(False, "--pdf", help="Also generate PDF version"),
 ) -> None:
     """Generate comprehensive HTML analysis report.
 
-    The report can be printed as PDF using browser's print function (Ctrl+P).
+    Use --pdf flag to automatically generate PDF version.
 
     Examples:
         sh analytics report
         sh analytics report --output=Doc/monthly_report.html --title="Monthly Report"
+        sh analytics report --pdf  # Generate both HTML and PDF
         sh analytics report --no-customers --no-orders
     """
     config = load_config()
@@ -1184,6 +1253,18 @@ def generate_report(
         # Generate report
         report_path = generate_html_report(report_data, output, title=title)
 
+        # Generate PDF if requested
+        pdf_path = None
+        if pdf:
+            pdf_path = str(Path(output).with_suffix('.pdf'))
+            console.print(f"[dim]Generating PDF...[/dim]")
+            if convert_html_to_pdf(report_path, pdf_path):
+                console.print(f"[green]PDF saved: {pdf_path}[/green]")
+            else:
+                console.print("[yellow]PDF generation failed. Install weasyprint: pip install weasyprint[/yellow]")
+                console.print("[dim]Or use browser print (Ctrl+P) to save as PDF[/dim]")
+                pdf_path = None
+
         # Open in browser
         if open_browser:
             import webbrowser
@@ -1191,7 +1272,8 @@ def generate_report(
             console.print("[cyan]Report opened in browser[/cyan]")
 
         console.print(f"\n[bold green][OK] Report generated successfully![/bold green]")
-        console.print(f"[dim]To save as PDF: Open in browser → Ctrl+P → Save as PDF[/dim]")
+        if not pdf:
+            console.print(f"[dim]To save as PDF: Use --pdf flag or browser print (Ctrl+P)[/dim]")
 
     except MCPError as e:
         print_error(f"MCP Error: {e}")
