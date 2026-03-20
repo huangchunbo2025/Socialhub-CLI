@@ -249,5 +249,5 @@ def analyze_coupon(
                 rate = used / total * 100
                 bar_width = 30
                 filled = int(rate / 100 * bar_width)
-                bar = "█" * filled + "░" * (bar_width - filled)
+                bar = "#" * filled + "-" * (bar_width - filled)
                 console.print(f"\n[bold]Usage Rate:[/bold] [{rate:.1f}%] {bar}")

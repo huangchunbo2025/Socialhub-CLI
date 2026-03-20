@@ -44,7 +44,7 @@ def create_bar_chart(
     for label, value in data.items():
         # Calculate bar width
         bar_width = int((value / max_value) * max_width) if max_value > 0 else 0
-        bar = "█" * bar_width
+        bar = "#" * bar_width
 
         # Format value
         if isinstance(value, float):
@@ -73,8 +73,8 @@ def create_bar_chart(
 def create_percentage_bar(
     value: float,
     width: int = 30,
-    filled_char: str = "█",
-    empty_char: str = "░",
+    filled_char: str = "#",
+    empty_char: str = "-",
 ) -> str:
     """Create a percentage progress bar."""
     value = max(0, min(100, value))  # Clamp to 0-100
@@ -90,7 +90,7 @@ def create_sparkline(
     if not values:
         return ""
 
-    blocks = " ▁▂▃▄▅▆▇█"
+    blocks = " ._-=+*#@"
 
     # Normalize values
     min_val = min(values)
@@ -151,7 +151,7 @@ def print_funnel_chart(
 
         # Center the bar
         padding = (max_width - bar_width) // 2
-        bar = " " * padding + "█" * bar_width + " " * padding
+        bar = " " * padding + "#" * bar_width + " " * padding
 
         # Calculate conversion rate from previous stage
         if prev_value is not None and prev_value > 0:

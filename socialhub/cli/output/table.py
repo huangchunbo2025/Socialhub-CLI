@@ -190,10 +190,10 @@ def print_retention_table(data: list[dict[str, Any]]) -> None:
         else:
             rate_style = "red"
 
-        # Create progress bar
+        # Create progress bar (ASCII-compatible for Windows)
         bar_width = 20
         filled = int(rate / 100 * bar_width)
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = "#" * filled + "-" * (bar_width - filled)
 
         table.add_row(
             str(item.get("period_days", "-")),
