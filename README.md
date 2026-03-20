@@ -10,42 +10,42 @@
 </p>
 
 <p align="center">
-  <a href="#功能特性">功能特性</a> •
-  <a href="#快速安装">快速安装</a> •
-  <a href="#使用示例">使用示例</a> •
-  <a href="docs/README.md">完整文档</a>
+  <a href="#features">Features</a> •
+  <a href="#quick-install">Quick Install</a> •
+  <a href="#usage-examples">Usage Examples</a> •
+  <a href="docs/README.md">Full Documentation</a>
 </p>
 
 ---
 
-## 功能特性
+## Features
 
-- **智能交互** - 支持自然语言输入，AI 自动解析并执行命令
-- **MCP 数据库** - 直连 StarRocks 分析数据库，实时查询
-- **数据分析** - 概览、客户分析、订单分析、留存分析、渠道分析
-- **客户管理** - 查询、搜索、画像、分群、标签
-- **营销工具** - 活动管理、优惠券、积分、消息
-- **可视化** - 图表生成（柱状图、饼图、折线图、仪表板）
-- **报告生成** - HTML 分析报告，可打印为 PDF
-- **定时任务** - Heartbeat 调度器，自动执行定期任务
-- **技能扩展** - Skills Store 官方认证插件
-- **AI 洞察** - 多步骤执行后自动生成数据洞察
+- **Smart Interaction** - Natural language input with AI-powered command parsing
+- **MCP Database** - Direct connection to StarRocks analytics database for real-time queries
+- **Data Analytics** - Overview, customer analysis, order analysis, retention analysis, channel analysis
+- **Customer Management** - Query, search, profiles, segments, tags
+- **Marketing Tools** - Campaign management, coupons, points, messages
+- **Visualization** - Chart generation (bar, pie, line, dashboard)
+- **Report Generation** - HTML analytics reports, exportable to PDF
+- **Scheduled Tasks** - Heartbeat scheduler for automated task execution
+- **Skills Extension** - Official certified plugins via Skills Store
+- **AI Insights** - Automatic data insights after multi-step execution
 
-## 快速安装
+## Quick Install
 
 ```bash
-# 克隆仓库
+# Clone repository
 git clone https://github.com/huangchunbo2025/Socialhub-CLI.git
 cd Socialhub-CLI
 
-# 安装
+# Install
 pip install -e .
 
-# 安装图表支持（可选）
+# Install chart support (optional)
 pip install matplotlib
 ```
 
-安装后运行 `socialhub` 查看欢迎画面：
+After installation, run `socialhub` to see the welcome screen:
 
 ```
   ____             _       _ _   _       _        _    ___
@@ -57,38 +57,38 @@ pip install matplotlib
                 v0.1.0 | Customer Intelligence Platform
 ```
 
-## 使用示例
+## Usage Examples
 
-### 自然语言交互（智能模式）
+### Natural Language Interaction (Smart Mode)
 
 ```bash
-socialhub 分析最近30天的销售趋势
-socialhub 查看各渠道订单分布
-socialhub 帮我设置每天8点生成销售报告的定时任务
-socialhub 目前客户表里有哪些字段
+socialhub analyze sales trends for the last 30 days
+socialhub show order distribution by channel
+socialhub set up a daily report at 8am
+socialhub what fields are in the customer table
 ```
 
-### MCP 数据库查询
+### MCP Database Queries
 
 ```bash
-socialhub mcp tables                    # 查看所有表
-socialhub mcp schema dwd_v_order        # 查看表结构
-socialhub mcp sql                       # 交互式 SQL
+socialhub mcp tables                    # List all tables
+socialhub mcp schema dwd_v_order        # View table schema
+socialhub mcp sql                       # Interactive SQL
 socialhub mcp query "SELECT COUNT(*) FROM dwd_v_order"
 ```
 
-### 数据分析
+### Data Analytics
 
 ```bash
 socialhub analytics overview --period=30d
 socialhub analytics orders --period=30d
-socialhub analytics orders --by=channel     # 按渠道分析
-socialhub analytics orders --by=province    # 按店铺分析
+socialhub analytics orders --by=channel     # By channel
+socialhub analytics orders --by=province    # By store
 socialhub analytics customers --period=30d
 socialhub analytics retention --days=7,14,30
 ```
 
-### 图表生成
+### Chart Generation
 
 ```bash
 socialhub analytics chart bar --data=customers --group=customer_type
@@ -96,24 +96,24 @@ socialhub analytics chart pie --data=customers --group=customer_type
 socialhub analytics chart dashboard --output=Doc/dashboard.png
 ```
 
-### 报告生成
+### Report Generation
 
 ```bash
-socialhub analytics report --title="月度分析报告"
-# 报告默认保存到 Doc/ 文件夹
+socialhub analytics report --title="Monthly Analysis Report"
+# Reports are saved to Doc/ folder by default
 ```
 
-### 定时任务（Heartbeat）
+### Scheduled Tasks (Heartbeat)
 
 ```bash
-socialhub heartbeat list                # 查看所有定时任务
-socialhub heartbeat check               # 检查并执行到期任务
-socialhub heartbeat check --force       # 强制执行所有待处理任务
-socialhub heartbeat run daily-overview  # 手动执行指定任务
-socialhub heartbeat setup               # Windows 任务计划设置说明
+socialhub heartbeat list                # List all scheduled tasks
+socialhub heartbeat check               # Check and execute due tasks
+socialhub heartbeat check --force       # Force execute all pending tasks
+socialhub heartbeat run daily-overview  # Manually run specific task
+socialhub heartbeat setup               # Windows Task Scheduler setup guide
 ```
 
-### 客户管理
+### Customer Management
 
 ```bash
 socialhub customers list --type=member
@@ -122,10 +122,10 @@ socialhub customers search --phone=138
 socialhub customers export --output=Doc/customers.csv
 ```
 
-### AI 助手
+### AI Assistant
 
 ```bash
-socialhub ai chat "分析订单趋势" --auto  # 自动执行多步骤计划
+socialhub ai chat "analyze order trends" --auto  # Auto-execute multi-step plan
 ```
 
 ### Skills Store
@@ -136,71 +136,71 @@ socialhub skills install wechat-analytics
 socialhub skills list
 ```
 
-## 配置
+## Configuration
 
 ```bash
-# 初始化配置
+# Initialize configuration
 socialhub config init
 
-# 查看当前配置
+# View current configuration
 socialhub config show
 
-# 设置 MCP 模式（默认）
+# Set MCP mode (default)
 socialhub config set mode mcp
 
-# 设置本地模式
+# Set local mode
 socialhub config set mode local
 socialhub config set local.data_dir ./data
 
-# 配置 AI (Azure OpenAI)
+# Configure AI (Azure OpenAI)
 socialhub config set ai.azure_endpoint https://your-resource.openai.azure.com
 socialhub config set ai.azure_api_key YOUR_API_KEY
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 socialhub/
 ├── cli/
-│   ├── main.py              # 入口 + 智能识别 + 欢迎画面
-│   ├── config.py            # 配置管理
+│   ├── main.py              # Entry point + smart routing + welcome screen
+│   ├── config.py            # Configuration management
 │   ├── commands/
-│   │   ├── analytics.py     # 数据分析命令 (MCP)
-│   │   ├── ai.py            # AI 助手 + 多步骤执行
-│   │   ├── heartbeat.py     # 定时任务调度
-│   │   ├── mcp.py           # MCP 数据库命令
+│   │   ├── analytics.py     # Data analytics commands (MCP)
+│   │   ├── ai.py            # AI assistant + multi-step execution
+│   │   ├── heartbeat.py     # Scheduled task scheduler
+│   │   ├── mcp.py           # MCP database commands
 │   │   └── ...
 │   ├── api/
-│   │   ├── client.py        # API 客户端
-│   │   └── mcp_client.py    # MCP 客户端 (SSE)
+│   │   ├── client.py        # API client
+│   │   └── mcp_client.py    # MCP client (SSE)
 │   └── output/
-│       ├── table.py         # 表格输出
-│       ├── chart.py         # 图表生成
-│       ├── export.py        # 导出功能
-│       └── report.py        # HTML 报告
-├── Doc/                      # 生成的报告和图表
-├── Memory.md                 # 项目记忆
-├── Heartbeat.md              # 定时任务配置
-└── docs/                     # 文档
+│       ├── table.py         # Table output
+│       ├── chart.py         # Chart generation
+│       ├── export.py        # Export functions
+│       └── report.py        # HTML reports
+├── Doc/                      # Generated reports and charts
+├── Memory.md                 # Project memory
+├── Heartbeat.md              # Scheduled task configuration
+└── docs/                     # Documentation
 ```
 
-## 文档
+## Documentation
 
-- [完整产品文档](docs/README.md) - 详细命令参考和使用指南
-- [技术设计文档](docs/DESIGN.md) - 架构设计和实现细节
-- [Skills Store](https://huangchunbo2025.github.io/Socialhub-CLI/) - 在线技能商店
+- [Full Product Documentation](docs/README.md) - Detailed command reference and usage guide
+- [Technical Design Document](docs/DESIGN.md) - Architecture design and implementation details
+- [Skills Store](https://huangchunbo2025.github.io/Socialhub-CLI/) - Online skills store
 
-## 技术栈
+## Tech Stack
 
-| 组件 | 技术 |
-|------|------|
-| CLI 框架 | Typer |
-| 终端美化 | Rich |
-| 数据处理 | Pandas |
-| 图表生成 | Matplotlib |
-| HTTP 客户端 | httpx |
-| AI 助手 | Azure OpenAI |
-| 数据库 | StarRocks (MCP) |
+| Component | Technology |
+|-----------|------------|
+| CLI Framework | Typer |
+| Terminal Styling | Rich |
+| Data Processing | Pandas |
+| Chart Generation | Matplotlib |
+| HTTP Client | httpx |
+| AI Assistant | Azure OpenAI |
+| Database | StarRocks (MCP) |
 
 ## License
 

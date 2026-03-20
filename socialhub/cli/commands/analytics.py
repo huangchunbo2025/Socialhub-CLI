@@ -954,7 +954,7 @@ def generate_chart(
 @app.command("report")
 def generate_report(
     output: str = typer.Option("Doc/report.html", "--output", "-o", help="Output HTML file path"),
-    title: str = typer.Option("SocialHub 数据分析报告", "--title", "-t", help="Report title"),
+    title: str = typer.Option("SocialHub Analytics Report", "--title", "-t", help="Report title"),
     include_customers: bool = typer.Option(True, "--customers/--no-customers", help="Include customer list"),
     include_orders: bool = typer.Option(True, "--orders/--no-orders", help="Include order list"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open report in browser"),
@@ -965,7 +965,7 @@ def generate_report(
 
     Examples:
         sh analytics report
-        sh analytics report --output=Doc/monthly_report.html --title="3月分析报告"
+        sh analytics report --output=Doc/monthly_report.html --title="Monthly Report"
         sh analytics report --no-customers --no-orders
     """
     config = load_config()

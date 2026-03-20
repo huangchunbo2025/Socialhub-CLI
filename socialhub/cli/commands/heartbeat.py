@@ -28,13 +28,15 @@ def parse_heartbeat_tasks() -> list[dict]:
     tasks = []
 
     # Split content by "---" to get individual task sections
-    # First, find the task list section
-    task_list_start = content.find("## 定时任务列表")
+    # First, find the task list section (support both English and Chinese headers)
+    task_list_start = content.find("## Scheduled Tasks")
+    if task_list_start == -1:
+        task_list_start = content.find("## Task List")
     if task_list_start == -1:
         return []
 
     # Find where task list ends (at execution log or next major section)
-    task_list_end = content.find("## 执行日志")
+    task_list_end = content.find("## Execution Log")
     if task_list_end == -1:
         task_list_end = len(content)
 
@@ -44,9 +46,9 @@ def parse_heartbeat_tasks() -> list[dict]:
     sections = re.split(r"(?=### \d+\.)", task_content)
 
     for section in sections:
-        # Pattern to match task info
+        # Pattern to match task info (support both English and Chinese field names)
         task_match = re.search(
-            r"### \d+\. (.+?)\n- \*\*ID\*\*: (.+?)\n- \*\*频率\*\*: (.+?)\n- \*\*状态\*\*: `(.+?)`",
+            r"### \d+\. (.+?)\n- \*\*ID\*\*: (.+?)\n- \*\*(?:Frequency|频率)\*\*: (.+?)\n- \*\*(?:Status|状态)\*\*: `(.+?)`",
             section,
             re.DOTALL
         )
@@ -65,8 +67,8 @@ def parse_heartbeat_tasks() -> list[dict]:
                 cmd_lines = cmd_match.group(1).strip().split("\n")
                 task["command"] = " && ".join(line.strip() for line in cmd_lines if line.strip())
 
-            # Check for AI insights flag
-            if "AI洞察" in section and "true" in section.lower():
+            # Check for AI insights flag (support both English and Chinese)
+            if ("AI Insights" in section or "AI洞察" in section) and "true" in section.lower():
                 task["insights"] = True
 
             tasks.append(task)
@@ -78,26 +80,26 @@ def parse_frequency(frequency: str) -> dict:
     """Parse frequency string to schedule info."""
     schedule = {"type": None, "hour": None, "minute": 0, "weekday": None}
 
-    # 每天 HH:MM
-    daily_match = re.search(r"每天\s*(\d{1,2}):(\d{2})", frequency)
+    # Daily HH:MM (English)
+    daily_match = re.search(r"[Dd]aily\s*(\d{1,2}):(\d{2})", frequency)
     if daily_match:
         schedule["type"] = "daily"
         schedule["hour"] = int(daily_match.group(1))
         schedule["minute"] = int(daily_match.group(2))
         return schedule
 
-    # 每周X HH:MM
-    weekly_match = re.search(r"每周([一二三四五六日])\s*(\d{1,2}):(\d{2})", frequency)
+    # Weekly Day HH:MM (English)
+    weekly_match = re.search(r"[Ww]eekly\s*(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*(\d{1,2}):(\d{2})", frequency)
     if weekly_match:
-        weekday_map = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6}
+        weekday_map = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
         schedule["type"] = "weekly"
         schedule["weekday"] = weekday_map.get(weekly_match.group(1), 0)
         schedule["hour"] = int(weekly_match.group(2))
         schedule["minute"] = int(weekly_match.group(3))
         return schedule
 
-    # 每小时
-    if "每小时" in frequency:
+    # Hourly
+    if "hourly" in frequency.lower():
         schedule["type"] = "hourly"
         return schedule
 
@@ -199,13 +201,16 @@ def update_execution_log(task_id: str, status: str, note: str = "") -> None:
     content = HEARTBEAT_FILE.read_text(encoding="utf-8")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # Find the execution log table and add new entry
-    log_marker = "| 时间 | 任务ID | 状态 | 备注 |"
+    # Find the execution log table and add new entry (support both English and Chinese)
+    log_marker = "| Time | Task ID | Status | Note |"
+    if log_marker not in content:
+        log_marker = "| 时间 | 任务ID | 状态 | 备注 |"
+
     if log_marker in content:
         # Find the line after the header separator
         lines = content.split("\n")
         for i, line in enumerate(lines):
-            if "| - | - | - | 暂无执行记录 |" in line:
+            if "| - | - | - | No records |" in line or "| - | - | - | 暂无执行记录 |" in line:
                 # Replace placeholder with actual log
                 lines[i] = f"| {now} | {task_id} | {status} | {note} |"
                 break
@@ -220,17 +225,20 @@ def update_execution_log(task_id: str, status: str, note: str = "") -> None:
 
     # Update last check time
     content = re.sub(
-        r"\*下次检查: .+?\*",
-        f"*下次检查: 等待下次触发*",
+        r"\*Next check: .+?\*",
+        f"*Next check: Waiting for trigger*",
         content
     )
 
-    # Update heartbeat check record
-    check_marker = "| 检查时间 | 待执行任务数 | 执行任务数 | 备注 |"
+    # Update heartbeat check record (support both English and Chinese)
+    check_marker = "| Check Time | Pending | Executed | Note |"
+    if check_marker not in content:
+        check_marker = "| 检查时间 | 待执行任务数 | 执行任务数 | 备注 |"
+
     if check_marker in content:
         lines = content.split("\n")
         for i, line in enumerate(lines):
-            if "| - | - | - | 等待首次检查 |" in line:
+            if "| - | - | - | Waiting for first check |" in line or "| - | - | - | 等待首次检查 |" in line:
                 lines[i] = f"| {now} | - | 1 | Task: {task_id} |"
                 break
         content = "\n".join(lines)

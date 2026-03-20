@@ -1,4 +1,4 @@
-# SocialHub.AI CLI 产品说明文档
+# SocialHub.AI CLI Product Documentation
 
 <p align="center">
   <img src="../web/skills-store/logo.png" alt="SocialHub.AI" width="120">
@@ -12,152 +12,152 @@
 <p align="center">
   <a href="https://github.com/huangchunbo2025/Socialhub-CLI">GitHub</a> •
   <a href="https://huangchunbo2025.github.io/Socialhub-CLI/">Skills Store</a> •
-  <a href="#快速开始">快速开始</a> •
-  <a href="#命令参考">命令参考</a>
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#command-reference">Command Reference</a>
 </p>
 
 ---
 
-## 目录
+## Table of Contents
 
-- [产品简介](#产品简介)
-- [核心功能](#核心功能)
-- [系统要求](#系统要求)
-- [安装指南](#安装指南)
-- [快速开始](#快速开始)
-- [命令参考](#命令参考)
-- [MCP 数据库](#mcp-数据库)
-- [AI 智能助手](#ai-智能助手)
-- [定时任务](#定时任务heartbeat)
-- [图表与报告](#图表与报告)
+- [Product Overview](#product-overview)
+- [Core Features](#core-features)
+- [System Requirements](#system-requirements)
+- [Installation Guide](#installation-guide)
+- [Quick Start](#quick-start)
+- [Command Reference](#command-reference)
+- [MCP Database](#mcp-database)
+- [AI Assistant](#ai-assistant)
+- [Scheduled Tasks (Heartbeat)](#scheduled-tasks-heartbeat)
+- [Charts and Reports](#charts-and-reports)
 - [Skills Store](#skills-store)
-- [配置管理](#配置管理)
-- [常见问题](#常见问题)
+- [Configuration Management](#configuration-management)
+- [FAQ](#faq)
 
 ---
 
-## 产品简介
+## Product Overview
 
-**SocialHub.AI CLI** 是一款面向数据分析师和营销经理的命令行工具，为 SocialHub.AI 客户智能平台（CIP）提供强大的命令行操作能力。
+**SocialHub.AI CLI** is a command-line tool designed for data analysts and marketing managers, providing powerful CLI capabilities for the SocialHub.AI Customer Intelligence Platform (CIP).
 
-### 适用人群
+### Target Users
 
-| 角色 | 使用场景 |
-|------|----------|
-| **数据分析师** | 数据查询、报表生成、客户分析、留存分析 |
-| **营销经理** | 活动管理、客户分群、优惠券管理、消息发送 |
-| **运营人员** | 客户管理、标签管理、积分管理 |
-| **开发者** | API 集成、自动化脚本、数据导出 |
+| Role | Use Cases |
+|------|-----------|
+| **Data Analysts** | Data queries, report generation, customer analysis, retention analysis |
+| **Marketing Managers** | Campaign management, customer segmentation, coupon management, messaging |
+| **Operations Staff** | Customer management, tag management, points management |
+| **Developers** | API integration, automation scripts, data export |
 
-### 产品特点
+### Product Features
 
-- **智能交互** - 支持自然语言输入，AI 自动解析并执行命令
-- **MCP 数据库** - 直连 StarRocks 分析数据库，实时查询
-- **多步骤执行** - AI 生成执行计划，确认后自动执行所有步骤
-- **AI 洞察** - 执行完成后自动生成数据洞察和业务建议
-- **定时任务** - Heartbeat 调度器支持定时自动执行任务
-- **可视化输出** - 终端表格、图表生成、HTML 报告
-- **技能扩展** - 通过 Skills Store 安装官方认证插件
-
----
-
-## 核心功能
-
-### 1. 数据分析 (Analytics)
-
-| 功能 | 说明 |
-|------|------|
-| 数据概览 | KPI 指标卡、业务总览 |
-| 客户分析 | 新客、活跃客户、客户画像 |
-| 订单分析 | 销售额、客单价、渠道分析 |
-| 留存分析 | 7/14/30 天留存率 |
-| 图表生成 | 柱状图、饼图、折线图、仪表板 |
-| 报告生成 | HTML 分析报告，可导出 PDF |
-
-### 2. MCP 数据库
-
-- 直连 StarRocks 分析数据库
-- 交互式 SQL 查询
-- 表结构查看
-- 实时数据分析
-
-### 3. 客户管理 (Customers)
-
-- 客户搜索与查询
-- 客户详情查看
-- 客户 360° 画像
-- 客户数据导出
-
-### 4. 营销工具 (Marketing)
-
-- 营销活动管理
-- 客户分群管理
-- 标签体系管理
-- 优惠券管理
-- 积分管理
-- 消息管理
-
-### 5. 定时任务 (Heartbeat)
-
-- 定时执行报表生成
-- 每日数据概览
-- 自动 Memory 归档
-- Windows 任务计划集成
-
-### 6. AI 智能助手
-
-- 自然语言命令解析
-- 多步骤计划执行
-- 自动数据洞察
-- API 超时自动重试
+- **Smart Interaction** - Natural language input with AI-powered command parsing
+- **MCP Database** - Direct connection to StarRocks analytics database for real-time queries
+- **Multi-step Execution** - AI generates execution plans, auto-executes after confirmation
+- **AI Insights** - Automatic data insights and business recommendations after execution
+- **Scheduled Tasks** - Heartbeat scheduler for automated task execution
+- **Visual Output** - Terminal tables, chart generation, HTML reports
+- **Skills Extension** - Install official certified plugins via Skills Store
 
 ---
 
-## 系统要求
+## Core Features
 
-| 项目 | 要求 |
-|------|------|
-| **操作系统** | Windows 10+, macOS 10.14+, Linux |
-| **Python** | 3.10 或更高版本 |
-| **内存** | 建议 4GB+ |
-| **网络** | MCP/API 模式需要网络连接 |
+### 1. Data Analytics
 
-### 依赖包
+| Feature | Description |
+|---------|-------------|
+| Overview | KPI cards, business summary |
+| Customer Analysis | New customers, active customers, customer profiles |
+| Order Analysis | Sales, average order value, channel analysis |
+| Retention Analysis | 7/14/30 day retention rates |
+| Chart Generation | Bar, pie, line charts, dashboards |
+| Report Generation | HTML analytics reports, exportable to PDF |
+
+### 2. MCP Database
+
+- Direct connection to StarRocks analytics database
+- Interactive SQL queries
+- Table schema viewing
+- Real-time data analysis
+
+### 3. Customer Management
+
+- Customer search and queries
+- Customer detail viewing
+- 360-degree customer profiles
+- Customer data export
+
+### 4. Marketing Tools
+
+- Campaign management
+- Customer segmentation
+- Tag management
+- Coupon management
+- Points management
+- Message management
+
+### 5. Scheduled Tasks (Heartbeat)
+
+- Scheduled report generation
+- Daily data overview
+- Automatic Memory archiving
+- Windows Task Scheduler integration
+
+### 6. AI Assistant
+
+- Natural language command parsing
+- Multi-step plan execution
+- Automatic data insights
+- API timeout auto-retry
+
+---
+
+## System Requirements
+
+| Item | Requirement |
+|------|-------------|
+| **Operating System** | Windows 10+, macOS 10.14+, Linux |
+| **Python** | 3.10 or higher |
+| **Memory** | 4GB+ recommended |
+| **Network** | Required for MCP/API mode |
+
+### Dependencies
 
 ```
-typer[all]      # CLI 框架
-rich            # 终端美化
-httpx           # HTTP 客户端
-pandas          # 数据处理
-pydantic        # 数据验证
-matplotlib      # 图表生成（可选）
+typer[all]      # CLI framework
+rich            # Terminal styling
+httpx           # HTTP client
+pandas          # Data processing
+pydantic        # Data validation
+matplotlib      # Chart generation (optional)
 ```
 
 ---
 
-## 安装指南
+## Installation Guide
 
-### 方式一：从源码安装（推荐）
+### Method 1: Install from Source (Recommended)
 
 ```bash
-# 1. 克隆仓库
+# 1. Clone repository
 git clone https://github.com/huangchunbo2025/Socialhub-CLI.git
 cd Socialhub-CLI
 
-# 2. 安装依赖
+# 2. Install dependencies
 pip install -e .
 
-# 3. 安装图表支持（可选）
+# 3. Install chart support (optional)
 pip install matplotlib
 ```
 
-### 验证安装
+### Verify Installation
 
 ```bash
 socialhub --version
 ```
 
-运行 `socialhub` 查看欢迎画面：
+Run `socialhub` to see the welcome screen:
 
 ```
   ____             _       _ _   _       _        _    ___
@@ -178,369 +178,369 @@ socialhub --version
 +----------------------------------------------------------------------------+
 ```
 
-### Windows PowerShell 别名配置
+### Windows PowerShell Alias Setup
 
 ```powershell
-# 打开 PowerShell 配置文件
+# Open PowerShell profile
 notepad $PROFILE
 
-# 添加以下内容
-Set-Alias -Name sh -Value "C:\Users\<用户名>\AppData\Local\Python\pythoncore-3.14-64\Scripts\socialhub.exe"
+# Add the following
+Set-Alias -Name sh -Value "C:\Users\<username>\AppData\Local\Python\pythoncore-3.14-64\Scripts\socialhub.exe"
 
-# 保存后重新加载
+# Reload after saving
 . $PROFILE
 ```
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 初始化配置
+### Initialize Configuration
 
 ```bash
-# 初始化配置文件
+# Initialize config file
 socialhub config init
 
-# 查看当前配置
+# View current configuration
 socialhub config show
 ```
 
-### 第一个命令
+### First Command
 
 ```bash
-# 查看数据概览（MCP 模式）
+# View data overview (MCP mode)
 socialhub analytics overview --period=30d
 
-# 使用自然语言
-socialhub 查看最近30天的销售数据
+# Using natural language
+socialhub show sales data for the last 30 days
 ```
 
-### 生成报告
+### Generate Report
 
 ```bash
-# 生成 HTML 分析报告（保存到 Doc/ 文件夹）
-socialhub analytics report --title="月度分析报告"
+# Generate HTML analytics report (saved to Doc/ folder)
+socialhub analytics report --title="Monthly Analysis Report"
 ```
 
 ---
 
-## 命令参考
+## Command Reference
 
-### 数据分析 (analytics)
+### Data Analytics (analytics)
 
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `overview` | 数据概览 | `socialhub analytics overview --period=30d` |
-| `customers` | 客户分析 | `socialhub analytics customers --period=30d` |
-| `orders` | 订单分析 | `socialhub analytics orders --by=channel` |
-| `retention` | 留存分析 | `socialhub analytics retention --days=7,14,30` |
-| `chart` | 生成图表 | `socialhub analytics chart pie --data=customers` |
-| `report` | 生成报告 | `socialhub analytics report --output=Doc/report.html` |
+| Command | Description | Example |
+|---------|-------------|---------|
+| `overview` | Data overview | `socialhub analytics overview --period=30d` |
+| `customers` | Customer analysis | `socialhub analytics customers --period=30d` |
+| `orders` | Order analysis | `socialhub analytics orders --by=channel` |
+| `retention` | Retention analysis | `socialhub analytics retention --days=7,14,30` |
+| `chart` | Generate chart | `socialhub analytics chart pie --data=customers` |
+| `report` | Generate report | `socialhub analytics report --output=Doc/report.html` |
 
-#### 订单分析选项
+#### Order Analysis Options
 
 ```bash
-# 按渠道分析
+# By channel
 socialhub analytics orders --by=channel
 
-# 按店铺分析
+# By store
 socialhub analytics orders --by=province
 
-# 指定时间周期
+# Specify time period
 socialhub analytics orders --period=7d
 socialhub analytics orders --period=30d
 socialhub analytics orders --period=90d
 ```
 
-#### 图表类型
+#### Chart Types
 
 ```bash
-# 柱状图
+# Bar chart
 socialhub analytics chart bar --data=customers --group=customer_type
 
-# 饼图
+# Pie chart
 socialhub analytics chart pie --data=customers --group=customer_type
 
-# 折线图
+# Line chart
 socialhub analytics chart line --data=orders
 
-# 综合仪表板
+# Dashboard
 socialhub analytics chart dashboard --output=Doc/dashboard.png
 ```
 
 ---
 
-## MCP 数据库
+## MCP Database
 
-MCP (Model Context Protocol) 直连 StarRocks 分析数据库，实现实时数据查询。
+MCP (Model Context Protocol) directly connects to StarRocks analytics database for real-time data queries.
 
-### 基本命令
+### Basic Commands
 
 ```bash
-# 查看所有表
+# List all tables
 socialhub mcp tables --database=das_demoen
 
-# 查看表结构
+# View table schema
 socialhub mcp schema dwd_v_order --database=das_demoen
 
-# 交互式 SQL
+# Interactive SQL
 socialhub mcp sql
 
-# 执行查询
+# Execute query
 socialhub mcp query "SELECT COUNT(*) FROM dwd_v_order" --database=das_demoen
 ```
 
-### 常用表说明
+### Common Tables
 
-| 表名 | 说明 |
-|------|------|
-| `dwd_v_order` | 订单明细表 |
-| `dim_customer_info` | 客户信息表 |
-| `dim_member_info` | 会员信息表 |
-| `dwd_v_coupon_record` | 优惠券记录 |
-| `dwd_v_points_record` | 积分记录 |
+| Table | Description |
+|-------|-------------|
+| `dwd_v_order` | Order details table |
+| `dim_customer_info` | Customer info table |
+| `dim_member_info` | Member info table |
+| `dwd_v_coupon_record` | Coupon records |
+| `dwd_v_points_record` | Points records |
 
-### dwd_v_order 表结构
+### dwd_v_order Table Schema
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `code` | varchar | 订单编号 |
-| `order_date` | datetime | 订单日期 |
-| `customer_code` | varchar | 客户编码 |
-| `store_name` | varchar | 店铺名称 |
-| `source_name` | varchar | 渠道名称 |
-| `total_amount` | decimal | 订单金额 |
-| `qty` | int | 商品数量 |
+| Field | Type | Description |
+|-------|------|-------------|
+| `code` | varchar | Order ID |
+| `order_date` | datetime | Order date |
+| `customer_code` | varchar | Customer code |
+| `store_name` | varchar | Store name |
+| `source_name` | varchar | Channel name |
+| `total_amount` | decimal | Order amount |
+| `qty` | int | Item quantity |
 
 ---
 
-## AI 智能助手
+## AI Assistant
 
-### 自然语言交互（智能模式）
+### Natural Language Interaction (Smart Mode)
 
-直接输入中文自然语言，系统自动识别并调用 AI：
-
-```bash
-socialhub 分析最近30天的销售趋势
-socialhub 查看各渠道订单分布
-socialhub 目前客户表里有哪些字段
-socialhub 帮我设置每天8点生成销售报告的定时任务
-```
-
-### 多步骤执行
-
-AI 会生成执行计划，确认后自动执行所有步骤：
+Enter natural language directly, the system auto-detects and calls AI:
 
 ```bash
-socialhub ai chat "全面分析最近30天的业务情况" --auto
+socialhub analyze sales trends for the last 30 days
+socialhub show order distribution by channel
+socialhub what fields are in the customer table
+socialhub set up a daily report task at 8am
 ```
 
-执行流程：
-1. AI 生成多步骤分析计划
-2. 用户确认执行
-3. 自动依次执行每个步骤
-4. 完成后生成 AI 洞察
+### Multi-step Execution
 
-### AI 洞察
-
-多步骤执行完成后，自动生成：
-- 关键发现（2-3 点）
-- 趋势分析
-- 业务建议（可执行建议）
-
-### API 超时重试
-
-遇到网络超时自动重试 3 次：
-
-```
-API 请求超时，2秒后重试 (1/3)...
-API 请求超时，4秒后重试 (2/3)...
-```
-
-### AI 配置
+AI generates an execution plan, auto-executes all steps after confirmation:
 
 ```bash
-# Azure OpenAI 配置
+socialhub ai chat "comprehensive analysis of business for the last 30 days" --auto
+```
+
+Execution flow:
+1. AI generates multi-step analysis plan
+2. User confirms execution
+3. Auto-executes each step sequentially
+4. Generates AI insights after completion
+
+### AI Insights
+
+After multi-step execution completes, auto-generates:
+- Key findings (2-3 points)
+- Trend analysis
+- Business recommendations (actionable suggestions)
+
+### API Timeout Retry
+
+Auto-retries 3 times on network timeout:
+
+```
+API request timeout, retrying in 2s (1/3)...
+API request timeout, retrying in 4s (2/3)...
+```
+
+### AI Configuration
+
+```bash
+# Azure OpenAI configuration
 socialhub config set ai.provider azure
 socialhub config set ai.azure_endpoint https://your-resource.openai.azure.com
 socialhub config set ai.azure_api_key YOUR_API_KEY
 socialhub config set ai.azure_deployment gpt-4o
 
-# OpenAI 配置
+# OpenAI configuration
 socialhub config set ai.provider openai
 socialhub config set ai.openai_api_key YOUR_API_KEY
 ```
 
 ---
 
-## 定时任务（Heartbeat）
+## Scheduled Tasks (Heartbeat)
 
-Heartbeat 是内置的定时任务调度系统，支持自动执行定期任务。
+Heartbeat is the built-in scheduled task system for automated periodic task execution.
 
-### 命令列表
+### Command List
 
 ```bash
-# 查看所有定时任务
+# List all scheduled tasks
 socialhub heartbeat list
 
-# 检查并执行到期任务
+# Check and execute due tasks
 socialhub heartbeat check
 
-# 强制执行所有待处理任务
+# Force execute all pending tasks
 socialhub heartbeat check --force
 
-# 预览将要执行的任务（不实际执行）
+# Preview tasks to be executed (dry run)
 socialhub heartbeat check --dry-run
 
-# 手动执行指定任务
+# Manually run specific task
 socialhub heartbeat run daily-overview
 
-# 查看 Windows 任务计划设置说明
+# View Windows Task Scheduler setup guide
 socialhub heartbeat setup
 ```
 
-### 任务配置文件
+### Task Configuration File
 
-任务配置在 `~/socialhub/Heartbeat.md` 文件中：
+Tasks are configured in `~/socialhub/Heartbeat.md`:
 
 ```markdown
-### 1. 每日数据概览
+### 1. Daily Data Overview
 - **ID**: daily-overview
-- **频率**: 每天 09:00
-- **状态**: `pending`
-- **命令**:
+- **Frequency**: Daily 09:00
+- **Status**: `pending`
+- **Command**:
   ```bash
   sh analytics overview --period=today
   ```
 ```
 
-### 设置 Windows 自动执行
+### Setting Up Windows Auto-Execution
 
-在 PowerShell 中运行：
+Run in PowerShell:
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "C:\Users\<用户名>\AppData\Local\Python\pythoncore-3.14-64\Scripts\socialhub.exe" -Argument "heartbeat check"
+$action = New-ScheduledTaskAction -Execute "C:\Users\<username>\AppData\Local\Python\pythoncore-3.14-64\Scripts\socialhub.exe" -Argument "heartbeat check"
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration ([TimeSpan]::MaxValue)
 Register-ScheduledTask -TaskName "SocialHub Heartbeat" -Action $action -Trigger $trigger -Description "Hourly heartbeat check"
 ```
 
 ---
 
-## 图表与报告
+## Charts and Reports
 
-### 图表生成
+### Chart Generation
 
-支持 5 种图表类型：
+Supports 5 chart types:
 
-| 类型 | 命令 | 说明 |
-|------|------|------|
-| 柱状图 | `chart bar` | 分类数据对比 |
-| 饼图 | `chart pie` | 占比分布 |
-| 折线图 | `chart line` | 趋势变化 |
-| 漏斗图 | `chart funnel` | 转化分析 |
-| 仪表板 | `chart dashboard` | 综合视图 |
+| Type | Command | Description |
+|------|---------|-------------|
+| Bar Chart | `chart bar` | Category comparison |
+| Pie Chart | `chart pie` | Distribution |
+| Line Chart | `chart line` | Trend changes |
+| Funnel Chart | `chart funnel` | Conversion analysis |
+| Dashboard | `chart dashboard` | Comprehensive view |
 
-### HTML 报告
+### HTML Reports
 
 ```bash
-# 生成报告（默认保存到 Doc/ 文件夹）
-socialhub analytics report --title="月度分析报告"
+# Generate report (saved to Doc/ folder by default)
+socialhub analytics report --title="Monthly Analysis Report"
 
-# 自定义输出路径
+# Custom output path
 socialhub analytics report --output=Doc/monthly_report.html
 
-# 不包含客户列表
+# Without customer list
 socialhub analytics report --no-customers
 ```
 
-#### 导出 PDF
+#### Export to PDF
 
-1. 生成报告后自动在浏览器中打开
-2. 按 `Ctrl + P` 打开打印对话框
-3. 选择"另存为 PDF"
+1. After report generation, it auto-opens in browser
+2. Press `Ctrl + P` to open print dialog
+3. Select "Save as PDF"
 
 ---
 
 ## Skills Store
 
-Skills Store 提供官方认证的技能插件，扩展 CLI 功能。
+Skills Store provides official certified skill plugins to extend CLI functionality.
 
-### 浏览与安装
+### Browse and Install
 
 ```bash
-# 浏览所有技能
+# Browse all skills
 socialhub skills browse
 
-# 安装技能
+# Install a skill
 socialhub skills install data-export-plus
 
-# 查看已安装
+# View installed skills
 socialhub skills list
 ```
 
-### 在线商店
+### Online Store
 
-访问：https://huangchunbo2025.github.io/Socialhub-CLI/
+Visit: https://huangchunbo2025.github.io/Socialhub-CLI/
 
 ---
 
-## 配置管理
+## Configuration Management
 
-### 配置文件位置
+### Config File Location
 
-- Windows: `C:\Users\<用户名>\.socialhub\config.json`
+- Windows: `C:\Users\<username>\.socialhub\config.json`
 - macOS/Linux: `~/.socialhub/config.json`
 
-### 常用配置命令
+### Common Config Commands
 
 ```bash
-# 查看所有配置
+# View all configuration
 socialhub config show
 
-# 设置 MCP 模式（默认）
+# Set MCP mode (default)
 socialhub config set mode mcp
 
-# 设置本地模式
+# Set local mode
 socialhub config set mode local
 socialhub config set local.data_dir ./data
 
-# 设置 AI 配置
+# Set AI configuration
 socialhub config set ai.azure_endpoint https://your-resource.openai.azure.com
 socialhub config set ai.azure_api_key YOUR_API_KEY
 ```
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: API 请求超时怎么办？
+### Q: What to do when API request times out?
 
-**A:** 系统会自动重试 3 次。如果仍然失败，请检查网络连接或稍后重试。
+**A:** The system auto-retries 3 times. If still failing, check network connection or try again later.
 
-### Q: 如何查看客户表的字段？
+### Q: How to view customer table fields?
 
-**A:** 使用 MCP 查询：
+**A:** Use MCP query:
 
 ```bash
 socialhub mcp query "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_NAME = 'dim_customer_info'" --database=das_demoen
 ```
 
-### Q: 定时任务没有执行？
+### Q: Scheduled tasks not executing?
 
-**A:** 需要设置 Windows 任务计划或手动运行：
+**A:** You need to set up Windows Task Scheduler or run manually:
 
 ```bash
 socialhub heartbeat check
-socialhub heartbeat setup  # 查看设置说明
+socialhub heartbeat setup  # View setup guide
 ```
 
-### Q: 报告保存在哪里？
+### Q: Where are reports saved?
 
-**A:** 默认保存到项目的 `Doc/` 文件夹。
+**A:** By default, saved to the project's `Doc/` folder.
 
 ---
 
-## 技术支持
+## Support
 
 - **GitHub Issues**: https://github.com/huangchunbo2025/Socialhub-CLI/issues
 - **Skills Store**: https://huangchunbo2025.github.io/Socialhub-CLI/
@@ -554,5 +554,5 @@ socialhub heartbeat setup  # 查看设置说明
 </p>
 
 <p align="center">
-  © 2024 SocialHub.AI. All rights reserved.
+  &copy; 2024 SocialHub.AI. All rights reserved.
 </p>
