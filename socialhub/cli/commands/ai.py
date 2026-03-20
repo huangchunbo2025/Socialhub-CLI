@@ -163,10 +163,8 @@ def call_ai_api(user_message: str, api_key: Optional[str] = None, max_retries: i
     """
     import time
     import threading
-    from rich.console import Console
     from rich.live import Live
     from rich.text import Text
-    console = Console()
 
     ai_config = get_ai_config()
     provider = ai_config["provider"]
@@ -248,20 +246,26 @@ def call_ai_api(user_message: str, api_key: Optional[str] = None, max_retries: i
 
         # Show thinking animation with elapsed time
         if show_thinking:
-            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            # Use ASCII-compatible spinner for Windows compatibility
+            spinner_chars = ["|", "/", "-", "\\"]
             spinner_idx = 0
 
-            with Live(console=console, refresh_per_second=10, transient=True) as live:
-                while api_thread.is_alive():
-                    elapsed = time.time() - start_time
-                    spinner = spinner_chars[spinner_idx % len(spinner_chars)]
-                    text = Text()
-                    text.append(f" {spinner} ", style="cyan")
-                    text.append("Thinking", style="cyan bold")
-                    text.append(f" ({elapsed:.1f}s)", style="dim")
-                    live.update(text)
-                    spinner_idx += 1
-                    time.sleep(0.1)
+            try:
+                with Live(console=console, refresh_per_second=4, transient=True) as live:
+                    while api_thread.is_alive():
+                        elapsed = time.time() - start_time
+                        spinner = spinner_chars[spinner_idx % len(spinner_chars)]
+                        text = Text()
+                        text.append(f" {spinner} ", style="cyan")
+                        text.append("Thinking", style="cyan bold")
+                        text.append(f" ({elapsed:.1f}s)", style="dim")
+                        live.update(text)
+                        spinner_idx += 1
+                        time.sleep(0.25)
+            except Exception as e:
+                # If Live display fails, just wait for thread
+                console.print(f"[dim]Thinking...[/dim]")
+                api_thread.join()
         else:
             api_thread.join()
 
@@ -293,11 +297,14 @@ def call_ai_api(user_message: str, api_key: Optional[str] = None, max_retries: i
             if response.status_code != 200:
                 return f"API Error: {response.status_code} - {response.text}"
 
-            result = response.json()
-            console.print(f"[dim]Completed in {elapsed_time:.1f}s[/dim]")
-            return result["choices"][0]["message"]["content"]
+            try:
+                result = response.json()
+                console.print(f"[dim]Completed in {elapsed_time:.1f}s[/dim]")
+                return result["choices"][0]["message"]["content"]
+            except (KeyError, json.JSONDecodeError) as e:
+                return f"Error parsing API response: {e}"
 
-    return f"Error: {last_error}, retried {max_retries} times."
+    return f"Error: {last_error or 'Unknown error'}, retried {max_retries} times."
 
 
 def extract_scheduled_task(response: str) -> dict:
