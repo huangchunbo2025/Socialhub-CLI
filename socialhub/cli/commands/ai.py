@@ -489,11 +489,41 @@ def execute_plan(steps: list[dict], original_query: str = "") -> None:
 
     # Collect results for insights
     all_results = []
+    insights = ""
 
-    for step in steps:
+    # Find report step index (if any)
+    report_step_idx = None
+    for i, step in enumerate(steps):
+        if "report" in step["command"].lower():
+            report_step_idx = i
+            break
+
+    for idx, step in enumerate(steps):
         step_num = step["number"]
         description = step["description"]
         command = step["command"]
+
+        # Generate insights BEFORE report step
+        if report_step_idx is not None and idx == report_step_idx and original_query and all_results:
+            if any(r["success"] for r in all_results):
+                console.print("[bold cyan]Generating AI insights...[/bold cyan]\n")
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    progress.add_task(description="AI analyzing...", total=None)
+                    insights = generate_insights(original_query, all_results)
+
+                if insights and "Error" not in insights:
+                    console.print(Panel(
+                        Markdown(insights),
+                        title="[bold magenta]AI Insights[/bold magenta]",
+                        border_style="magenta",
+                    ))
+                    console.print()
 
         # Display step header
         console.print(f"[bold yellow]Step {step_num}:[/bold yellow] {description}")
@@ -537,9 +567,9 @@ def execute_plan(steps: list[dict], original_query: str = "") -> None:
 
     console.print("[bold green]All steps completed![/bold green]\n")
 
-    # Generate insights if we have results and original query
-    if original_query and any(r["success"] for r in all_results):
-        console.print("[bold cyan]Generating insights...[/bold cyan]\n")
+    # Generate insights at end if no report step was found
+    if report_step_idx is None and original_query and any(r["success"] for r in all_results):
+        console.print("[bold cyan]Generating AI insights...[/bold cyan]\n")
 
         with Progress(
             SpinnerColumn(),
