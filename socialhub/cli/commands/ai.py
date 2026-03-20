@@ -41,51 +41,83 @@ All commands must start with "sh " prefix!
 
 Available commands include:
 1. Data Analytics (analytics)
-   - sh analytics overview --period=7d|30d|365d  # Overview analysis
-   - sh analytics customers --period=30d  # Customer analysis
-   - sh analytics retention --days=7,14,30  # Retention analysis
-   - sh analytics orders --period=30d --by=channel|province  # Order analysis
-   - sh analytics chart bar --data=customers --group=customer_type --output=chart.png  # Bar chart
-   - sh analytics chart pie --data=customers --group=customer_type --output=pie.png  # Pie chart
-   - sh analytics chart dashboard --output=dashboard.png  # Analytics dashboard
-   - sh analytics chart funnel --output=funnel.png  # Funnel chart
-   - sh analytics report --output=report.html  # HTML analytics report (printable to PDF)
-   - sh analytics report --title="Monthly Report" --output=monthly.html  # Custom title report
+   - sh analytics overview --period=all  # Overview analysis (use "all" for ALL data without date filter)
+   - sh analytics customers --period=all  # Customer analysis (use "all" for ALL data)
+   - sh analytics retention --days=7,30,90  # Retention analysis
+   - sh analytics orders --period=all --by=channel|province  # Order analysis (use "all" for ALL data)
+   - sh analytics report --topic="Topic" --output=report.md --period=all --formats=all  # DATA-DRIVEN REPORT (ALWAYS use "all" for comprehensive reports!)
 
-2. Customer Management (customers)
+2. Report Generation
+   For DATA-DRIVEN reports (customer analysis, market analysis, etc.), use the analytics command:
+   - sh analytics report --topic="Topic" --output=report.md --period=all --formats=all  # RECOMMENDED! Fetches real data and generates insights
+
+   For generic consulting framework reports (no real data), use the skill:
+   - sh skill run report-generator generate --topic="Topic" --output=report.md --formats=all  # Generic consulting framework report
+   - sh skill run report-generator swot --subject="Company" --output=swot.md  # SWOT analysis
+   - sh skill run report-generator pestel --topic="Industry" --output=pestel.md  # PESTEL analysis
+   - sh skill run report-generator porter --industry="Industry" --output=porter.md  # Porter's Five Forces
+   - sh skill run report-generator valuechain --company="Company" --output=valuechain.md  # Value Chain analysis
+   - sh skill run report-generator action --initiative="Project" --output=action.md  # Action plan with 5W2H
+   - sh skill run report-generator convert --input=existing.md --formats=html,pdf  # Convert MD to HTML/PDF
+
+   IMPORTANT: When user asks for customer analysis, market analysis, or any report based on real data, ALWAYS use "sh analytics report" command!
+
+3. Skills Management (skill)
+   - sh skill browse  # Browse available skills in the official store
+   - sh skill browse --category=analytics  # Browse skills by category
+   - sh skill list  # List installed skills
+   - sh skill list --enabled  # List only enabled skills
+   - sh skill install <skill_name>  # Install a skill
+   - sh skill enable <skill_name>  # Enable a skill
+   - sh skill disable <skill_name>  # Disable a skill
+   - sh skill run <skill_name> <command> [options]  # Run a skill command
+
+4. Customer Management (customers)
    - sh customers list --type=member|registered|visitor  # Customer list
    - sh customers search --phone=xxx --email=xxx  # Search customers
    - sh customers get <customer_id>  # Customer details
    - sh customers export --output=file.csv  # Export customers
 
-3. Segment Management (segments)
+5. Segment Management (segments)
    - sh segments list  # Segment list
    - sh segments create --name="Name" --rules='{"key":"value"}'  # Create segment
    - sh segments export <segment_id> --output=file.csv  # Export segment
 
-4. Tag Management (tags)
+6. Tag Management (tags)
    - sh tags list --type=rfm|aipl|static  # Tag list
    - sh tags create --name="TagName" --type=static --values="val1,val2"  # Create tag
 
-5. Marketing Campaigns (campaigns)
+7. Marketing Campaigns (campaigns)
    - sh campaigns list --status=draft|running|finished  # Campaign list
    - sh campaigns analysis <campaign_id> --funnel  # Campaign analysis
    - sh campaigns calendar --month=2024-03  # Marketing calendar
 
-6. Coupons (coupons)
+8. Coupons (coupons)
    - sh coupons rules list  # Coupon rules
    - sh coupons list --status=unused|used|expired  # Coupon list
    - sh coupons analysis <rule_id>  # Coupon analysis
 
-7. Points (points)
+9. Points (points)
    - sh points rules list  # Points rules
    - sh points balance <member_id>  # Points balance
    - sh points history <member_id>  # Points history
 
-8. Messages (messages)
-   - sh messages templates list --channel=sms|email|wechat  # Message templates
-   - sh messages records --status=success|failed  # Send records
-   - sh messages stats --period=7d  # Message statistics
+10. Messages (messages)
+    - sh messages templates list --channel=sms|email|wechat  # Message templates
+    - sh messages records --status=success|failed  # Send records
+    - sh messages stats --period=7d  # Message statistics
+
+## Time Period Selection Rules
+
+IMPORTANT: Choose the correct time period based on user's request:
+- "所有/全部/all/全量" (all data) -> use --period=all (NO date filter, queries ALL data!)
+- "今天/today" -> use --period=today
+- "本周/this week/近7天" -> use --period=7d
+- "本月/this month/近30天" -> use --period=30d
+- "季度/quarter/近90天" -> use --period=90d
+- "年度/全年/year/annual" -> use --period=365d
+- If user doesn't specify a time period, default to --period=all for comprehensive analysis
+- When user says "所有客户/所有订单/全部数据", ALWAYS use --period=all (NOT 30d or 365d!)
 
 ## Response Format Rules
 
@@ -136,7 +168,7 @@ Example: User says "generate channel analysis report daily at 8pm"
 - ID: daily-channel-report
 - Name: Daily Channel Analysis Report
 - Frequency: Daily 20:00
-- Command: sh analytics orders --by=channel && sh analytics report --title="Channel Analysis Report" --output=channel_report.html
+- Command: sh analytics orders --by=channel && sh skill run report-generator generate --topic="渠道分析报告" --output=Doc/channel_report.md --formats=all
 - Description: Auto-generate channel analysis report daily at 8pm
 - Insights: true
 [/SCHEDULE_TASK]
@@ -432,19 +464,41 @@ def extract_plan_steps(response: str) -> list[dict]:
 
 
 def execute_command(cmd: str) -> tuple[bool, str]:
-    """Execute a CLI command and return success status and output."""
+    """Execute a CLI command and return success status and output.
+
+    SECURITY: Only allows 'sh' commands (SocialHub CLI) to be executed.
+    Uses shell=False with argument list to prevent command injection.
+    """
+    import shlex
+
     python_exe = sys.executable
 
-    # Replace 'sh ' with full python path
-    if cmd.startswith("sh "):
-        full_cmd = cmd.replace("sh ", f'"{python_exe}" -m socialhub.cli.main ', 1)
-    else:
-        full_cmd = cmd
+    # SECURITY: Only allow 'sh ' commands (our own CLI)
+    if not cmd.startswith("sh "):
+        return False, "Only 'sh' commands are allowed for security reasons"
+
+    # Extract the command part after 'sh '
+    cli_args = cmd[3:].strip()  # Remove 'sh ' prefix
+
+    # SECURITY: Block dangerous shell characters
+    dangerous_chars = [';', '&&', '||', '|', '`', '$', '>', '<', '\n', '\r']
+    for char in dangerous_chars:
+        if char in cli_args:
+            return False, f"Invalid command: contains disallowed character '{char}'"
+
+    try:
+        # Parse arguments safely using shlex
+        args = shlex.split(cli_args)
+    except ValueError as e:
+        return False, f"Invalid command format: {e}"
+
+    # Build the full command as a list (shell=False)
+    full_cmd = [python_exe, "-m", "socialhub.cli.main"] + args
 
     try:
         result = subprocess.run(
             full_cmd,
-            shell=True,
+            shell=False,  # SECURITY: Never use shell=True
             capture_output=True,
             text=True,
             timeout=120,

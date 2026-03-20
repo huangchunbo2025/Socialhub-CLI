@@ -42,12 +42,31 @@ class AIConfig(BaseModel):
 
 
 class MCPConfig(BaseModel):
-    """MCP (Model Context Protocol) configuration."""
+    """MCP (Model Context Protocol) configuration.
 
-    sse_url: str = Field(default="http://135.232.192.121:8064/mcpgateway-prod/mcp/analytics-db/sse", description="MCP SSE endpoint")
-    post_url: str = Field(default="http://135.232.192.121:8064/mcpgateway-prod/mcp/analytics-db/message", description="MCP message endpoint")
-    tenant_id: str = Field(default="demoen", description="MCP tenant ID")
-    database: str = Field(default="das_demoen", description="Default database name")
+    SECURITY: These values can be overridden via environment variables:
+    - MCP_SSE_URL
+    - MCP_POST_URL
+    - MCP_TENANT_ID
+    - MCP_DATABASE
+    """
+
+    sse_url: str = Field(
+        default_factory=lambda: os.environ.get("MCP_SSE_URL", ""),
+        description="MCP SSE endpoint (or set MCP_SSE_URL env var)"
+    )
+    post_url: str = Field(
+        default_factory=lambda: os.environ.get("MCP_POST_URL", ""),
+        description="MCP message endpoint (or set MCP_POST_URL env var)"
+    )
+    tenant_id: str = Field(
+        default_factory=lambda: os.environ.get("MCP_TENANT_ID", ""),
+        description="MCP tenant ID (or set MCP_TENANT_ID env var)"
+    )
+    database: str = Field(
+        default_factory=lambda: os.environ.get("MCP_DATABASE", ""),
+        description="Default database name (or set MCP_DATABASE env var)"
+    )
 
 
 class Config(BaseModel):

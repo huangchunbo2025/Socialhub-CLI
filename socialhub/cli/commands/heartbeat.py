@@ -134,43 +134,48 @@ def should_run_task(task: dict, now: datetime, last_check: Optional[datetime] = 
 
 
 def execute_task(task: dict) -> tuple[bool, str]:
-    """Execute a task command."""
+    """Execute a task command.
+
+    SECURITY: Only allows 'sh' (SocialHub CLI) commands.
+    Uses shell=False with argument list to prevent command injection.
+    """
+    import shlex
+
     if "command" not in task:
         return False, "No command defined"
 
-    command = task["command"]
+    command = task["command"].strip()
 
-    # Get the path to socialhub executable (in Scripts folder on Windows)
-    scripts_dir = Path(sys.executable).parent / "Scripts"
-    if scripts_dir.exists():
-        socialhub_exe = scripts_dir / "socialhub.exe"
-    else:
-        socialhub_exe = Path(sys.executable).parent / "socialhub.exe"
-    if not socialhub_exe.exists():
-        socialhub_exe = Path(sys.executable).parent / "socialhub"
+    # SECURITY: Only allow 'sh ' commands
+    if not command.startswith("sh "):
+        return False, "Only 'sh' commands are allowed for security reasons"
 
-    # Quote path for Windows (use double quotes for paths with spaces)
-    exe_path = f'"{socialhub_exe}"'
+    # Extract the command part after 'sh '
+    cli_args = command[3:].strip()
 
-    # Replace all 'sh ' and 'socialhub ' with full path
-    # Simple string replacement to avoid regex escape issues
-    command = command.strip()
-    if command.startswith("sh "):
-        command = exe_path + command[2:]
-    command = command.replace("&& sh ", f"&& {exe_path} ")
-    command = command.replace("|| sh ", f"|| {exe_path} ")
-    if command.startswith("socialhub "):
-        command = exe_path + command[9:]
-    command = command.replace("&& socialhub ", f"&& {exe_path} ")
-    command = command.replace("|| socialhub ", f"|| {exe_path} ")
+    # SECURITY: Block dangerous shell characters (no chaining allowed)
+    dangerous_chars = [';', '&&', '||', '|', '`', '$', '>', '<', '\n', '\r']
+    for char in dangerous_chars:
+        if char in cli_args:
+            return False, f"Invalid command: contains disallowed character '{char}'"
+
+    try:
+        # Parse arguments safely using shlex
+        args = shlex.split(cli_args)
+    except ValueError as e:
+        return False, f"Invalid command format: {e}"
+
+    # Build the full command as a list
+    python_exe = sys.executable
+    full_cmd = [python_exe, "-m", "socialhub.cli.main"] + args
 
     try:
         console.print(f"\n[cyan]Executing: {task['command']}[/cyan]")
 
-        # Run the command
+        # Run the command with shell=False for security
         result = subprocess.run(
-            command,
-            shell=True,
+            full_cmd,
+            shell=False,  # SECURITY: Never use shell=True
             capture_output=True,
             text=True,
             timeout=300,  # 5 minute timeout
