@@ -34,14 +34,6 @@ review_status = sa.Enum("pending", "in_review", "approved", "rejected", name="re
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    developer_role.create(bind, checkfirst=True)
-    developer_status.create(bind, checkfirst=True)
-    skill_category.create(bind, checkfirst=True)
-    skill_status.create(bind, checkfirst=True)
-    version_status.create(bind, checkfirst=True)
-    review_status.create(bind, checkfirst=True)
-
     op.create_table(
         "developers",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -166,10 +158,3 @@ def downgrade() -> None:
     op.drop_index("idx_developers_role_status", table_name="developers")
     op.drop_table("developers")
 
-    bind = op.get_bind()
-    review_status.drop(bind, checkfirst=True)
-    version_status.drop(bind, checkfirst=True)
-    skill_status.drop(bind, checkfirst=True)
-    skill_category.drop(bind, checkfirst=True)
-    developer_status.drop(bind, checkfirst=True)
-    developer_role.drop(bind, checkfirst=True)
