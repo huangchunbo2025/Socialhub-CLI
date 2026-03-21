@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Portal - SocialHub.AI Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(180deg, #f7fbff 0%, #ffffff 34%); }
+        .portal-hero { position: relative; padding: 132px 0 112px; background: var(--primary); overflow: hidden; }
+        .portal-hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 18% 12%, rgba(0, 201, 167, 0.18), transparent 24%), radial-gradient(circle at 82% 16%, rgba(255, 255, 255, 0.08), transparent 28%), radial-gradient(circle at 56% 82%, rgba(74, 222, 128, 0.14), transparent 26%); }
+        .portal-hero-content { position: relative; max-width: 760px; color: white; }
+        .portal-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; margin-bottom: 18px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.92); font-size: 13px; font-weight: 700; }
+        .portal-hero h1 { font-size: 44px; line-height: 1.1; margin-bottom: 12px; }
+        .portal-hero p { font-size: 18px; color: rgba(255, 255, 255, 0.76); max-width: 620px; }
+        .hero-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 28px; }
+        .hero-chip { display: inline-flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.08); color: white; font-size: 14px; }
+        .portal-workspace { position: relative; margin-top: -62px; padding-bottom: 56px; }
+        .workspace-frame { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; align-items: start; }
+        .workspace-panel { background: white; border: 1px solid var(--border); border-radius: 28px; box-shadow: var(--shadow-xl); }
+        .portal-sidebar { position: sticky; top: 88px; padding: 22px; background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%); }
+        .profile-card { padding: 18px; border-radius: 20px; background: linear-gradient(135deg, rgba(18, 28, 61, 0.98), rgba(26, 42, 94, 0.95)); color: white; margin-bottom: 18px; }
+        .profile-card strong, .profile-card span { display: block; }
+        .profile-card span { color: rgba(255, 255, 255, 0.7); font-size: 13px; margin-top: 4px; }
+        .side-nav { display: grid; gap: 10px; }
+        .side-link { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: 16px; color: var(--text-secondary); font-weight: 700; border: 1px solid transparent; }
+        .side-link:hover, .side-link.active { color: var(--primary); background: rgba(0, 201, 167, 0.08); border-color: rgba(0, 201, 167, 0.18); }
+        .portal-main { padding: 30px; min-height: 720px; }
+        .page-topbar { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+        .page-topbar h2 { font-size: 30px; color: var(--primary); margin-bottom: 6px; }
+        .page-topbar p, .muted { color: var(--text-secondary); }
+        .role-indicator { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--primary); font-weight: 700; }
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-bottom: 24px; }
+        .metric-card, .content-card, .table-card, .drawer { border-radius: 24px; border: 1px solid var(--border); background: white; box-shadow: var(--shadow); }
+        .metric-card, .content-card, .drawer { padding: 24px; }
+        .metric-card h3 { color: var(--text-secondary); font-size: 14px; margin-bottom: 14px; }
+        .metric-card strong { display: block; font-size: 34px; line-height: 1; color: var(--primary); margin-bottom: 12px; }
+        .metric-card span { font-size: 14px; font-weight: 600; }
+        .good { color: var(--success); }
+        .warn { color: var(--warning); }
+        .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+        .section-head h3 { font-size: 22px; color: var(--primary); }
+        .timeline { display: grid; gap: 18px; }
+        .timeline-item { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 14px; align-items: start; }
+        .timeline-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); }
+        .timeline-time { color: var(--text-light); font-size: 13px; white-space: nowrap; }
+        .table-card { overflow: hidden; }
+        .table-card table { width: 100%; border-collapse: collapse; }
+        .table-card th, .table-card td { padding: 18px 20px; text-align: left; border-bottom: 1px solid var(--border-light); }
+        .table-card th { font-size: 13px; color: var(--text-secondary); background: var(--bg-secondary); }
+        .table-card tbody tr:hover { background: #fbfefe; }
+        .status-badge { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+        .status-badge::before { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--success); }
+        .status-badge.pending::before { background: var(--warning); }
+        .actions-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .link-btn { border: none; background: none; color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; font: inherit; }
+        .drawer { display: none; background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%); }
+        .drawer.active { display: block; }
+        .drawer-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; }
+        .drawer-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+        .drawer-head h3 { font-size: 24px; color: var(--primary); margin-bottom: 6px; }
+        .stack-list { display: grid; gap: 12px; }
+        .stack-item { padding: 14px 16px; border-radius: 18px; background: white; border: 1px solid var(--border); }
+        .stepper { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+        .step-btn { padding: 14px 16px; border-radius: 16px; border: 1px solid var(--border); background: white; font-weight: 700; color: var(--text-secondary); cursor: pointer; }
+        .step-btn.active { color: var(--primary); border-color: rgba(0, 201, 167, 0.26); box-shadow: 0 0 0 3px rgba(0, 201, 167, 0.12); }
+        .step-panel { display: none; }
+        .step-panel.active { display: block; }
+        .upload-zone { padding: 52px 24px; text-align: center; border: 2px dashed rgba(18, 28, 61, 0.14); border-radius: 24px; background: radial-gradient(circle at top, rgba(0, 201, 167, 0.1), transparent 34%), linear-gradient(180deg, #ffffff 0%, #f8fcfb 100%); }
+        .upload-zone h3 { margin: 14px 0 8px; font-size: 24px; color: var(--primary); }
+        .upload-state { margin-top: 18px; padding: 16px; border-radius: 18px; background: #effcf7; border: 1px solid rgba(16, 185, 129, 0.16); color: #0f766e; font-weight: 600; }
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+        .field { display: grid; gap: 8px; }
+        .field.full { grid-column: 1 / -1; }
+        .field label { color: var(--primary); font-weight: 700; }
+        .field input, .field select, .field textarea { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); font: inherit; background: white; }
+        .field textarea { min-height: 112px; resize: vertical; }
+        .chip-group { display: flex; flex-wrap: wrap; gap: 10px; }
+        .choice-chip { padding: 10px 12px; border-radius: 999px; background: var(--bg-secondary); border: 1px solid var(--border); font-size: 14px; }
+        .scan-alert { padding: 22px; margin-bottom: 16px; border-radius: 24px; background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.14); }
+        .scan-alert h3 { color: var(--error); margin-bottom: 8px; }
+        .scan-list, .settings-list { display: grid; gap: 12px; }
+        .scan-item { padding: 14px 16px; border-radius: 18px; border: 1px solid var(--border); background: white; }
+        .scan-item.warn { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.24); }
+        .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--border-light); }
+        .settings-row:last-child { border-bottom: 0; }
+        @media (max-width: 1180px) { .workspace-frame, .drawer-grid, .stats-grid, .form-grid { grid-template-columns: 1fr; } .portal-sidebar { position: static; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img"><span class="nav-divider">|</span><span class="nav-subtitle">Developer Portal</span></a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Store</a>
+                <a href="installed.html" class="nav-link">Installed</a>
+                <a href="developer-portal.html" class="nav-link active">Developer</a>
+                <a href="admin-portal.html" class="nav-link">Admin</a>
+                <a href="docs-center.html" class="nav-link">Docs</a>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-outline" onclick="window.location.href='account-profile.html'">Profile</button>
+                <button class="btn btn-primary" onclick="window.location.href='logout.html'">Sign out</button>
+            </div>
+        </div>
+    </nav>
+
+    <section class="portal-hero">
+        <div class="container">
+            <div class="portal-hero-content">
+                <div class="portal-badge">Developer Workspace</div>
+                <h1>Ship, review, and track every skill release in one place</h1>
+                <p>Use the same design language as the public store while managing package submissions, permission declarations, release notes, and scan feedback.</p>
+                <div class="hero-meta">
+                    <div class="hero-chip">Current developer: Alex Zhang</div>
+                    <div class="hero-chip">Pending reviews: 1</div>
+                    <div class="hero-chip">Total downloads: 28,450</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="portal-workspace">
+        <div class="container">
+            <div class="workspace-frame">
+                <aside class="workspace-panel portal-sidebar">
+                    <div class="profile-card">
+                        <strong>Alex Zhang</strong>
+                        <span>dev@example.com</span>
+                        <span style="margin-top:12px;">Developer trust tier: Level 4</span>
+                    </div>
+                    <nav class="side-nav">
+                        <a href="developer-portal.html" class="side-link" data-view="overview">Overview</a>
+                        <a href="developer-skills.html" class="side-link" data-view="skills">My Skills</a>
+                        <a href="developer-submit.html" class="side-link" data-view="submit">Submit Skill</a>
+                        <a href="developer-settings.html" class="side-link" data-view="settings">Account Settings</a>
+                    </nav>
+                </aside>
+
+                <main class="workspace-panel portal-main">
+                    <div class="page-topbar">
+                        <div>
+                            <h2 id="pageHeading">Overview</h2>
+                            <p id="pageIntro">Review release health, recent downloads, and the latest review feedback across your published skills.</p>
+                        </div>
+                        <div class="role-indicator">Role: Developer</div>
+                    </div>
+
+                    <section class="view-panel active" data-panel="overview">
+                        <div class="stats-grid">
+                            <article class="metric-card"><h3>Published skills</h3><strong>3</strong><span class="good">Up 1 this month</span></article>
+                            <article class="metric-card"><h3>Total downloads</h3><strong>28,450</strong><span class="good">+3,200 this month</span></article>
+                            <article class="metric-card"><h3>Pending reviews</h3><strong>1</strong><span class="warn">Waiting for platform review</span></article>
+                        </div>
+                        <article class="content-card">
+                            <div class="section-head"><h3>Recent activity</h3><span>Last 10 days</span></div>
+                            <div class="timeline">
+                                <div class="timeline-item"><div class="timeline-icon">OK</div><div><strong>wechat-analytics v2.1.0</strong><p class="muted">Approved and published to the store.</p></div><div class="timeline-time">2 days ago</div></div>
+                                <div class="timeline-item"><div class="timeline-icon">IN</div><div><strong>data-export-plus v1.3.0</strong><p class="muted">Submitted and waiting for review.</p></div><div class="timeline-time">3 days ago</div></div>
+                                <div class="timeline-item"><div class="timeline-icon">OK</div><div><strong>report-generator v1.0.0</strong><p class="muted">Certified release issued after scan completion.</p></div><div class="timeline-time">7 days ago</div></div>
+                                <div class="timeline-item"><div class="timeline-icon">NO</div><div><strong>campaign-optimizer v1.2.0</strong><p class="muted">Rejected because the package called <code>eval()</code>.</p></div><div class="timeline-time">10 days ago</div></div>
+                            </div>
+                        </article>
+                    </section>
+
+                    <section class="view-panel" data-panel="skills">
+                        <div class="drawer-grid">
+                            <article class="table-card">
+                                <table>
+                                    <thead>
+                                        <tr><th>Skill</th><th>Category</th><th>Latest version</th><th>Status</th><th>Downloads</th><th>Actions</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>WeChat Analytics</td><td>analytics</td><td>v2.1.0</td><td><span class="status-badge">Published</span></td><td>28,450</td><td><div class="actions-row"><button class="link-btn detail-trigger" data-skill="wechat">Details</button><a class="link-btn" href="developer-submit.html">Submit update</a></div></td></tr>
+                                        <tr><td>Advanced Data Export</td><td>data</td><td>v1.2.0</td><td><span class="status-badge">Published</span></td><td>15,680</td><td><div class="actions-row"><button class="link-btn detail-trigger" data-skill="export">Details</button><a class="link-btn" href="developer-submit.html">Submit update</a></div></td></tr>
+                                        <tr><td>Campaign Optimizer</td><td>marketing</td><td>v1.3.0</td><td><span class="status-badge pending">In review</span></td><td>8,920</td><td><div class="actions-row"><button class="link-btn detail-trigger" data-skill="campaign">Details</button></div></td></tr>
+                                    </tbody>
+                                </table>
+                            </article>
+                            <aside class="drawer" id="skillDrawer">
+                                <div class="drawer-head">
+                                    <div>
+                                        <h3 id="drawerTitle">WeChat Analytics</h3>
+                                        <div class="muted" id="drawerDesc">Behavior analytics, funnel visibility, and message interaction insight for WeChat channels.</div>
+                                    </div>
+                                    <button class="btn btn-outline btn-sm" id="drawerClose">Close</button>
+                                </div>
+                                <div class="muted" id="drawerMeta" style="margin-bottom:16px;">analytics | wechat, analytics, funnel</div>
+                                <div class="section-head"><h3 style="font-size:18px;">Version history</h3><span>Most recent releases</span></div>
+                                <div class="stack-list" id="versionList"></div>
+                                <div class="section-head" style="margin-top:18px;"><h3 style="font-size:18px;">Permissions</h3><span>Runtime declarations</span></div>
+                                <div class="stack-list" id="permissionList"></div>
+                            </aside>
+                        </div>
+                    </section>
+
+                    <section class="view-panel" data-panel="submit">
+                        <article class="content-card">
+                            <div class="stepper">
+                                <button class="step-btn active" data-step="1">Step 1 Upload package</button>
+                                <button class="step-btn" data-step="2">Step 2 Confirm metadata</button>
+                                <button class="step-btn" data-step="3">Step 3 Review scan</button>
+                            </div>
+
+                            <div class="step-panel active" data-step-panel="1">
+                                <div class="upload-zone">
+                                    <h3>Drop a <code>.zip</code> package here</h3>
+                                    <p>Accepted format: zip only, up to 50 MB, with a valid <code>skill.yaml</code>.</p>
+                                    <button class="btn btn-primary" id="mockUpload" style="margin-top:18px;">Simulate upload</button>
+                                    <div class="upload-state">report-generator-1.0.0.zip | 42 KB | manifest parsed successfully</div>
+                                </div>
+                            </div>
+
+                            <div class="step-panel" data-step-panel="2">
+                                <div class="form-grid">
+                                    <div class="field"><label>Display name</label><input value="Business Report Generator"></div>
+                                    <div class="field"><label>Category</label><select><option>analytics</option><option>data</option><option>marketing</option><option>integration</option><option>utility</option></select></div>
+                                    <div class="field full"><label>Description</label><textarea>Generate polished business reports with KPI summaries, insight blocks, and executive-ready exports.</textarea></div>
+                                    <div class="field full"><label>Tags</label><div class="chip-group"><span class="choice-chip">report</span><span class="choice-chip">analytics</span><span class="choice-chip">summary</span></div></div>
+                                    <div class="field full"><label>Permission declaration</label><div class="chip-group"><span class="choice-chip">file:write</span><span class="choice-chip">data:read</span><span class="choice-chip">network:internet</span><span class="choice-chip">execute</span></div></div>
+                                    <div class="field full"><label>Release notes</label><textarea>Added executive dashboard output and improved markdown export formatting.</textarea></div>
+                                </div>
+                            </div>
+
+                            <div class="step-panel" data-step-panel="3">
+                                <div class="scan-alert">
+                                    <h3>Package requires changes before submission</h3>
+                                    <p class="muted">Static scan reviewed 5 files and found 1 blocking issue with 1 warning.</p>
+                                </div>
+                                <div class="scan-list">
+                                    <div class="scan-item">Error | main.py line 23 | <code>eval()</code> usage detected by the sandbox scanner.</div>
+                                    <div class="scan-item warn">Warning | utils.py line 8 | <code>socket</code> import detected but network permission was not declared.</div>
+                                </div>
+                                <div style="display:flex;gap:12px;margin-top:18px;">
+                                    <button class="btn btn-outline" data-jump="2">Back to metadata</button>
+                                    <button class="btn btn-primary">Save draft</button>
+                                </div>
+                            </div>
+                        </article>
+                    </section>
+
+                    <section class="view-panel" data-panel="settings">
+                        <article class="content-card">
+                            <div class="section-head"><h3>Account settings</h3><button class="btn btn-primary">Save changes</button></div>
+                            <div class="settings-list">
+                                <div class="settings-row"><div><strong>Developer name</strong><div class="muted">Alex Zhang</div></div><button class="btn btn-outline btn-sm">Edit</button></div>
+                                <div class="settings-row"><div><strong>Contact email</strong><div class="muted">dev@example.com</div></div><button class="btn btn-outline btn-sm">Update email</button></div>
+                                <div class="settings-row"><div><strong>API key</strong><div class="muted">Last rotated on 2026-03-18 for release automation workflows.</div></div><button class="btn btn-outline btn-sm">Rotate key</button></div>
+                                <div class="settings-row"><div><strong>Webhook notifications</strong><div class="muted">Review approved, rejected, and certificate-issued events are enabled.</div></div><button class="btn btn-outline btn-sm">Manage webhooks</button></div>
+                            </div>
+                        </article>
+                    </section>
+                </main>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <a href="index.html" class="footer-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img-footer"></a>
+                    <p class="footer-tagline">One Skills Store system across storefront, developer workflow, account, and admin operations.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column"><h4>Store</h4><a href="index.html">Public Store</a><a href="installed.html">Installed</a><a href="login.html">Sign in</a><a href="register.html">Register</a></div>
+                    <div class="footer-column"><h4>Developer</h4><a href="developer-portal.html">Overview</a><a href="developer-skills.html">My Skills</a><a href="developer-submit.html">Submit Skill</a><a href="developer-settings.html">Account Settings</a></div>
+                    <div class="footer-column"><h4>Admin</h4><a href="admin-portal.html">Review Queue</a><a href="admin-certificates.html">Certificates</a><a href="admin-catalog.html">Catalog</a><a href="admin-stats.html">Stats</a></div>
+                    <div class="footer-column"><h4>Account</h4><a href="account-profile.html">Profile</a><a href="logout.html">Sign out</a><a href="docs-center.html">Docs Center</a><a href="register.html">Create account</a></div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <div class="footer-badges"><span class="badge">RELEASED</span><span class="badge">CERTIFIED</span><span class="badge">TRACEABLE</span></div>
+                <p class="copyright">(c) 2024 SocialHub.AI. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const pageMeta = {
+            overview: ["Overview", "Review release health, recent downloads, and the latest review feedback across your published skills.", "Developer Portal - SocialHub.AI Skills Store"],
+            skills: ["My Skills", "Inspect release history, permission declarations, and performance across your published catalog.", "My Skills - SocialHub.AI Skills Store"],
+            submit: ["Submit Skill", "Upload a package, confirm metadata, and inspect scanner feedback before sending a release for review.", "Submit Skill - SocialHub.AI Skills Store"],
+            settings: ["Account Settings", "Manage developer identity, automation keys, and notification controls from one page.", "Account Settings - SocialHub.AI Skills Store"]
+        };
+
+        const drawerData = {
+            wechat: {
+                title: "WeChat Analytics",
+                desc: "Behavior analytics, funnel visibility, and message interaction insight for WeChat channels.",
+                meta: "analytics | wechat, analytics, funnel",
+                versions: [
+                    "v2.1.0 | published on 2026-02-10 | 12,300 installs",
+                    "v2.0.0 | published on 2025-11-01 | 8,150 installs",
+                    "v1.9.0 | rejected on 2025-09-15 | embedded API key in source"
+                ],
+                permissions: [
+                    "data:read | reads customer interaction data",
+                    "network:internet | connects to external reporting endpoints"
+                ]
+            },
+            export: {
+                title: "Advanced Data Export",
+                desc: "Flexible data export workflows with batch delivery and multiple target formats.",
+                meta: "data | export, parquet, batch",
+                versions: [
+                    "v1.2.0 | published on 2026-01-26 | 9,680 installs",
+                    "v1.1.0 | published on 2025-10-08 | 6,000 installs",
+                    "v1.0.0 | published on 2025-08-19 | 3,420 installs"
+                ],
+                permissions: [
+                    "data:read | accesses customer datasets for export jobs",
+                    "file:write | creates local export files"
+                ]
+            },
+            campaign: {
+                title: "Campaign Optimizer",
+                desc: "Optimization recommendations built from historical ad and engagement performance.",
+                meta: "marketing | campaign, optimization, ai",
+                versions: [
+                    "v1.3.0 | in review since 2026-03-18 | 8,920 installs",
+                    "v1.2.0 | rejected on 2026-03-11 | eval() call detected",
+                    "v1.1.0 | published on 2025-12-20 | 6,410 installs"
+                ],
+                permissions: [
+                    "data:read | reads historical campaign metrics",
+                    "network:internet | reaches remote optimization services"
+                ]
+            }
+        };
+
+        const pageByFile = {
+            "developer-portal.html": "overview",
+            "developer-skills.html": "skills",
+            "developer-submit.html": "submit",
+            "developer-settings.html": "settings"
+        };
+
+        const currentPage = pageByFile[window.location.pathname.split("/").pop()] || "overview";
+        document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item.dataset.view === currentPage));
+        document.querySelectorAll(".view-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === currentPage));
+        document.getElementById("pageHeading").textContent = pageMeta[currentPage][0];
+        document.getElementById("pageIntro").textContent = pageMeta[currentPage][1];
+        document.title = pageMeta[currentPage][2];
+
+        const drawer = document.getElementById("skillDrawer");
+        document.querySelectorAll(".detail-trigger").forEach((button) => {
+            button.addEventListener("click", () => {
+                const data = drawerData[button.dataset.skill];
+                document.getElementById("drawerTitle").textContent = data.title;
+                document.getElementById("drawerDesc").textContent = data.desc;
+                document.getElementById("drawerMeta").textContent = data.meta;
+                document.getElementById("versionList").innerHTML = data.versions.map((item) => `<div class="stack-item">${item}</div>`).join("");
+                document.getElementById("permissionList").innerHTML = data.permissions.map((item) => `<div class="stack-item">${item}</div>`).join("");
+                drawer.classList.add("active");
+            });
+        });
+        document.getElementById("drawerClose").addEventListener("click", () => drawer.classList.remove("active"));
+
+        const stepButtons = document.querySelectorAll(".step-btn");
+        const stepPanels = document.querySelectorAll(".step-panel");
+        function activateStep(step) {
+            stepButtons.forEach((button) => button.classList.toggle("active", button.dataset.step === step));
+            stepPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.stepPanel === step));
+        }
+        stepButtons.forEach((button) => button.addEventListener("click", () => activateStep(button.dataset.step)));
+        document.getElementById("mockUpload").addEventListener("click", () => activateStep("2"));
+        document.querySelector("[data-jump='2']").addEventListener("click", () => activateStep("2"));
+    </script>
+</body>
+</html>

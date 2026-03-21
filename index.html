@@ -1,0 +1,87 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skills Store - SocialHub.AI</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img"><span class="nav-divider">|</span><span class="nav-subtitle">Skills Store</span></a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link active">Store</a>
+        <a href="installed.html" class="nav-link">Installed</a>
+        <a href="developer-portal.html" class="nav-link">Developer</a>
+        <a href="admin-portal.html" class="nav-link">Admin</a>
+        <a href="docs-center.html" class="nav-link">Docs</a>
+      </div>
+      <div class="nav-actions">
+        <button class="btn btn-outline" id="cliBtn">Install CLI</button>
+        <button class="btn btn-primary" id="loginBtn" onclick="window.location.href='login.html'">Sign in</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-badge"><span class="badge-icon">OK</span>Officially Certified Skills</div>
+        <h1 class="hero-title">Extend your <span class="text-gradient">SocialHub</span> capabilities</h1>
+        <p class="hero-subtitle">Discover and install officially certified skill plugins to expand your customer engagement platform.</p>
+        <div class="hero-search">
+          <input type="text" id="searchInput" placeholder="Search skills..." autocomplete="off">
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-item"><span class="stat-number">8</span><span class="stat-label">Official skills</span></div>
+          <div class="stat-divider"></div>
+          <div class="stat-item"><span class="stat-number">50K+</span><span class="stat-label">Total downloads</span></div>
+          <div class="stat-divider"></div>
+          <div class="stat-item"><span class="stat-number">100%</span><span class="stat-label">Security verified</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="categories">
+    <div class="container">
+      <div class="category-tabs" id="categoryTabs">
+        <button class="category-tab active" data-category="all">All</button>
+        <button class="category-tab" data-category="data">Data</button>
+        <button class="category-tab" data-category="analytics">Analytics</button>
+        <button class="category-tab" data-category="marketing">Marketing</button>
+        <button class="category-tab" data-category="integration">Integration</button>
+        <button class="category-tab" data-category="utility">Utilities</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="skills-section">
+    <div class="container">
+      <div class="skills-header">
+        <h2 class="section-title">Featured Skills</h2>
+        <div class="skills-sort">
+          <select id="sortSelect">
+            <option value="downloads">By downloads</option>
+            <option value="rating">By rating</option>
+            <option value="newest">Newest</option>
+          </select>
+        </div>
+      </div>
+      <div class="skills-grid" id="skillsGrid"></div>
+    </div>
+  </section>
+
+  <div class="modal" id="skillModal"><div class="modal-overlay"></div><div class="modal-content"><button class="modal-close" id="modalClose">x</button><div class="modal-body" id="modalBody"></div></div></div>
+  <div class="modal" id="cliModal"><div class="modal-overlay"></div><div class="modal-content modal-sm"><button class="modal-close" id="cliModalClose">x</button><div class="modal-body"><div class="cli-install-header"><h3>Install skills via CLI</h3></div><p class="cli-description">Use the SocialHub CLI to install and manage skills.</p><div class="cli-steps"><div class="cli-step"><span class="step-number">1</span><div class="step-content"><h4>Install CLI</h4><div class="code-block"><code>pip install socialhub-cli</code><button class="copy-btn" data-code="pip install socialhub-cli">Copy</button></div></div></div><div class="cli-step"><span class="step-number">2</span><div class="step-content"><h4>Browse the store</h4><div class="code-block"><code>sh skills browse</code><button class="copy-btn" data-code="sh skills browse">Copy</button></div></div></div><div class="cli-step"><span class="step-number">3</span><div class="step-content"><h4>Install a skill</h4><div class="code-block"><code>sh skills install &lt;skill-name&gt;</code><button class="copy-btn" data-code="sh skills install &lt;skill-name&gt;">Copy</button></div></div></div></div><a href="https://github.com/huangchunbo2025/Socialhub-CLI" class="btn btn-primary btn-block" target="_blank">View GitHub Repository</a></div></div></div>
+
+  <footer class="footer"><div class="container"><div class="footer-content"><div class="footer-brand"><a href="index.html" class="footer-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img-footer"></a><p class="footer-tagline">One Skills Store system across storefront, developer workflow, account, and admin operations.</p></div><div class="footer-links"><div class="footer-column"><h4>Store</h4><a href="index.html">Public Store</a><a href="installed.html">Installed</a><a href="login.html">Sign in</a><a href="register.html">Register</a></div><div class="footer-column"><h4>Developer</h4><a href="developer-portal.html">Overview</a><a href="developer-skills.html">My Skills</a><a href="developer-submit.html">Submit Skill</a><a href="developer-settings.html">Account Settings</a></div><div class="footer-column"><h4>Admin</h4><a href="admin-portal.html">Review Queue</a><a href="admin-certificates.html">Certificates</a><a href="admin-catalog.html">Catalog</a><a href="admin-stats.html">Stats</a></div><div class="footer-column"><h4>Account</h4><a href="account-profile.html">Profile</a><a href="logout.html">Sign out</a><a href="docs-center.html">Docs Center</a><a href="register.html">Create account</a></div></div></div><div class="footer-bottom"><div class="footer-badges"><span class="badge">CERTIFIED</span><span class="badge">SANDBOXED</span><span class="badge">TRACEABLE</span></div><p class="copyright">(c) 2024 SocialHub.AI. All rights reserved.</p></div></div></footer>
+  <script src="app.js"></script>
+</body>
+</html>
