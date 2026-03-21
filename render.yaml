@@ -4,7 +4,6 @@ services:
     runtime: python
     rootDir: skills-store
     buildCommand: pip install -e .
-    preDeployCommand: python -m alembic upgrade head
     startCommand: bash ./start.sh
     healthCheckPath: /health
     plan: free
