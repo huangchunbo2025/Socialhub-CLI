@@ -3,6 +3,19 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _normalize_database_url(url: str, driver: str) -> str:
+    normalized = url.strip()
+    if normalized.startswith("postgres://"):
+        normalized = normalized.replace("postgres://", f"postgresql+{driver}://", 1)
+    elif normalized.startswith("postgresql+asyncpg://"):
+        normalized = normalized.replace("postgresql+asyncpg://", f"postgresql+{driver}://", 1)
+    elif normalized.startswith("postgresql+psycopg://"):
+        normalized = normalized.replace("postgresql+psycopg://", f"postgresql+{driver}://", 1)
+    elif normalized.startswith("postgresql://"):
+        normalized = normalized.replace("postgresql://", f"postgresql+{driver}://", 1)
+    return normalized
+
+
 class Settings(BaseSettings):
     app_env: str = "development"
     app_host: str = "0.0.0.0"
@@ -24,7 +37,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-
-if settings.alembic_database_url == "postgresql+psycopg://postgres:postgres@localhost:5432/skills_store":
-    settings.alembic_database_url = settings.database_url.replace("+asyncpg", "+psycopg", 1)
+settings.database_url = _normalize_database_url(settings.database_url, "asyncpg")
+default_sync_url = "postgresql+psycopg://postgres:postgres@localhost:5432/skills_store"
+if settings.alembic_database_url == default_sync_url:
+    settings.alembic_database_url = settings.database_url
+settings.alembic_database_url = _normalize_database_url(settings.alembic_database_url, "psycopg")
