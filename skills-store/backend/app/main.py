@@ -3,7 +3,11 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
+from sqlalchemy import create_engine
 
+from .config import settings
+from .models import developer, skill, skill_certification, skill_review, skill_version  # noqa: F401
+from .models.base import Base
 from .routers import admin, auth, developer, public
 
 app = FastAPI(title="Skills Store MVP", version="0.1.0")
@@ -15,9 +19,18 @@ def run_startup_migrations() -> None:
     command.upgrade(config, "head")
 
 
+def ensure_schema() -> None:
+    engine = create_engine(settings.alembic_database_url)
+    try:
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    finally:
+        engine.dispose()
+
+
 @app.on_event("startup")
 async def startup() -> None:
     run_startup_migrations()
+    ensure_schema()
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(public.router, prefix="/api/v1")
