@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - SocialHub.AI Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(180deg, #f7f9fd 0%, #ffffff 34%); }
+        .portal-hero { position: relative; padding: 132px 0 112px; background: var(--primary); overflow: hidden; }
+        .portal-hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 16% 12%, rgba(0, 201, 167, 0.18), transparent 20%), radial-gradient(circle at 84% 18%, rgba(255, 255, 255, 0.09), transparent 26%), radial-gradient(circle at 62% 82%, rgba(74, 222, 128, 0.14), transparent 22%); }
+        .portal-hero-content { position: relative; max-width: 780px; color: white; }
+        .portal-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; margin-bottom: 18px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.92); font-size: 13px; font-weight: 700; }
+        .portal-hero h1 { font-size: 44px; line-height: 1.12; margin-bottom: 12px; }
+        .portal-hero p { font-size: 18px; color: rgba(255, 255, 255, 0.76); }
+        .hero-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 28px; }
+        .hero-chip { display: inline-flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: white; font-size: 14px; }
+        .portal-workspace { position: relative; margin-top: -62px; padding-bottom: 56px; }
+        .workspace-frame { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; align-items: start; }
+        .workspace-panel { background: white; border: 1px solid var(--border); border-radius: 28px; box-shadow: var(--shadow-xl); }
+        .portal-sidebar { position: sticky; top: 88px; padding: 22px; background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%); }
+        .admin-card { padding: 18px; margin-bottom: 18px; border-radius: 20px; background: linear-gradient(135deg, rgba(18, 28, 61, 0.98), rgba(26, 42, 94, 0.95)); color: white; }
+        .admin-card strong, .admin-card span { display: block; }
+        .admin-card span { margin-top: 4px; color: rgba(255, 255, 255, 0.72); font-size: 13px; }
+        .side-nav { display: grid; gap: 10px; }
+        .side-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 14px; border-radius: 16px; color: var(--text-secondary); font-weight: 700; border: 1px solid transparent; }
+        .side-link:hover, .side-link.active { color: var(--primary); background: rgba(0, 201, 167, 0.08); border-color: rgba(0, 201, 167, 0.18); }
+        .side-count { min-width: 28px; padding: 4px 8px; border-radius: 999px; text-align: center; background: rgba(0, 201, 167, 0.16); color: var(--accent); font-size: 12px; }
+        .portal-main { padding: 30px; min-height: 760px; }
+        .page-topbar { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+        .page-topbar h2 { font-size: 30px; color: var(--primary); margin-bottom: 6px; }
+        .page-topbar p, .muted { color: var(--text-secondary); }
+        .role-indicator { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--primary); font-weight: 700; }
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-bottom: 22px; }
+        .metric-card, .tile-card, .content-card, .queue-card, .detail-panel { border-radius: 24px; border: 1px solid var(--border); background: white; box-shadow: var(--shadow); }
+        .metric-card, .tile-card { padding: 24px; }
+        .metric-card strong, .tile-card strong { display: block; font-size: 32px; color: var(--primary); margin-bottom: 8px; }
+        .review-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+        .review-grid.detail-open { grid-template-columns: minmax(0, 1fr) 400px; }
+        .queue-stack { display: grid; gap: 18px; }
+        .queue-card { padding: 24px; }
+        .queue-card h3 { color: var(--primary); font-size: 22px; margin-bottom: 10px; }
+        .scan-pill { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 999px; background: var(--bg-secondary); border: 1px solid var(--border); font-weight: 600; }
+        .detail-panel { display: none; padding: 24px; }
+        .detail-panel.active { display: block; }
+        .panel-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+        .panel-head h3 { color: var(--primary); font-size: 24px; margin-bottom: 6px; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+        .tab-btn { padding: 10px 14px; border-radius: 999px; border: 1px solid var(--border); background: white; color: var(--text-secondary); font-weight: 700; cursor: pointer; }
+        .tab-btn.active { color: var(--primary); border-color: rgba(0, 201, 167, 0.24); box-shadow: 0 0 0 3px rgba(0, 201, 167, 0.12); }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .stack-list { display: grid; gap: 12px; }
+        .stack-item { padding: 14px 16px; border-radius: 18px; background: var(--bg-secondary); border: 1px solid var(--border); }
+        .approval-box { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+        .approval-box label { display: block; color: var(--primary); font-weight: 700; margin-bottom: 8px; }
+        .approval-box textarea, .toolbar input { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); font: inherit; }
+        .approval-box textarea { min-height: 110px; resize: vertical; margin-bottom: 14px; }
+        .toolbar { display: flex; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .filter-chip { display: inline-flex; align-items: center; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); font-weight: 700; cursor: pointer; }
+        .filter-chip.active { background: rgba(0, 201, 167, 0.08); border-color: rgba(0, 201, 167, 0.24); color: var(--primary); }
+        .table-card { overflow: hidden; border-radius: 24px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+        .table-card table { width: 100%; border-collapse: collapse; }
+        .table-card th, .table-card td { padding: 18px 20px; border-bottom: 1px solid var(--border-light); text-align: left; }
+        .table-card th { font-size: 13px; color: var(--text-secondary); background: var(--bg-secondary); }
+        .status-badge { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+        .status-badge::before { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--success); }
+        .status-badge.revoked::before { background: var(--text-light); }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-bottom: 22px; }
+        .charts-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px; }
+        .content-card { padding: 24px; }
+        .content-card h3 { color: var(--primary); font-size: 22px; }
+        .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+        .line-chart { width: 100%; height: 260px; border-radius: 18px; background: linear-gradient(180deg, rgba(18, 28, 61, 0.03), rgba(0, 201, 167, 0.06)); border: 1px solid var(--border-light); padding: 18px; }
+        .bars { display: grid; gap: 16px; }
+        .bar-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 48px; gap: 14px; align-items: center; }
+        .bar-track { height: 12px; border-radius: 999px; background: var(--bg-secondary); overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 999px; background: var(--accent-gradient); }
+        @media (max-width: 1180px) { .workspace-frame, .review-grid.detail-open, .charts-grid, .dashboard-grid, .stats-grid { grid-template-columns: 1fr; } .portal-sidebar { position: static; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img"><span class="nav-divider">|</span><span class="nav-subtitle">Admin Portal</span></a>
+            <div class="nav-links"><a href="index.html" class="nav-link">商店</a><a href="installed.html" class="nav-link">已安装</a><a href="developer-portal.html" class="nav-link">开发者</a><a href="admin-portal.html" class="nav-link active">管理员</a></div>
+            <div class="nav-actions"><button class="btn btn-outline" onclick="window.location.href='account-profile.html'">个人信息</button><button class="btn btn-primary" onclick="window.location.href='logout.html'">注销</button></div>
+        </div>
+    </nav>
+    <section class="portal-hero">
+        <div class="container"><div class="portal-hero-content"><div class="portal-badge">Platform Control Center</div><h1>把审核、证书和目录运营，放回同一套 Skills Store 视觉体系</h1><p>管理后台不再像另一套产品，而是直接延续公开商店的颜色、阴影、节奏和组件语言，只是信息密度更高。</p><div class="hero-meta"><div class="hero-chip">当前管理员：李静 / admin@socialhub.ai</div><div class="hero-chip">待审核：2</div><div class="hero-chip">本月已审核：15</div></div></div></div>
+    </section>
+    <section class="portal-workspace">
+        <div class="container">
+            <div class="workspace-frame">
+                <aside class="workspace-panel portal-sidebar"><div class="admin-card"><strong>李静</strong><span>admin@socialhub.ai</span><span style="margin-top:12px;">平台管理员 / 证书签发权限</span></div><nav class="side-nav"><a href="admin-portal.html" class="side-link" data-view="queue">审核队列 <span class="side-count">2</span></a><a href="admin-certificates.html" class="side-link" data-view="certs">证书管理</a><a href="admin-catalog.html" class="side-link" data-view="catalog">技能目录</a><a href="admin-stats.html" class="side-link" data-view="stats">统计数据</a></nav></aside>
+                <main class="workspace-panel portal-main">
+                    <div class="page-topbar"><div><h2 id="pageHeading">审核队列</h2><p id="pageIntro">处理待审核技能版本、查看扫描报告并完成证书颁发。</p></div><div class="role-indicator">当前角色：管理员</div></div>
+                    <section class="view-panel active" data-panel="queue">
+                        <div class="stats-grid"><article class="metric-card"><strong>2</strong><span>待审核</span></article><article class="metric-card"><strong>15</strong><span>本月已审核</span></article><article class="metric-card"><strong>1.2天</strong><span>平均处理时间</span></article></div>
+                        <div class="review-grid" id="reviewGrid"><div class="queue-stack"><article class="queue-card"><h3>营销活动优化器 v1.3.0</h3><div class="muted">张伟 / dev@example.com · 3天前提交</div><div class="scan-pill">✅ 扫描通过，0个问题，共扫描 8 个文件</div><div style="margin-top:16px;"><button class="btn btn-primary detail-trigger" data-review="optimizer">查看详情 →</button></div></article><article class="queue-card"><h3>客户画像增强 v2.0.0</h3><div class="muted">李明 / liming@dev.com · 1天前提交</div><div class="scan-pill">⚠️ 1个警告（使用了 socket 但未声明网络权限）</div><div style="margin-top:16px;"><button class="btn btn-primary detail-trigger" data-review="portrait">查看详情 →</button></div></article></div><aside class="detail-panel" id="detailPanel"><div class="panel-head"><div><h3 id="detailTitle">营销活动优化器 v1.3.0</h3><div class="muted" id="detailMeta">营销 · 张伟提交</div></div><button class="btn btn-outline btn-sm" id="detailClose">关闭</button></div><div class="tabs"><button class="tab-btn active" data-tab="info">技能信息</button><button class="tab-btn" data-tab="scan">扫描报告</button><button class="tab-btn" data-tab="perm">权限声明</button></div><div class="tab-panel active" data-tab-panel="info" id="infoPanel"></div><div class="tab-panel" data-tab-panel="scan" id="scanPanel"></div><div class="tab-panel" data-tab-panel="perm" id="permPanel"></div><div class="approval-box"><label for="reviewNote">审核意见</label><textarea id="reviewNote" placeholder="填写审核意见，批准时可留空"></textarea><div style="display:flex;gap:12px;flex-wrap:wrap;"><button class="btn btn-primary" id="approveBtn">✅ 批准上架</button><button class="btn" style="background:var(--error);color:white;">❌ 拒绝</button></div></div></aside></div>
+                    </section>
+                    <section class="view-panel" data-panel="certs">
+                        <div class="table-card"><div class="toolbar"><input type="text" value="CERT-2026" aria-label="搜索证书"><button class="filter-chip active">全部</button><button class="filter-chip">有效</button><button class="filter-chip">已吊销</button></div><table><thead><tr><th>证书编号</th><th>技能名称</th><th>版本</th><th>颁发时间</th><th>过期时间</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td>CERT-2026-00041</td><td>微信数据分析</td><td>v2.1.0</td><td>2026-03-19</td><td>2028-03-19</td><td><span class="status-badge">有效</span></td><td><button class="btn btn-outline btn-sm revoke-trigger" data-cert="CERT-2026-00041" data-skill="微信数据分析 v2.1.0">吊销</button></td></tr><tr><td>CERT-2026-00040</td><td>高级数据导出</td><td>v1.2.0</td><td>2026-03-15</td><td>2028-03-15</td><td><span class="status-badge">有效</span></td><td><button class="btn btn-outline btn-sm revoke-trigger" data-cert="CERT-2026-00040" data-skill="高级数据导出 v1.2.0">吊销</button></td></tr><tr><td>CERT-2026-00038</td><td>报告生成器</td><td>v1.0.0</td><td>2026-03-10</td><td>2028-03-10</td><td><span class="status-badge">有效</span></td><td><button class="btn btn-outline btn-sm revoke-trigger" data-cert="CERT-2026-00038" data-skill="报告生成器 v1.0.0">吊销</button></td></tr><tr><td>CERT-2025-00021</td><td>旧版导出工具</td><td>v0.9.0</td><td>2025-06-01</td><td>2027-06-01</td><td><span class="status-badge revoked">已吊销</span></td><td>—</td></tr></tbody></table></div>
+                    </section>
+                    <section class="view-panel" data-panel="catalog">
+                        <div class="table-card"><div class="toolbar" style="justify-content:space-between;"><div><h3 style="color:var(--primary);font-size:22px;">技能目录</h3><div class="muted">查看平台已发布技能与认证状态</div></div><button class="btn btn-primary">新增精选推荐</button></div><table><thead><tr><th>技能</th><th>分类</th><th>最新版本</th><th>开发者</th><th>下载量</th><th>状态</th></tr></thead><tbody><tr><td>微信数据分析</td><td>analytics</td><td>v2.1.0</td><td>张伟</td><td>28,450</td><td><span class="status-badge">已发布</span></td></tr><tr><td>高级数据导出</td><td>data</td><td>v1.2.0</td><td>张伟</td><td>15,680</td><td><span class="status-badge">已发布</span></td></tr><tr><td>报告生成器</td><td>utility</td><td>v1.0.0</td><td>SocialHub Official</td><td>21,000</td><td><span class="status-badge">已发布</span></td></tr><tr><td>旧版导出工具</td><td>data</td><td>v0.9.0</td><td>王晨</td><td>3,200</td><td><span class="status-badge revoked">已吊销</span></td></tr></tbody></table></div>
+                    </section>
+                    <section class="view-panel" data-panel="stats">
+                        <div class="dashboard-grid"><article class="tile-card"><strong>24</strong><span>总技能数</span></article><article class="tile-card"><strong>158,430</strong><span>总下载量</span></article><article class="tile-card"><strong>3</strong><span>本月新增</span></article><article class="tile-card"><strong>2</strong><span>待审核</span></article></div>
+                        <div class="charts-grid"><article class="content-card"><div class="section-head"><h3>近 30 天下载量</h3><span class="muted">纯 SVG 原型</span></div><svg class="line-chart" viewBox="0 0 700 240" aria-label="近30天下载量折线图"><defs><linearGradient id="lineFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#00C9A7" stop-opacity="0.25"></stop><stop offset="100%" stop-color="#00C9A7" stop-opacity="0"></stop></linearGradient></defs><path d="M50 180 L120 166 L190 158 L260 126 L330 138 L400 110 L470 102 L540 88 L610 70" fill="none" stroke="#121C3D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path><path d="M50 180 L120 166 L190 158 L260 126 L330 138 L400 110 L470 102 L540 88 L610 70 L610 210 L50 210 Z" fill="url(#lineFill)"></path><g fill="#00C9A7"><circle cx="50" cy="180" r="5"></circle><circle cx="120" cy="166" r="5"></circle><circle cx="190" cy="158" r="5"></circle><circle cx="260" cy="126" r="5"></circle><circle cx="330" cy="138" r="5"></circle><circle cx="400" cy="110" r="5"></circle><circle cx="470" cy="102" r="5"></circle><circle cx="540" cy="88" r="5"></circle><circle cx="610" cy="70" r="5"></circle></g><g stroke="#d1d5db" stroke-dasharray="4 6"><line x1="50" y1="210" x2="650" y2="210"></line><line x1="50" y1="150" x2="650" y2="150"></line><line x1="50" y1="90" x2="650" y2="90"></line></g><g fill="#6b7280" font-size="12"><text x="44" y="226">03/01</text><text x="184" y="226">03/10</text><text x="324" y="226">03/18</text><text x="534" y="226">03/30</text></g></svg></article><article class="content-card"><div class="section-head"><h3>各分类技能分布</h3><span class="muted">纯 CSS 原型</span></div><div class="bars"><div class="bar-row"><span>数据处理</span><div class="bar-track"><div class="bar-fill" style="width:100%;"></div></div><strong>8个</strong></div><div class="bar-row"><span>数据分析</span><div class="bar-track"><div class="bar-fill" style="width:87%;"></div></div><strong>7个</strong></div><div class="bar-row"><span>营销工具</span><div class="bar-track"><div class="bar-fill" style="width:75%;"></div></div><strong>6个</strong></div><div class="bar-row"><span>系统集成</span><div class="bar-track"><div class="bar-fill" style="width:38%;"></div></div><strong>3个</strong></div><div class="bar-row"><span>实用工具</span><div class="bar-track"><div class="bar-fill" style="width:25%;"></div></div><strong>2个</strong></div></div></article></div>
+                    </section>
+                </main>
+            </div>
+        </div>
+    </section>
+    <div class="modal" id="successModal"><div class="modal-overlay"></div><div class="modal-content modal-sm"><button class="modal-close" id="successClose"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="modal-body"><h3 style="color:var(--success);margin-bottom:12px;">✅ 审核通过</h3><p>证书已颁发：<strong>CERT-2026-00042</strong></p><p class="muted" style="margin-top:6px;">有效期至：2028-03-21</p><button class="btn btn-primary btn-block" id="successConfirm" style="margin-top:18px;">确认</button></div></div></div>
+    <div class="modal" id="revokeModal"><div class="modal-overlay"></div><div class="modal-content modal-sm"><button class="modal-close" id="revokeClose"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="modal-body"><h3 style="color:var(--primary);margin-bottom:12px;">确认吊销证书</h3><p id="revokeCert"></p><p class="muted" id="revokeSkill" style="margin-top:6px;"></p><div style="display:grid;gap:12px;margin:18px 0;"><label class="choice-chip"><input type="radio" name="revokeReason"> 安全漏洞</label><label class="choice-chip"><input type="radio" name="revokeReason"> 违反平台规范</label><label class="choice-chip"><input type="radio" name="revokeReason"> 开发者申请</label><label class="choice-chip"><input type="radio" name="revokeReason" checked> 其他</label></div><div style="display:flex;gap:12px;"><button class="btn btn-outline" id="revokeCancel">取消</button><button class="btn" style="background:var(--error);color:white;">确认吊销</button></div></div></div></div>
+    <footer class="footer"><div class="container"><div class="footer-content"><div class="footer-brand"><a href="index.html" class="footer-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img-footer"></a><p class="footer-tagline">One Skills Store system across browse, developer workflow, account, and admin operations.</p></div><div class="footer-links"><div class="footer-column"><h4>商店</h4><a href="index.html">公开商店</a><a href="installed.html">已安装</a><a href="login.html">登录</a><a href="register.html">注册</a></div><div class="footer-column"><h4>开发者</h4><a href="developer-portal.html">概览</a><a href="developer-skills.html">我的技能</a><a href="developer-submit.html">提交技能</a><a href="developer-settings.html">账号设置</a></div><div class="footer-column"><h4>管理员</h4><a href="admin-portal.html">审核队列</a><a href="admin-certificates.html">证书管理</a><a href="admin-catalog.html">技能目录</a><a href="admin-stats.html">统计数据</a></div><div class="footer-column"><h4>账户</h4><a href="account-profile.html">个人信息</a><a href="logout.html">注销</a><a href="https://docs.socialhub.ai" target="_blank">文档中心</a><a href="register.html">创建账号</a></div></div></div><div class="footer-bottom"><div class="footer-badges"><span class="badge">REVIEWED</span><span class="badge">CERTIFIED</span><span class="badge">TRACEABLE</span></div><p class="copyright">© 2024 SocialHub.AI. All rights reserved.</p></div></div></footer>
+    <script>
+        const pageMeta = { queue: ["审核队列", "处理待审核技能版本、查看扫描报告并完成证书颁发。", "Review Queue - SocialHub.AI Skills Store"], certs: ["证书管理", "搜索、筛选和吊销当前平台的有效证书。", "Certificates - SocialHub.AI Skills Store"], catalog: ["技能目录", "查看平台已发布技能与认证状态。", "Catalog - SocialHub.AI Skills Store"], stats: ["统计数据", "查看平台增长、下载趋势和分类结构。", "Stats - SocialHub.AI Skills Store"] };
+        const detailData = { optimizer: { title: "营销活动优化器 v1.3.0", meta: "营销 · 张伟提交", info: ["描述：智能优化营销活动投放策略，基于历史数据自动调整预算与触达节奏。", "分类：marketing", "依赖：无外部依赖", "Changelog：新增 A/B 测试功能，修复时区计算 bug"], scan: ["✅ 通过 · 扫描时间：2026-03-21 10:23", "共 8 个文件 · 总大小：24KB", "无问题发现"], perm: ["☑ data:read 读取客户数据（合理，用于分析历史投放效果）", "☑ file:write 写入文件（合理，用于导出优化报告）", "☐ network:* 未申请网络权限"] }, portrait: { title: "客户画像增强 v2.0.0", meta: "数据分析 · 李明提交", info: ["描述：将客户标签、生命周期和渠道行为聚合成统一画像视图。", "分类：analytics", "依赖：requests, pydantic", "Changelog：新增跨渠道标签映射能力，补充画像导出"], scan: ["⚠️ 警告 · 扫描时间：2026-03-21 11:02", "共 11 个文件 · 总大小：38KB", "发现 1 个警告：使用 socket 但未声明 network 权限"], perm: ["☑ data:read 读取客户数据（合理）", "☑ file:write 写入本地文件（合理）", "☐ network:* 未声明，但代码中出现 socket import"] } };
+        const pageByFile = { "admin-portal.html": "queue", "admin-certificates.html": "certs", "admin-catalog.html": "catalog", "admin-stats.html": "stats" };
+        const currentPage = pageByFile[window.location.pathname.split("/").pop()] || "queue";
+        document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item.dataset.view === currentPage));
+        document.querySelectorAll(".view-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === currentPage));
+        document.getElementById("pageHeading").textContent = pageMeta[currentPage][0];
+        document.getElementById("pageIntro").textContent = pageMeta[currentPage][1];
+        document.title = pageMeta[currentPage][2];
+        document.querySelectorAll(".detail-trigger").forEach((button) => { button.addEventListener("click", () => { const data = detailData[button.dataset.review]; document.getElementById("detailTitle").textContent = data.title; document.getElementById("detailMeta").textContent = data.meta; document.getElementById("infoPanel").innerHTML = `<div class="stack-list">${data.info.map((item) => `<div class="stack-item">${item}</div>`).join("")}</div>`; document.getElementById("scanPanel").innerHTML = `<div class="stack-list">${data.scan.map((item) => `<div class="stack-item">${item}</div>`).join("")}</div>`; document.getElementById("permPanel").innerHTML = `<div class="stack-list">${data.perm.map((item) => `<div class="stack-item">${item}</div>`).join("")}</div>`; document.getElementById("reviewGrid").classList.add("detail-open"); document.getElementById("detailPanel").classList.add("active"); }); });
+        document.getElementById("detailClose").addEventListener("click", () => { document.getElementById("reviewGrid").classList.remove("detail-open"); document.getElementById("detailPanel").classList.remove("active"); });
+        document.querySelectorAll(".tab-btn").forEach((button) => { button.addEventListener("click", () => { document.querySelectorAll(".tab-btn").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.tabPanel === button.dataset.tab)); }); });
+        const successModal = document.getElementById("successModal"); document.getElementById("approveBtn").addEventListener("click", () => successModal.classList.add("active")); document.getElementById("successClose").addEventListener("click", () => successModal.classList.remove("active")); document.getElementById("successConfirm").addEventListener("click", () => successModal.classList.remove("active")); successModal.querySelector(".modal-overlay").addEventListener("click", () => successModal.classList.remove("active"));
+        const revokeModal = document.getElementById("revokeModal"); document.querySelectorAll(".revoke-trigger").forEach((button) => { button.addEventListener("click", () => { document.getElementById("revokeCert").textContent = `证书编号：${button.dataset.cert}`; document.getElementById("revokeSkill").textContent = `技能：${button.dataset.skill}`; revokeModal.classList.add("active"); }); }); document.getElementById("revokeClose").addEventListener("click", () => revokeModal.classList.remove("active")); document.getElementById("revokeCancel").addEventListener("click", () => revokeModal.classList.remove("active")); revokeModal.querySelector(".modal-overlay").addEventListener("click", () => revokeModal.classList.remove("active"));
+    </script>
+</body>
+</html>

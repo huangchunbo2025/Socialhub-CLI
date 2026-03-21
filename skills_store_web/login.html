@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SocialHub.AI Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(180deg, #f7fbff 0%, #ffffff 36%); }
+        .auth-hero { position: relative; padding: 132px 0 90px; background: var(--primary); overflow: hidden; }
+        .auth-hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 16%, rgba(0, 201, 167, 0.16), transparent 22%), radial-gradient(circle at 82% 18%, rgba(255,255,255,.08), transparent 26%); }
+        .auth-hero .container { position: relative; color: white; }
+        .auth-hero h1 { font-size: 42px; margin-bottom: 12px; }
+        .auth-hero p { max-width: 620px; color: rgba(255,255,255,.76); font-size: 18px; }
+        .auth-main { margin-top: -44px; padding-bottom: 56px; }
+        .auth-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) 420px; gap: 20px; align-items: start; }
+        .auth-card, .info-card { background: white; border: 1px solid var(--border); border-radius: 26px; box-shadow: var(--shadow-xl); }
+        .auth-card { padding: 28px; }
+        .auth-card h2, .info-card h2 { color: var(--primary); font-size: 26px; margin-bottom: 8px; }
+        .auth-card p, .info-card p { color: var(--text-secondary); }
+        .form-grid { display: grid; gap: 16px; margin-top: 20px; }
+        .field { display: grid; gap: 8px; }
+        .field label { color: var(--primary); font-weight: 700; }
+        .field input { width: 100%; padding: 13px 14px; border: 1px solid var(--border); border-radius: 14px; font: inherit; }
+        .inline-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .helper { color: var(--text-secondary); font-size: 14px; }
+        .success-note { margin-top: 16px; padding: 14px 16px; border-radius: 18px; background: #effcf7; border: 1px solid rgba(16,185,129,.18); color: #0f766e; font-weight: 600; }
+        .info-card { padding: 24px; display: grid; gap: 16px; }
+        .point { padding: 16px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border); }
+        .point strong { display: block; color: var(--primary); margin-bottom: 6px; }
+        @media (max-width: 1080px) { .auth-layout { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img"><span class="nav-divider">|</span><span class="nav-subtitle">Skills Store</span></a>
+            <div class="nav-links"><a href="index.html" class="nav-link">商店</a><a href="installed.html" class="nav-link">已安装</a><a href="developer-portal.html" class="nav-link">开发者</a><a href="admin-portal.html" class="nav-link">管理员</a><a href="login.html" class="nav-link active">登录</a></div>
+            <div class="nav-actions"><button class="btn btn-outline" onclick="window.location.href='register.html'">注册</button><button class="btn btn-primary" onclick="window.location.href='account-profile.html'">个人信息</button></div>
+        </div>
+    </nav>
+
+    <section class="auth-hero">
+        <div class="container">
+            <h1>登录你的 Skills Store 账户</h1>
+            <p>进入开发者工作台、查看已安装技能、维护个人资料，或者切换到管理员视图进行审核与证书管理。</p>
+        </div>
+    </section>
+
+    <section class="auth-main">
+        <div class="container">
+            <div class="auth-layout">
+                <article class="auth-card">
+                    <h2>登录</h2>
+                    <p>静态原型中不发请求，点击按钮仅用于演示后续跳转和表单状态。</p>
+                    <div class="form-grid">
+                        <div class="field"><label>邮箱</label><input value="dev@example.com"></div>
+                        <div class="field"><label>密码</label><input type="password" value="password123"></div>
+                    </div>
+                    <div class="inline-row" style="margin-top: 14px;">
+                        <label class="helper"><input type="checkbox" checked> 记住我</label>
+                        <a href="register.html">还没有账号？去注册</a>
+                    </div>
+                    <div style="display:flex; gap:12px; margin-top:20px;">
+                        <button class="btn btn-primary" onclick="window.location.href='developer-portal.html'">以开发者身份登录</button>
+                        <button class="btn btn-outline" onclick="window.location.href='admin-portal.html'">以管理员身份查看</button>
+                    </div>
+                    <div class="success-note">演示状态：表单校验通过后，可跳转到开发者概览或管理员审核队列。</div>
+                </article>
+
+                <aside class="info-card">
+                    <h2>登录后可做什么</h2>
+                    <div class="point"><strong>开发者</strong><p>查看技能下载、版本历史、提交新版本并管理个人信息。</p></div>
+                    <div class="point"><strong>管理员</strong><p>进入审核队列、证书管理、技能目录和统计页面。</p></div>
+                    <div class="point"><strong>账户</strong><p>从个人信息页统一修改姓名、邮箱、通知和 API Key 展示内容。</p></div>
+                </aside>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer"><div class="container"><div class="footer-content"><div class="footer-brand"><a href="index.html" class="footer-logo"><img src="logo.png" alt="SocialHub.AI" class="logo-img-footer"></a><p class="footer-tagline">One Skills Store system across browse, developer workflow, account, and admin operations.</p></div><div class="footer-links"><div class="footer-column"><h4>商店</h4><a href="index.html">公开商店</a><a href="installed.html">已安装</a><a href="login.html">登录</a><a href="register.html">注册</a></div><div class="footer-column"><h4>开发者</h4><a href="developer-portal.html">概览</a><a href="developer-skills.html">我的技能</a><a href="developer-submit.html">提交技能</a><a href="developer-settings.html">账号设置</a></div><div class="footer-column"><h4>管理员</h4><a href="admin-portal.html">审核队列</a><a href="admin-certificates.html">证书管理</a><a href="admin-catalog.html">技能目录</a><a href="admin-stats.html">统计数据</a></div><div class="footer-column"><h4>账户</h4><a href="account-profile.html">个人信息</a><a href="logout.html">注销</a><a href="https://docs.socialhub.ai" target="_blank">文档中心</a><a href="register.html">创建账号</a></div></div></div><div class="footer-bottom"><div class="footer-badges"><span class="badge">AUTH</span><span class="badge">PROFILE</span><span class="badge">ACCESS</span></div><p class="copyright">© 2024 SocialHub.AI. All rights reserved.</p></div></div></footer>
+</body>
+</html>
