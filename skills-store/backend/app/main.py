@@ -10,7 +10,7 @@ app = FastAPI(title="Skills Store MVP", version="0.1.0")
 
 
 def run_startup_migrations() -> None:
-    alembic_ini = Path(__file__).resolve().parents[3] / "alembic.ini"
+    alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
     config = Config(str(alembic_ini))
     command.upgrade(config, "head")
 
