@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: skills-store-backend
+    runtime: python
+    rootDir: skills-store
+    buildCommand: pip install -e .
+    startCommand: bash ./start.sh
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: JWT_EXPIRE_HOURS
+        value: "24"
+      - key: PACKAGE_STORAGE_MODE
+        value: local
+      - key: PACKAGE_STORAGE_ROOT
+        value: ./data/packages
+      - key: ED25519_PRIVATE_KEY_PATH
+        value: ./secrets/ed25519-private.pem
+      - key: ED25519_PUBLIC_KEY_ID
+        value: ed25519-main
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: skills-store-postgres
+          property: connectionString
+
+databases:
+  - name: skills-store-postgres
+    plan: free
+    databaseName: skills_store
+    user: skills_store
