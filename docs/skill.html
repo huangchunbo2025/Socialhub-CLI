@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skill Detail - Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="skill">
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SocialHub.AI" class="logo-img">
+                <span class="nav-divider">|</span>
+                <span class="nav-subtitle">Skills Store</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Browse</a>
+                <a href="skills-store-render-deploy.md" class="nav-link">Docs</a>
+            </div>
+            <div class="nav-actions">
+                <a class="btn btn-outline" href="register.html">Register</a>
+                <a class="btn btn-primary" href="login.html">Sign in</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="detail-shell">
+        <section class="detail-hero">
+            <div class="container">
+                <a href="index.html" class="detail-backlink">← Back to catalog</a>
+                <div class="detail-hero-grid">
+                    <div class="detail-main">
+                        <div class="hero-badge"><span class="badge-icon">Skill</span> Published catalog entry</div>
+                        <h1 id="skillName">Loading…</h1>
+                        <p class="detail-slug" id="skillSlug"></p>
+                        <p class="detail-summary" id="skillSummary"></p>
+                        <div class="detail-meta-row" id="detailHeroMeta"></div>
+                    </div>
+                    <aside class="detail-side">
+                        <div class="detail-side-card">
+                            <h2>Trust & Identity</h2>
+                            <div id="trustPanel"></div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </section>
+
+        <section class="section-block section-toned">
+            <div class="container detail-grid">
+                <section class="detail-content-card">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Overview</p>
+                            <h2>What this skill does</h2>
+                        </div>
+                    </div>
+                    <p id="skillDescription" class="detail-description"></p>
+                    <div class="tag-row" id="skillTags"></div>
+                </section>
+
+                <aside class="detail-content-card">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Package</p>
+                            <h2>Release metadata</h2>
+                        </div>
+                    </div>
+                    <div id="packagePanel"></div>
+                </aside>
+            </div>
+        </section>
+
+        <section class="section-block">
+            <div class="container">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Versions</p>
+                        <h2>Published release history</h2>
+                    </div>
+                </div>
+                <div class="version-stack" id="versionsPanel"></div>
+            </div>
+        </section>
+    </main>
+
+    <div class="console-toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>
