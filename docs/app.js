@@ -123,6 +123,9 @@ async function initializePage() {
         case "developer":
             await initDeveloperPage();
             break;
+        case "user":
+            await initUserPage();
+            break;
         case "admin":
             await initAdminPage();
             break;
@@ -348,6 +351,55 @@ async function initDeveloperPage() {
     await Promise.all([loadCategories(), loadDeveloperSkills(), loadSkills()]);
 }
 
+async function initUserPage() {
+    const user = await loadCurrentUser();
+    if (!user) {
+        window.location.href = "login.html";
+        return;
+    }
+    if (user.role === "developer") {
+        window.location.href = "developer.html";
+        return;
+    }
+    if (user.role === "store_admin") {
+        window.location.href = "admin.html";
+        return;
+    }
+
+    els.profileName = document.getElementById("profileName");
+    els.profileEmail = document.getElementById("profileEmail");
+    els.profileRole = document.getElementById("profileRole");
+    els.userSkillList = document.getElementById("userSkillList");
+    els.userIdentitySummary = document.getElementById("userIdentitySummary");
+
+    populateProfile(user);
+    if (els.userIdentitySummary) {
+        els.userIdentitySummary.textContent = `${user.name || "Store user"} is signed in with ${user.email}.`;
+    }
+
+    await loadSkills();
+    if (els.userSkillList) {
+        const suggested = state.skills.slice(0, 3);
+        els.userSkillList.innerHTML = suggested.length
+            ? suggested.map((skill) => `
+                <article class="dash-card">
+                    <div class="dash-card-head">
+                        <div>
+                            <h3>${escapeHtml(skill.display_name || skill.name)}</h3>
+                            <p>${escapeHtml(skill.summary || "No summary provided.")}</p>
+                        </div>
+                        <span class="status-chip">${escapeHtml(skill.category || "unknown")}</span>
+                    </div>
+                    <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} · Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
+                    <div class="dash-actions">
+                        <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">Open detail page</a>
+                    </div>
+                </article>
+            `).join("")
+            : emptyState("No suggested skills yet.");
+    }
+}
+
 async function initAdminPage() {
     const user = await requireRole("store_admin");
     if (!user) {
@@ -391,7 +443,7 @@ function redirectByRole(role) {
         window.location.href = "developer.html";
         return;
     }
-    window.location.href = "index.html";
+    window.location.href = "user.html";
 }
 
 function populateProfile(user) {
