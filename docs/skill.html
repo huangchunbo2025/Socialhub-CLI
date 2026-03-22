@@ -31,11 +31,11 @@
     <main class="detail-shell">
         <section class="detail-hero">
             <div class="container">
-                <a href="index.html" class="detail-backlink">← Back to catalog</a>
+                <a href="index.html" class="detail-backlink">&larr; Back to catalog</a>
                 <div class="detail-hero-grid">
                     <div class="detail-main">
                         <div class="hero-badge"><span class="badge-icon">Skill</span> Published catalog entry</div>
-                        <h1 id="skillName">Loading…</h1>
+                        <h1 id="skillName">Loading...</h1>
                         <p class="detail-slug" id="skillSlug"></p>
                         <p class="detail-summary" id="skillSummary"></p>
                         <div class="detail-meta-row" id="detailHeroMeta"></div>
@@ -51,7 +51,7 @@
         </section>
 
         <section class="section-block section-toned">
-            <div class="container detail-grid">
+            <div class="container detail-grid detail-grid-wide">
                 <section class="detail-content-card">
                     <div class="section-heading compact">
                         <div>
@@ -66,12 +66,60 @@
                 <aside class="detail-content-card">
                     <div class="section-heading compact">
                         <div>
-                            <p class="section-kicker">Package</p>
-                            <h2>Release metadata</h2>
+                            <p class="section-kicker">Current release</p>
+                            <h2>Package metadata</h2>
                         </div>
                     </div>
                     <div id="packagePanel"></div>
                 </aside>
+            </div>
+        </section>
+
+        <section class="section-block">
+            <div class="container detail-grid detail-grid-wide">
+                <section class="detail-content-card">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Security review</p>
+                            <h2>Trust and moderation summary</h2>
+                        </div>
+                    </div>
+                    <div class="content-stack" id="securityPanel"></div>
+                </section>
+
+                <section class="detail-content-card">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Runtime requirements</p>
+                            <h2>Execution prerequisites</h2>
+                        </div>
+                    </div>
+                    <div class="content-stack" id="runtimePanel"></div>
+                </section>
+            </div>
+        </section>
+
+        <section class="section-block section-toned">
+            <div class="container detail-grid detail-grid-wide">
+                <section class="detail-content-card">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Install</p>
+                            <h2>How to use this skill</h2>
+                        </div>
+                    </div>
+                    <div class="content-stack" id="installPanel"></div>
+                </section>
+
+                <section class="detail-content-card">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Files & docs</p>
+                            <h2>Included skill content</h2>
+                        </div>
+                    </div>
+                    <div class="content-stack" id="filesPanel"></div>
+                </section>
             </div>
         </section>
 
