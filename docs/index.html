@@ -18,7 +18,7 @@
                 <span class="nav-subtitle">Skills Store</span>
             </a>
             <div class="nav-actions">
-                <a class="btn btn-outline" href="register.html">Register</a>
+                <button class="btn btn-outline" id="cliBtn" type="button">CLI install</button>
                 <a class="btn btn-primary" href="login.html">Sign in</a>
             </div>
         </div>
@@ -126,6 +126,56 @@
     </main>
 
     <div class="console-toast" id="toast"></div>
+
+    <div class="modal" id="cliModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <button class="modal-close" id="cliModalClose" aria-label="Close CLI modal">×</button>
+            <div class="modal-body">
+                <div class="cli-install-header">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <polyline points="4 17 10 11 4 5"></polyline>
+                        <line x1="12" y1="19" x2="20" y2="19"></line>
+                    </svg>
+                    <h3>Install through the CLI</h3>
+                </div>
+                <p class="cli-description">Use the SocialHub CLI to browse, install, and manage certified skills from the store.</p>
+                <div class="cli-steps">
+                    <div class="cli-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <h4>Install the CLI</h4>
+                            <div class="code-block">
+                                <code>pip install socialhub-cli</code>
+                                <button class="copy-btn" type="button" data-copy-text="pip install socialhub-cli">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cli-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <h4>Browse the store</h4>
+                            <div class="code-block">
+                                <code>socialhub skills browse</code>
+                                <button class="copy-btn" type="button" data-copy-text="socialhub skills browse">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cli-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <h4>Install a skill</h4>
+                            <div class="code-block">
+                                <code>socialhub skills install &lt;skill-name&gt;</code>
+                                <button class="copy-btn" type="button" data-copy-text="socialhub skills install <skill-name>">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <a href="https://github.com/huangchunbo2025/Socialhub-CLI" class="btn btn-primary btn-block" target="_blank" rel="noreferrer">View GitHub repository</a>
+            </div>
+        </div>
+    </div>
 
     <footer class="footer">
         <div class="container">
