@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from .enums import VersionStatus
+from .enums import VersionStatus, enum_values
 from .mixins import TimestampMixin
 
 
@@ -16,7 +16,7 @@ class SkillVersion(TimestampMixin, Base):
     skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id", ondelete="CASCADE"), nullable=False)
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[VersionStatus] = mapped_column(
-        Enum(VersionStatus, name="version_status"),
+        Enum(VersionStatus, name="version_status", values_callable=enum_values),
         nullable=False,
         default=VersionStatus.DRAFT,
     )

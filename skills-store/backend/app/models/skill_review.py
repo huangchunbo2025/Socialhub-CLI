@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from .enums import ReviewStatus
+from .enums import ReviewStatus, enum_values
 
 
 class SkillReview(Base):
@@ -15,7 +15,7 @@ class SkillReview(Base):
     skill_version_id: Mapped[int] = mapped_column(ForeignKey("skill_versions.id", ondelete="CASCADE"), nullable=False)
     reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("developers.id", ondelete="RESTRICT"), nullable=True)
     status: Mapped[ReviewStatus] = mapped_column(
-        Enum(ReviewStatus, name="review_status"),
+        Enum(ReviewStatus, name="review_status", values_callable=enum_values),
         nullable=False,
         default=ReviewStatus.PENDING,
     )
