@@ -59,6 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function bindCommonElements() {
     els.toast = document.getElementById("toast");
     els.logoutButtons = document.querySelectorAll("[data-action='logout']");
+    els.authLinks = document.querySelectorAll("[data-auth-link]");
     els.apiBaseDisplays = document.querySelectorAll("[data-api-base]");
     els.userNameDisplays = document.querySelectorAll("[data-user-name]");
     els.userRoleDisplays = document.querySelectorAll("[data-user-role]");
@@ -237,6 +238,15 @@ function renderHeaderState() {
     els.userRoleDisplays.forEach((el) => {
         el.textContent = userRole;
     });
+    els.authLinks.forEach((el) => {
+        if (state.user) {
+            el.textContent = "My skills";
+            el.setAttribute("href", "user.html");
+        } else {
+            el.textContent = "Sign in";
+            el.setAttribute("href", "login.html");
+        }
+    });
 }
 
 function activateTab(tabName) {
@@ -277,7 +287,7 @@ async function initStorePage() {
         els.sortSelect.addEventListener("change", renderCatalog);
     }
 
-    await Promise.all([loadCategories(), loadFeaturedSkills(), loadSkills()]);
+    await Promise.all([loadCurrentUser(), loadCategories(), loadFeaturedSkills(), loadSkills()]);
     renderCatalog();
 }
 
@@ -288,6 +298,7 @@ async function initSkillPage() {
         throw new Error("Missing skill name.");
     }
 
+    await loadCurrentUser();
     const skill = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}`);
     const versions = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}/versions`);
     let downloadInfo = null;
@@ -400,6 +411,7 @@ async function initUserPage() {
     els.profileRole = document.getElementById("profileRole");
     els.userSkillList = document.getElementById("userSkillList");
     els.userIdentitySummary = document.getElementById("userIdentitySummary");
+    els.userSkillsSummary = document.getElementById("userSkillsSummary");
 
     populateProfile(user);
     if (els.userIdentitySummary) {
@@ -407,26 +419,6 @@ async function initUserPage() {
     }
 
     await loadSkills();
-    if (els.userSkillList) {
-        const suggested = state.skills.slice(0, 3);
-        els.userSkillList.innerHTML = suggested.length
-            ? suggested.map((skill) => `
-                <article class="dash-card">
-                    <div class="dash-card-head">
-                        <div>
-                            <h3>${escapeHtml(skill.display_name || skill.name)}</h3>
-                            <p>${escapeHtml(skill.summary || "No summary provided.")}</p>
-                        </div>
-                        <span class="status-chip">${skill.status === "active" ? "Enabled" : "Disabled"}</span>
-                    </div>
-                    <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} | Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
-                    <div class="dash-actions">
-                        <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">Open detail page</a>
-                    </div>
-                </article>
-            `).join("")
-            : emptyState("No suggested skills yet.");
-    }
     renderUserSkills();
 }
 
@@ -476,6 +468,11 @@ function renderUserSkills() {
     const suggested = savedNames.length
         ? savedNames.map((name) => state.skills.find((item) => item.name === name)).filter(Boolean)
         : state.skills.slice(0, 3);
+    if (els.userSkillsSummary) {
+        els.userSkillsSummary.textContent = savedNames.length
+            ? `${suggested.length} saved skill${suggested.length === 1 ? "" : "s"} in your storefront workspace.`
+            : "No saved skills yet. Showing recommended skills from the live catalog.";
+    }
     els.userSkillList.innerHTML = suggested.length
         ? suggested.map((skill) => {
             const enabled = getUserSkillEnabled(skill);
@@ -519,6 +516,9 @@ function renderUserSkills() {
             renderUserSkills();
             showToast("Removed from My skills.");
         });
+    });
+    els.userSkillList.querySelectorAll(".dash-meta").forEach((item) => {
+        item.textContent = item.textContent.replace(" 路 ", " | ");
     });
 }
 
