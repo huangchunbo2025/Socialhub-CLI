@@ -28,6 +28,19 @@ Create the database schema with:
 alembic upgrade head
 ```
 
+## Seed demo data
+
+Create one store admin, one developer, and one published demo skill:
+
+```bash
+python backend/seed.py
+```
+
+Seeded accounts:
+
+- `admin@skills-store.local` / `Admin123!`
+- `developer@skills-store.local` / `Developer123!`
+
 ## Deploy on Render
 
 This project includes:
