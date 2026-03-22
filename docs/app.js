@@ -293,7 +293,7 @@ async function initLoginPage() {
                 logout(false);
                 throw new Error("This entry point is for store admin accounts only.");
             }
-            if ((page === "login" || page === "developer-login") && data.user.role !== "developer") {
+            if (page === "developer-login" && data.user.role !== "developer") {
                 logout(false);
                 throw new Error("This entry point is for developer accounts only.");
             }
@@ -387,7 +387,11 @@ function redirectByRole(role) {
         window.location.href = "admin.html";
         return;
     }
-    window.location.href = "developer.html";
+    if (role === "developer") {
+        window.location.href = "developer.html";
+        return;
+    }
+    window.location.href = "index.html";
 }
 
 function populateProfile(user) {
