@@ -188,6 +188,8 @@ async function initStorePage() {
     els.catalogList = document.getElementById("catalogSkills");
     els.searchInput = document.getElementById("searchInput");
     els.categorySelect = document.getElementById("categorySelect");
+    els.categoryChips = document.getElementById("categoryChips");
+    els.catalogResultCount = document.getElementById("catalogResultCount");
     els.heroCount = document.getElementById("heroSkillCount");
     els.featuredCount = document.getElementById("featuredCount");
 
@@ -359,6 +361,20 @@ async function loadCategories() {
             .concat(state.categories.map((item) => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`))
             .join("");
     }
+    if (els.categoryChips) {
+        els.categoryChips.innerHTML = [
+            '<button class="category-chip active" type="button" data-category-chip="">All</button>',
+            ...state.categories.map((item) => (
+                `<button class="category-chip" type="button" data-category-chip="${escapeHtml(item.key)}">${escapeHtml(item.label)}</button>`
+            )),
+        ].join("");
+        els.categoryChips.querySelectorAll("[data-category-chip]").forEach((button) => {
+            button.addEventListener("click", () => {
+                els.categorySelect.value = button.dataset.categoryChip || "";
+                renderCatalog();
+            });
+        });
+    }
     if (els.developerCategorySelect) {
         els.developerCategorySelect.innerHTML = ['<option value="">Choose category</option>']
             .concat(state.categories.map((item) => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`))
@@ -397,6 +413,14 @@ function renderCatalog() {
         const matchesSearch = !term || haystack.includes(term);
         return matchesCategory && matchesSearch;
     });
+    if (els.catalogResultCount) {
+        els.catalogResultCount.textContent = `${filtered.length} skill${filtered.length === 1 ? "" : "s"}`;
+    }
+    if (els.categoryChips) {
+        els.categoryChips.querySelectorAll("[data-category-chip]").forEach((button) => {
+            button.classList.toggle("active", (button.dataset.categoryChip || "") === category);
+        });
+    }
     els.catalogList.innerHTML = filtered.map(renderSkillCard).join("") || emptyState("No skills match the current filter.");
     bindSkillDetails(els.catalogList);
 }
