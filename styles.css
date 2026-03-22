@@ -1900,6 +1900,13 @@ a:hover {
     gap: 26px;
 }
 
+.detail-hero-actions {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+}
+
 .detail-main h1 {
     font-size: clamp(38px, 5vw, 60px);
     line-height: 1.05;
@@ -1952,6 +1959,72 @@ a:hover {
     color: var(--text);
 }
 
+.detail-side {
+    display: grid;
+    gap: 18px;
+}
+
+.detail-side-card-accent {
+    background: linear-gradient(180deg, #0f172a 0%, #16213e 100%);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.detail-side-card-accent h2,
+.detail-side-card-accent strong {
+    color: white;
+}
+
+.detail-side-card-text {
+    color: rgba(255, 255, 255, 0.76);
+    margin-bottom: 16px;
+}
+
+.detail-mini-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.detail-mini-list div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.detail-mini-list span {
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.detail-section-nav-wrap {
+    position: sticky;
+    top: 64px;
+    z-index: 200;
+    background: rgba(248, 250, 252, 0.94);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid #e5edf5;
+}
+
+.detail-section-nav {
+    display: flex;
+    gap: 24px;
+    overflow-x: auto;
+    padding: 16px 0;
+}
+
+.detail-section-nav a {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.detail-section-nav a:hover {
+    color: var(--primary);
+}
+
 .detail-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
@@ -1964,6 +2037,10 @@ a:hover {
 
 .detail-content-card {
     padding: 24px;
+}
+
+.detail-release-card {
+    background: linear-gradient(180deg, #fdfefe 0%, #f5fbf9 100%);
 }
 
 .detail-description {
@@ -2051,6 +2128,10 @@ a:hover {
     margin-bottom: 10px;
 }
 
+.version-card-actions {
+    margin-top: 16px;
+}
+
 @media (max-width: 1120px) {
     .product-hero-grid,
     .auth-panel,
@@ -2072,6 +2153,7 @@ a:hover {
     .section-heading,
     .catalog-filters,
     .hero-actions,
+    .detail-hero-actions,
     .skill-card-top,
     .skill-card-foot {
         flex-direction: column;

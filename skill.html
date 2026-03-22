@@ -18,8 +18,7 @@
                 <span class="nav-subtitle">Skills Store</span>
             </a>
             <div class="nav-links">
-                <a href="index.html" class="nav-link">Browse</a>
-                <a href="skills-store-render-deploy.md" class="nav-link">Docs</a>
+                <a href="index.html#catalog" class="nav-link">Categories</a>
             </div>
             <div class="nav-actions">
                 <a class="btn btn-outline" href="register.html">Register</a>
@@ -39,8 +38,13 @@
                         <p class="detail-slug" id="skillSlug"></p>
                         <p class="detail-summary" id="skillSummary"></p>
                         <div class="detail-meta-row" id="detailHeroMeta"></div>
+                        <div class="detail-hero-actions" id="detailHeroActions"></div>
                     </div>
                     <aside class="detail-side">
+                        <div class="detail-side-card detail-side-card-accent">
+                            <h2>Install from CLI</h2>
+                            <div id="installSummaryPanel"></div>
+                        </div>
                         <div class="detail-side-card">
                             <h2>Trust & Identity</h2>
                             <div id="trustPanel"></div>
@@ -50,7 +54,20 @@
             </div>
         </section>
 
-        <section class="section-block section-toned">
+        <section class="detail-section-nav-wrap">
+            <div class="container">
+                <div class="detail-section-nav">
+                    <a href="#overview">Overview</a>
+                    <a href="#trust">Security</a>
+                    <a href="#runtime">Runtime</a>
+                    <a href="#install">Install</a>
+                    <a href="#docs">Files & docs</a>
+                    <a href="#versions">Versions</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="section-block section-toned" id="overview">
             <div class="container detail-grid detail-grid-wide">
                 <section class="detail-content-card">
                     <div class="section-heading compact">
@@ -63,11 +80,11 @@
                     <div class="tag-row" id="skillTags"></div>
                 </section>
 
-                <aside class="detail-content-card">
+                <aside class="detail-content-card detail-release-card">
                     <div class="section-heading compact">
                         <div>
                             <p class="section-kicker">Current release</p>
-                            <h2>Package metadata</h2>
+                            <h2>Release snapshot</h2>
                         </div>
                     </div>
                     <div id="packagePanel"></div>
@@ -75,7 +92,7 @@
             </div>
         </section>
 
-        <section class="section-block">
+        <section class="section-block" id="trust">
             <div class="container detail-grid detail-grid-wide">
                 <section class="detail-content-card">
                     <div class="section-heading compact">
@@ -99,19 +116,19 @@
             </div>
         </section>
 
-        <section class="section-block section-toned">
+        <section class="section-block section-toned" id="install">
             <div class="container detail-grid detail-grid-wide">
                 <section class="detail-content-card">
                     <div class="section-heading compact">
                         <div>
                             <p class="section-kicker">Install</p>
-                            <h2>How to use this skill</h2>
+                            <h2>Install from the CLI</h2>
                         </div>
                     </div>
                     <div class="content-stack" id="installPanel"></div>
                 </section>
 
-                <section class="detail-content-card">
+                <section class="detail-content-card" id="docs">
                     <div class="section-heading compact">
                         <div>
                             <p class="section-kicker">Files & docs</p>
@@ -123,7 +140,7 @@
             </div>
         </section>
 
-        <section class="section-block">
+        <section class="section-block" id="versions">
             <div class="container">
                 <div class="section-heading">
                     <div>
