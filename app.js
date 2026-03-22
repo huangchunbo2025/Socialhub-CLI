@@ -245,7 +245,7 @@ async function initDeveloperPage() {
     els.createSkillForm.addEventListener("submit", handleCreateSkill);
     els.uploadVersionForm.addEventListener("submit", handleUploadVersion);
 
-    await Promise.all([loadCategories(), loadDeveloperSkills()]);
+    await Promise.all([loadCategories(), loadDeveloperSkills(), loadSkills()]);
 }
 
 async function initAdminPage() {

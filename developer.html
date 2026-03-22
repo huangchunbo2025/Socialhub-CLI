@@ -20,6 +20,7 @@
             <div class="nav-links">
                 <a href="index.html" class="nav-link">Store</a>
                 <a href="developer.html" class="nav-link active">Developer</a>
+                <a href="login.html" class="nav-link">Switch account</a>
             </div>
             <div class="nav-actions">
                 <button class="btn btn-primary" data-action="logout">Logout</button>
@@ -40,6 +41,46 @@
         </aside>
 
         <section class="dashboard-main">
+            <div class="dashboard-grid">
+                <section class="dashboard-section">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Workspace</p>
+                            <h2>Operational guidance</h2>
+                        </div>
+                    </div>
+                    <div class="metric-grid">
+                        <div class="metric-card">
+                            <span>Backend</span>
+                            <strong data-api-base></strong>
+                        </div>
+                        <div class="metric-card">
+                            <span>Session</span>
+                            <strong data-user-role></strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="dashboard-section">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Publishing path</p>
+                            <h2>Expected flow</h2>
+                        </div>
+                    </div>
+                    <div class="review-grid">
+                        <article class="dash-card">
+                            <h3>Create the catalog entry</h3>
+                            <p class="dash-meta">Define the skill once before you upload any release package.</p>
+                        </article>
+                        <article class="dash-card">
+                            <h3>Upload a versioned zip package</h3>
+                            <p class="dash-meta">The package is submitted for review and does not appear in the catalog immediately.</p>
+                        </article>
+                    </div>
+                </section>
+            </div>
+
             <div class="dashboard-section">
                 <div class="section-heading">
                     <div>
