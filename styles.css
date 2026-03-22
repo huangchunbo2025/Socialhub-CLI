@@ -1577,6 +1577,24 @@ a:hover {
     transition: var(--transition);
 }
 
+.skill-card-headline {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.skill-card-title {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.skill-card-slug {
+    color: var(--text-light);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
 .skill-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 18px 34px rgba(18, 28, 61, 0.1);
@@ -1647,6 +1665,25 @@ a:hover {
     transition: var(--transition);
     white-space: nowrap;
 }
+
+.category-chip-icon {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    color: white;
+}
+
+.category-chip-icon.all { background: linear-gradient(135deg, #334155, #1f2937); }
+.category-chip-icon.data { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.category-chip-icon.analytics { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+.category-chip-icon.marketing { background: linear-gradient(135deg, #ec4899, #be185d); }
+.category-chip-icon.integration { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+.category-chip-icon.utility { background: linear-gradient(135deg, #f59e0b, #d97706); }
 
 .category-chip:hover {
     border-color: var(--accent);
