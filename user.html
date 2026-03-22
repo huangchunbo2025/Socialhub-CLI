@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Workspace - Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="user">
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SocialHub.AI" class="logo-img">
+                <span class="nav-divider">|</span>
+                <span class="nav-subtitle">User Workspace</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Store</a>
+                <a href="user.html" class="nav-link active">Workspace</a>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-primary" data-action="logout">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="dashboard-shell">
+        <aside class="dashboard-sidebar">
+            <p class="section-kicker">Store user</p>
+            <h1 id="profileName">Loading...</h1>
+            <p id="profileEmail"></p>
+            <span class="status-chip" id="profileRole"></span>
+            <div class="sidebar-note">
+                <strong>Purpose</strong>
+                <p>Keep your storefront activity separate from publishing and moderation work. Review skills here, then install them from the CLI when ready.</p>
+            </div>
+            <nav class="subnav">
+                <button class="subnav-item active" data-tab-target="overview">Overview</button>
+                <button class="subnav-item" data-tab-target="shortlist">Shortlist</button>
+                <button class="subnav-item" data-tab-target="workflow">Install workflow</button>
+                <button class="subnav-item" data-tab-target="profile">Profile</button>
+            </nav>
+        </aside>
+
+        <section class="dashboard-main tab-shell">
+            <section class="dashboard-section tab-panel active" data-tab-panel="overview">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Overview</p>
+                        <h2>Your store workspace</h2>
+                    </div>
+                </div>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <span>Backend</span>
+                        <strong data-api-base></strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Session role</span>
+                        <strong data-user-role></strong>
+                    </div>
+                </div>
+                <div class="review-grid top-gap">
+                    <article class="dash-card">
+                        <h3>Store-first workflow</h3>
+                        <p class="dash-meta">Browse the catalog, evaluate release quality, and copy CLI install commands only after a skill passes review.</p>
+                    </article>
+                    <article class="dash-card">
+                        <h3>Dedicated role separation</h3>
+                        <p class="dash-meta">Developer publishing and admin moderation remain in separate workspaces, so this area stays focused on skill evaluation and adoption.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="shortlist">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Shortlist</p>
+                        <h2>Suggested skills to review next</h2>
+                    </div>
+                </div>
+                <div class="review-grid" id="userSkillList"></div>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="workflow">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Install workflow</p>
+                        <h2>How store users should install skills</h2>
+                    </div>
+                </div>
+                <div class="content-stack">
+                    <article class="content-card">
+                        <h3>Step 1: Inspect the detail page</h3>
+                        <p>Check publisher identity, release notes, runtime requirements, and security review content before you move to installation.</p>
+                    </article>
+                    <article class="content-card">
+                        <h3>Step 2: Copy the CLI install command</h3>
+                        <p>Use the command shown in the skill detail page. Prefer a pinned version for controlled rollout when your team needs repeatability.</p>
+                    </article>
+                    <article class="content-card">
+                        <h3>Step 3: Run the install in SocialHub CLI</h3>
+                        <p>Install from the CLI instead of downloading packages manually, then validate the installed release in your target environment.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="profile">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Profile</p>
+                        <h2>Your account context</h2>
+                    </div>
+                </div>
+                <div class="content-stack">
+                    <article class="content-card">
+                        <h3>Signed-in identity</h3>
+                        <p id="userIdentitySummary">Loading account details...</p>
+                    </article>
+                    <article class="content-card">
+                        <h3>Role-specific access</h3>
+                        <p>Store users browse and evaluate. Developers publish through the developer portal. Platform admins operate the moderation and certificate console.</p>
+                    </article>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <div class="console-toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>
