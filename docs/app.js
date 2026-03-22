@@ -14,6 +14,15 @@ const state = {
 const page = document.body.dataset.page || "store";
 const els = {};
 
+const CATEGORY_META = {
+    all: { icon: "▦", className: "all" },
+    data: { icon: "⛁", className: "data" },
+    analytics: { icon: "◔", className: "analytics" },
+    marketing: { icon: "✉", className: "marketing" },
+    integration: { icon: "⎋", className: "integration" },
+    utility: { icon: "⌘", className: "utility" },
+};
+
 document.addEventListener("DOMContentLoaded", () => {
     bindCommonElements();
     bindCommonEvents();
@@ -367,9 +376,15 @@ async function loadCategories() {
     }
     if (els.categoryChips) {
         els.categoryChips.innerHTML = [
-            '<button class="category-chip active" type="button" data-category-chip="">All</button>',
+            `<button class="category-chip active" type="button" data-category-chip="">
+                <span class="category-chip-icon ${escapeHtml(CATEGORY_META.all.className)}">${escapeHtml(CATEGORY_META.all.icon)}</span>
+                <span>All</span>
+            </button>`,
             ...state.categories.map((item) => (
-                `<button class="category-chip" type="button" data-category-chip="${escapeHtml(item.key)}">${escapeHtml(item.label)}</button>`
+                `<button class="category-chip" type="button" data-category-chip="${escapeHtml(item.key)}">
+                    <span class="category-chip-icon ${escapeHtml((CATEGORY_META[item.key] || CATEGORY_META.all).className)}">${escapeHtml((CATEGORY_META[item.key] || CATEGORY_META.all).icon)}</span>
+                    <span>${escapeHtml(item.label)}</span>
+                </button>`
             )),
         ].join("");
         els.categoryChips.querySelectorAll("[data-category-chip]").forEach((button) => {
@@ -579,13 +594,20 @@ async function handleRevoke(event) {
 }
 
 function renderSkillCard(skill) {
+    const categoryMeta = CATEGORY_META[skill.category] || CATEGORY_META.all;
     return `
         <article class="skill-card">
             <div class="skill-card-top">
                 <span class="status-chip">${escapeHtml(skill.category || "unknown")}</span>
                 <span class="skill-downloads">${escapeHtml(String(skill.download_count || 0))} downloads</span>
             </div>
-            <h3>${escapeHtml(skill.display_name || skill.name)}</h3>
+            <div class="skill-card-headline">
+                <div class="skill-icon ${escapeHtml(categoryMeta.className)}">${escapeHtml(categoryMeta.icon)}</div>
+                <div class="skill-card-title">
+                    <h3>${escapeHtml(skill.display_name || skill.name)}</h3>
+                    <p class="skill-card-slug">${escapeHtml(skill.name)}</p>
+                </div>
+            </div>
             <p class="skill-summary">${escapeHtml(skill.summary || "No summary provided.")}</p>
             <div class="skill-card-foot">
                 <span>${escapeHtml(skill.latest_version || "No version")}</span>
