@@ -24,64 +24,76 @@
         </div>
     </nav>
 
-    <section class="hero product-hero">
+    <section class="hero">
         <div class="hero-bg"></div>
         <div class="container">
-            <div class="product-hero-grid">
-                <div class="product-copy">
-                    <div class="hero-badge">
-                        <span class="badge-icon">Live</span>
-                        Verified skills for SocialHub operators
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="badge-icon">Live</span>
+                    Officially reviewed skills
+                </div>
+                <h1 class="hero-title">Discover install-ready skills for SocialHub teams.</h1>
+                <p class="hero-subtitle">
+                    Browse reviewed automations, analytics helpers, and workflow packages before your operators install them through the CLI.
+                </p>
+                <div class="hero-search">
+                    <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <input type="search" id="searchInput" placeholder="Search by skill name, summary, workflow, or use case" autocomplete="off">
+                    <a class="btn btn-primary" href="#catalog">Explore</a>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat-item">
+                        <span class="stat-number" id="heroSkillCount">0</span>
+                        <span class="stat-label">Published skills</span>
                     </div>
-                    <h1 class="hero-title">Discover certified skills that teams can trust in production.</h1>
-                    <p class="hero-subtitle">
-                        Compare reviewed automations, analytics helpers, and workflow packages before your team installs them in the CLI.
-                    </p>
-                    <div class="hero-actions">
-                        <a class="btn btn-primary btn-lg" href="#catalog">Browse catalog</a>
-                        <a class="btn btn-outline btn-lg" href="login.html">Sign in</a>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="featuredCount">0</span>
+                        <span class="stat-label">Featured picks</span>
                     </div>
-                    <div class="hero-stats product-stats">
-                        <div class="stat-item">
-                            <span class="stat-number" id="heroSkillCount">0</span>
-                            <span class="stat-label">Published skills</span>
-                        </div>
-                        <div class="stat-divider"></div>
-                        <div class="stat-item">
-                            <span class="stat-number" id="featuredCount">0</span>
-                            <span class="stat-label">Featured picks</span>
-                        </div>
-                        <div class="stat-divider"></div>
-                        <div class="stat-item">
-                            <span class="stat-number">100%</span>
-                            <span class="stat-label">CLI-first install flow</span>
-                        </div>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <span class="stat-number">100%</span>
+                        <span class="stat-label">CLI-first install flow</span>
                     </div>
                 </div>
-                <aside class="hero-sidecard">
-                    <h2>Before you install</h2>
-                    <p>Use the storefront to evaluate trust signals, version quality, and CLI install readiness before you bring a skill into production.</p>
-                    <code data-api-base></code>
-                    <div class="hero-sidecard-list">
-                        <div>
-                            <strong>Review the publisher</strong>
-                            <span>Check who published the skill and whether the release history looks stable.</span>
-                        </div>
-                        <div>
-                            <strong>Validate the release</strong>
-                            <span>Inspect version metadata, install guidance, and security review notes before rollout.</span>
-                        </div>
-                        <div>
-                            <strong>Install from the CLI</strong>
-                            <span>Copy the install command into SocialHub CLI when the skill passes your evaluation.</span>
-                        </div>
-                    </div>
-                </aside>
             </div>
         </div>
     </section>
 
     <main>
+        <section class="section-block section-toned">
+            <div class="container">
+                <div class="section-heading compact">
+                    <div>
+                        <p class="section-kicker">Before you install</p>
+                        <h2>Evaluate a skill the same way an operations team would.</h2>
+                        <p class="catalog-intro">Use the storefront to review trust signals, release quality, and install guidance before you copy a CLI command into production.</p>
+                    </div>
+                </div>
+                <div class="journey-grid">
+                    <article class="journey-card">
+                        <span>1</span>
+                        <h3>Review the publisher</h3>
+                        <p>Confirm who released the skill and whether the publishing history looks stable and accountable.</p>
+                    </article>
+                    <article class="journey-card">
+                        <span>2</span>
+                        <h3>Inspect the release</h3>
+                        <p>Open the detail page to check runtime requirements, security review notes, and current version metadata.</p>
+                    </article>
+                    <article class="journey-card">
+                        <span>3</span>
+                        <h3>Install from the CLI</h3>
+                        <p>Copy the install command only after the skill passes your evaluation and rollout criteria.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
         <section class="categories" id="catalog">
             <div class="container">
                 <div class="category-tabs" id="categoryChips"></div>
@@ -96,12 +108,9 @@
                 <div class="skills-header">
                     <div>
                         <h2 class="section-title">Catalog</h2>
-                        <p class="catalog-intro">Search published skills, compare release quality, and open the detail page before copying the CLI install command.</p>
+                        <p class="catalog-intro">Search published skills, filter by category, and compare install-ready options before you move to the CLI.</p>
                     </div>
                     <div class="skills-controls">
-                        <div class="catalog-search-inline">
-                            <input type="search" id="searchInput" placeholder="Search by skill name, summary, workflow, or use case">
-                        </div>
                         <div class="skills-sort">
                             <select id="sortSelect">
                                 <option value="downloads">Most installed</option>
@@ -116,33 +125,9 @@
                         <strong id="catalogResultCount">0 skills</strong>
                         <span>Published and available for CLI installation</span>
                     </div>
-                    <span class="catalog-toolbar-note">Review the skill page for trust signals, release notes, and install guidance.</span>
+                    <span class="catalog-toolbar-note">Open a skill detail page to copy the CLI install command.</span>
                 </div>
                 <div class="skills-grid" id="catalogSkills"></div>
-            </div>
-        </section>
-
-        <section class="section-block section-toned">
-            <div class="container">
-                <div class="section-heading">
-                    <div>
-                        <p class="section-kicker">For developers</p>
-                        <h2>Publishers use a separate onboarding and workspace flow</h2>
-                    </div>
-                    <a href="register.html" class="text-link">Developer registration</a>
-                </div>
-                <div class="journey-grid journey-grid-compact">
-                    <article class="journey-card">
-                        <span>1</span>
-                        <h3>Register</h3>
-                        <p>Create a publisher account before you submit a new skill or release.</p>
-                    </article>
-                    <article class="journey-card">
-                        <span>2</span>
-                        <h3>Open the workspace</h3>
-                        <p>Use the developer path for skill creation, version uploads, and release tracking.</p>
-                    </article>
-                </div>
             </div>
         </section>
     </main>
