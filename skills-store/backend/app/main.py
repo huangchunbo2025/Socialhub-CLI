@@ -3,6 +3,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine
 
 from .config import settings
@@ -11,6 +12,21 @@ from .models.base import Base
 from .routers import admin, auth, developer, public
 
 app = FastAPI(title="Skills Store MVP", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://huangchunbo2025.github.io",
+        "http://127.0.0.1:8765",
+        "http://localhost:8765",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "null",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def run_startup_migrations() -> None:
