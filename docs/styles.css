@@ -1878,13 +1878,156 @@ a:hover {
     background: var(--bg-secondary);
 }
 
+.detail-shell {
+    padding-top: 88px;
+}
+
+.detail-hero {
+    padding: 44px 0 56px;
+    background: linear-gradient(180deg, #0f172a 0%, #16213e 100%);
+    color: white;
+}
+
+.detail-backlink {
+    display: inline-flex;
+    margin-bottom: 24px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.detail-hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+    gap: 26px;
+}
+
+.detail-main h1 {
+    font-size: clamp(38px, 5vw, 60px);
+    line-height: 1.05;
+    margin: 18px 0 10px;
+}
+
+.detail-slug,
+.detail-summary,
+.detail-meta-item {
+    color: rgba(255, 255, 255, 0.76);
+}
+
+.detail-slug {
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.detail-summary {
+    max-width: 760px;
+    font-size: 18px;
+    margin-top: 16px;
+}
+
+.detail-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 22px;
+}
+
+.detail-meta-item {
+    padding: 10px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.detail-side-card,
+.detail-content-card,
+.version-card {
+    border-radius: 22px;
+    background: white;
+    border: 1px solid #e7eef6;
+    box-shadow: var(--shadow-md);
+}
+
+.detail-side-card {
+    padding: 24px;
+    color: var(--text);
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+    gap: 24px;
+}
+
+.detail-content-card {
+    padding: 24px;
+}
+
+.detail-description {
+    color: var(--text-secondary);
+    font-size: 16px;
+}
+
+.tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.trust-row,
+.version-card-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: start;
+}
+
+.trust-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.trust-row:last-child {
+    border-bottom: 0;
+}
+
+.trust-row span,
+.version-card-meta {
+    color: var(--text-secondary);
+}
+
+.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.version-stack {
+    display: grid;
+    gap: 16px;
+}
+
+.version-card {
+    padding: 22px;
+}
+
+.version-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
 @media (max-width: 1120px) {
     .product-hero-grid,
     .auth-panel,
     .dashboard-shell,
     .dashboard-grid,
     .card-grid,
-    .journey-grid {
+    .journey-grid,
+    .detail-hero-grid,
+    .detail-grid {
         grid-template-columns: 1fr;
     }
 

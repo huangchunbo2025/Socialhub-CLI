@@ -48,6 +48,9 @@ async function initializePage() {
         case "store":
             await initStorePage();
             break;
+        case "skill":
+            await initSkillPage();
+            break;
         case "login":
         case "developer-login":
         case "admin-login":
@@ -175,16 +178,31 @@ async function initStorePage() {
     els.categorySelect = document.getElementById("categorySelect");
     els.heroCount = document.getElementById("heroSkillCount");
     els.featuredCount = document.getElementById("featuredCount");
-    els.modal = document.getElementById("skillModal");
-    els.modalBody = document.getElementById("modalBody");
 
-    document.getElementById("modalClose").addEventListener("click", closeModal);
-    els.modal.querySelector(".modal-overlay").addEventListener("click", closeModal);
     els.searchInput.addEventListener("input", renderCatalog);
     els.categorySelect.addEventListener("change", renderCatalog);
 
     await Promise.all([loadCategories(), loadFeaturedSkills(), loadSkills()]);
     renderCatalog();
+}
+
+async function initSkillPage() {
+    const params = new URLSearchParams(window.location.search);
+    const skillName = params.get("name");
+    if (!skillName) {
+        throw new Error("Missing skill name.");
+    }
+
+    const skill = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}`);
+    const versions = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}/versions`);
+    let downloadInfo = null;
+    try {
+        downloadInfo = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}/download-info`);
+    } catch {
+        downloadInfo = null;
+    }
+
+    renderSkillDetailPage(skill, versions, downloadInfo);
 }
 
 async function initLoginPage() {
@@ -521,56 +539,69 @@ function renderSkillCard(skill) {
             <p class="skill-summary">${escapeHtml(skill.summary || "No summary provided.")}</p>
             <div class="skill-card-foot">
                 <span>${escapeHtml(skill.latest_version || "No version")}</span>
-                <button class="btn btn-outline btn-sm" data-skill-detail="${escapeHtml(skill.name)}">View details</button>
+                <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">View details</a>
             </div>
         </article>
     `;
 }
 
 function bindSkillDetails(scope) {
-    scope.querySelectorAll("[data-skill-detail]").forEach((button) => {
-        button.addEventListener("click", async () => {
-            try {
-                const skillName = button.dataset.skillDetail;
-                const skill = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}`);
-                const versions = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}/versions`);
-                els.modalBody.innerHTML = `
-                    <div class="modal-skill-head">
-                        <div>
-                            <h2>${escapeHtml(skill.display_name || skill.name)}</h2>
-                            <p>${escapeHtml(skill.summary || "")}</p>
-                        </div>
-                        <span class="status-chip">${escapeHtml(skill.status || "active")}</span>
-                    </div>
-                    <p>${escapeHtml(skill.description || "")}</p>
-                    <div class="version-list">
-                        ${versions.map((item) => `
-                            <div class="version-row">
-                                <strong>${escapeHtml(item.version)}</strong>
-                                <span>${escapeHtml(item.status)}</span>
-                            </div>
-                        `).join("") || emptyState("No versions yet.")}
-                    </div>
-                `;
-                els.modal.classList.add("active");
-                document.body.style.overflow = "hidden";
-            } catch (error) {
-                showToast(error.message, true);
-            }
-        });
-    });
-}
-
-function closeModal() {
-    if (!els.modal) {
-        return;
-    }
-    els.modal.classList.remove("active");
-    document.body.style.overflow = "";
+    return scope;
 }
 
 function emptyState(message) {
     return `<div class="empty-state">${escapeHtml(message)}</div>`;
+}
+
+function renderSkillDetailPage(skill, versions, downloadInfo) {
+    document.getElementById("skillName").textContent = skill.display_name || skill.name;
+    document.getElementById("skillSlug").textContent = skill.name;
+    document.getElementById("skillSummary").textContent = skill.summary || "";
+    document.getElementById("skillCategory").textContent = skill.category || "unknown";
+    document.getElementById("skillStatus").textContent = skill.status || "active";
+    document.getElementById("skillDownloads").textContent = String(skill.download_count || 0);
+    document.getElementById("skillLatestVersion").textContent = skill.latest_version || "n/a";
+    document.getElementById("skillAuthor").textContent = skill.developer?.name || "Unknown publisher";
+    document.getElementById("skillDescription").textContent = skill.description || "";
+    document.getElementById("skillTags").innerHTML = (skill.tags || []).map((tag) => `<span class="status-chip">${escapeHtml(tag)}</span>`).join("") || emptyState("No tags");
+
+    document.getElementById("detailHeroMeta").innerHTML = `
+        <span class="detail-meta-item">Category: ${escapeHtml(skill.category || "unknown")}</span>
+        <span class="detail-meta-item">Latest version: ${escapeHtml(skill.latest_version || "n/a")}</span>
+        <span class="detail-meta-item">Downloads: ${escapeHtml(String(skill.download_count || 0))}</span>
+    `;
+
+    document.getElementById("trustPanel").innerHTML = `
+        <div class="trust-row"><span>Publisher</span><strong>${escapeHtml(skill.developer?.name || "Unknown")}</strong></div>
+        <div class="trust-row"><span>Status</span><strong>${escapeHtml(skill.status || "active")}</strong></div>
+        <div class="trust-row"><span>Latest version</span><strong>${escapeHtml(skill.latest_version || "n/a")}</strong></div>
+        <div class="trust-row"><span>Download package</span><strong>${downloadInfo ? "Available" : "Unavailable"}</strong></div>
+    `;
+
+    document.getElementById("packagePanel").innerHTML = downloadInfo
+        ? `
+            <div class="trust-row"><span>Package hash</span><strong class="mono">${escapeHtml(downloadInfo.package_hash)}</strong></div>
+            <div class="trust-row"><span>Package size</span><strong>${escapeHtml(String(downloadInfo.package_size))} bytes</strong></div>
+            <div class="trust-row"><span>Certificate</span><strong>${escapeHtml(downloadInfo.certificate_serial || "Not issued")}</strong></div>
+            <div class="trust-row"><span>Public key</span><strong>${escapeHtml(downloadInfo.public_key_id || "n/a")}</strong></div>
+        `
+        : emptyState("Package metadata is not available yet.");
+
+    document.getElementById("versionsPanel").innerHTML = versions.length
+        ? versions.map((item) => `
+            <article class="version-card">
+                <div class="version-card-head">
+                    <strong>${escapeHtml(item.version)}</strong>
+                    <span class="status-chip">${escapeHtml(item.status)}</span>
+                </div>
+                <p>${escapeHtml(item.release_notes || "No release notes provided.")}</p>
+                <div class="version-card-meta">
+                    <span>Hash: ${escapeHtml(item.package_hash)}</span>
+                    <span>Size: ${escapeHtml(String(item.package_size))} bytes</span>
+                </div>
+            </article>
+        `).join("")
+        : emptyState("No versions published yet.");
 }
 
 function escapeHtml(value) {
