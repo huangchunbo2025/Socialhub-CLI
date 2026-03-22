@@ -388,7 +388,7 @@ async function initUserPage() {
                             <h3>${escapeHtml(skill.display_name || skill.name)}</h3>
                             <p>${escapeHtml(skill.summary || "No summary provided.")}</p>
                         </div>
-                        <span class="status-chip">${escapeHtml(skill.category || "unknown")}</span>
+                        <span class="status-chip">${skill.status === "active" ? "Enabled" : "Disabled"}</span>
                     </div>
                     <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} · Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
                     <div class="dash-actions">
