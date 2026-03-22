@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import Select, select
@@ -18,6 +20,7 @@ from ..services.skills import (
 )
 
 router = APIRouter(tags=["public"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/categories")
@@ -48,21 +51,28 @@ async def list_skills(
     limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, object]:
-    data, total = await list_public_skills(
-        session,
-        search=search,
-        category=category,
-        page=page,
-        limit=limit,
-    )
-    return {
-        "data": data,
-        "pagination": {
-            "total": total,
-            "page": page,
-            "limit": limit,
-        },
-    }
+    try:
+        data, total = await list_public_skills(
+            session,
+            search=search,
+            category=category,
+            page=page,
+            limit=limit,
+        )
+        return {
+            "data": data,
+            "pagination": {
+                "total": total,
+                "page": page,
+                "limit": limit,
+            },
+        }
+    except Exception:
+        logger.exception(
+            "list_skills failed",
+            extra={"search": search, "category": category, "page": page, "limit": limit},
+        )
+        raise
 
 
 @router.post("/skills/verify")
