@@ -21,10 +21,17 @@ class SkillResponse(BaseModel):
     display_name: str
     summary: str
     description: str
+    license_name: str | None = None
+    license_url: str | None = None
+    homepage_url: str | None = None
     category: str
     status: str
     featured: bool
     tags: list[str]
+    runtime_requirements: list[dict] = Field(default_factory=list)
+    install_guidance: list[dict] = Field(default_factory=list)
+    security_review: list[dict] = Field(default_factory=list)
+    docs_sections: list[dict] = Field(default_factory=list)
     download_count: int
     latest_version: str | None = None
     developer: dict[str, str | int] | None = None

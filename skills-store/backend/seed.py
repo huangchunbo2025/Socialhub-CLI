@@ -66,7 +66,83 @@ async def seed_demo_data() -> None:
     async with SessionLocal() as session:
         result = await session.execute(select(Skill).where(Skill.name == "sales-daily-brief"))
         existing_skill = result.scalar_one_or_none()
+        detail_payload = {
+            "description": (
+                "Sales Daily Brief turns CRM pipeline activity into a concise operating brief for revenue leaders. "
+                "It highlights movement by stage, identifies risk concentration, and surfaces the follow-up actions "
+                "that should happen in the next business cycle."
+            ),
+            "license_name": "MIT",
+            "license_url": "https://opensource.org/licenses/MIT",
+            "homepage_url": "https://socialhub.ai/skills/sales-daily-brief",
+            "runtime_requirements": [
+                {
+                    "title": "Required environment",
+                    "items": [
+                        "SocialHub CLI with store access enabled",
+                        "A connected CRM or pipeline data source",
+                        "An operator account with permission to run reporting workflows",
+                    ],
+                },
+                {
+                    "title": "Operational expectations",
+                    "items": [
+                        "Pipeline fields should be normalized before the brief is generated",
+                        "Teams should validate which stage definitions are used in the report",
+                    ],
+                },
+            ],
+            "install_guidance": [
+                {
+                    "title": "Install latest",
+                    "command": "socialhub skills install sales-daily-brief",
+                    "body": "Use the latest published build when your team wants the current approved release.",
+                },
+                {
+                    "title": "Install a pinned version",
+                    "command": "socialhub skills install sales-daily-brief@1.0.0",
+                    "body": "Pin a version for controlled rollout, auditability, or reproducible test environments.",
+                },
+            ],
+            "security_review": [
+                {
+                    "title": "Review posture",
+                    "body": "This demo release is treated as a reviewed analytics skill with package metadata and release lineage visible through the store APIs.",
+                },
+                {
+                    "title": "Trust signals",
+                    "items": [
+                        "Publisher identity is stable across the catalog and review flow",
+                        "Release package metadata is available before installation",
+                        "Version history can be reviewed before operators install the skill",
+                    ],
+                },
+            ],
+            "docs_sections": [
+                {
+                    "title": "What it does",
+                    "body": "Produces a morning-ready summary of pipeline movement, deal risk, and next actions for sales leadership.",
+                },
+                {
+                    "title": "Expected files",
+                    "items": [
+                        "Skill manifest",
+                        "Release archive",
+                        "Version-specific release notes",
+                    ],
+                },
+            ],
+        }
         if existing_skill is not None:
+            existing_skill.description = detail_payload["description"]
+            existing_skill.license_name = detail_payload["license_name"]
+            existing_skill.license_url = detail_payload["license_url"]
+            existing_skill.homepage_url = detail_payload["homepage_url"]
+            existing_skill.runtime_requirements = detail_payload["runtime_requirements"]
+            existing_skill.install_guidance = detail_payload["install_guidance"]
+            existing_skill.security_review = detail_payload["security_review"]
+            existing_skill.docs_sections = detail_payload["docs_sections"]
+            await session.commit()
             return
 
         skill = Skill(
@@ -74,12 +150,19 @@ async def seed_demo_data() -> None:
             name="sales-daily-brief",
             display_name="Sales Daily Brief",
             summary="Generates a structured sales brief from CRM pipeline data.",
-            description="Summarizes pipeline movement, key risks, and next actions for sales leaders.",
+            description=detail_payload["description"],
+            license_name=detail_payload["license_name"],
+            license_url=detail_payload["license_url"],
+            homepage_url=detail_payload["homepage_url"],
             category=SkillCategory.ANALYTICS,
             status=SkillStatus.ACTIVE,
             featured=True,
             icon_url=None,
             tags=["sales", "crm", "briefing"],
+            runtime_requirements=detail_payload["runtime_requirements"],
+            install_guidance=detail_payload["install_guidance"],
+            security_review=detail_payload["security_review"],
+            docs_sections=detail_payload["docs_sections"],
             download_count=42,
         )
         session.add(skill)

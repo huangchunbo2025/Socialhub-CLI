@@ -16,6 +16,9 @@ class Skill(TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     summary: Mapped[str] = mapped_column(Text(), nullable=False)
     description: Mapped[str] = mapped_column(Text(), nullable=False)
+    license_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    license_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    homepage_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category: Mapped[SkillCategory] = mapped_column(
         Enum(SkillCategory, name="skill_category", values_callable=enum_values),
         nullable=False,
@@ -28,6 +31,10 @@ class Skill(TimestampMixin, Base):
     featured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     icon_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    runtime_requirements: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    install_guidance: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    security_review: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    docs_sections: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     download_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     developer = relationship("Developer", back_populates="skills")
