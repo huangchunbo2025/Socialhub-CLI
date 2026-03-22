@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from .enums import SkillCategory, SkillStatus
+from .enums import SkillCategory, SkillStatus, enum_values
 from .mixins import TimestampMixin
 
 
@@ -16,9 +16,12 @@ class Skill(TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     summary: Mapped[str] = mapped_column(Text(), nullable=False)
     description: Mapped[str] = mapped_column(Text(), nullable=False)
-    category: Mapped[SkillCategory] = mapped_column(Enum(SkillCategory, name="skill_category"), nullable=False)
+    category: Mapped[SkillCategory] = mapped_column(
+        Enum(SkillCategory, name="skill_category", values_callable=enum_values),
+        nullable=False,
+    )
     status: Mapped[SkillStatus] = mapped_column(
-        Enum(SkillStatus, name="skill_status"),
+        Enum(SkillStatus, name="skill_status", values_callable=enum_values),
         nullable=False,
         default=SkillStatus.ACTIVE,
     )

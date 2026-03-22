@@ -1,6 +1,10 @@
 import enum
 
 
+def enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    return [item.value for item in enum_cls]
+
+
 class DeveloperRole(str, enum.Enum):
     DEVELOPER = "developer"
     STORE_ADMIN = "store_admin"

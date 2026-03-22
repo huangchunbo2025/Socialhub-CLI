@@ -4,7 +4,7 @@ from sqlalchemy import DateTime, Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from .enums import DeveloperRole, DeveloperStatus
+from .enums import DeveloperRole, DeveloperStatus, enum_values
 from .mixins import TimestampMixin
 
 
@@ -15,9 +15,12 @@ class Developer(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    role: Mapped[DeveloperRole] = mapped_column(Enum(DeveloperRole, name="developer_role"), nullable=False)
+    role: Mapped[DeveloperRole] = mapped_column(
+        Enum(DeveloperRole, name="developer_role", values_callable=enum_values),
+        nullable=False,
+    )
     status: Mapped[DeveloperStatus] = mapped_column(
-        Enum(DeveloperStatus, name="developer_status"),
+        Enum(DeveloperStatus, name="developer_status", values_callable=enum_values),
         nullable=False,
         default=DeveloperStatus.ACTIVE,
     )
