@@ -40,6 +40,18 @@ function bindCommonEvents() {
     els.tabButtons.forEach((button) => {
         button.addEventListener("click", () => activateTab(button.dataset.tabTarget));
     });
+    document.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-copy-text]");
+        if (!button) {
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(button.dataset.copyText || "");
+            showToast("Command copied.");
+        } catch {
+            showToast("Copy failed.", true);
+        }
+    });
 }
 
 async function initializePage() {
@@ -570,11 +582,13 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
         <div class="trust-row"><span>Publisher</span><strong>${escapeHtml(skill.developer?.name || "Unknown")}</strong></div>
         <div class="trust-row"><span>Status</span><strong>${escapeHtml(skill.status || "active")}</strong></div>
         <div class="trust-row"><span>Latest version</span><strong>${escapeHtml(skill.latest_version || "n/a")}</strong></div>
-        <div class="trust-row"><span>Download package</span><strong>${downloadInfo ? "Available" : "Unavailable"}</strong></div>
+        <div class="trust-row"><span>License</span><strong>${escapeHtml(skill.license_name || "Not specified")}</strong></div>
+        <div class="trust-row"><span>CLI install</span><strong>${downloadInfo ? "Ready" : "Check release data"}</strong></div>
     `;
 
     document.getElementById("packagePanel").innerHTML = downloadInfo
         ? `
+            <div class="trust-row"><span>Install command</span><strong>socialhub skills install ${escapeHtml(skill.name)}</strong></div>
             <div class="trust-row"><span>Package hash</span><strong class="mono">${escapeHtml(downloadInfo.package_hash)}</strong></div>
             <div class="trust-row"><span>Package size</span><strong>${escapeHtml(String(downloadInfo.package_size))} bytes</strong></div>
             <div class="trust-row"><span>Certificate</span><strong>${escapeHtml(downloadInfo.certificate_serial || "Not issued")}</strong></div>
@@ -582,69 +596,41 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
         `
         : emptyState("Package metadata is not available yet.");
 
-    document.getElementById("securityPanel").innerHTML = `
-        <article class="content-card">
-            <h3>Security posture</h3>
-            <p>This release is presented as a reviewed catalog artifact. The package metadata, release lineage, and certificate identifiers are visible in this page layout.</p>
-        </article>
-        <article class="content-card">
-            <h3>Recommended trust signals</h3>
-            <ul class="content-list">
-                <li>Publisher identity is visible and consistent across the storefront.</li>
-                <li>Current release metadata is isolated from long-form description content.</li>
-                <li>Version history can be reviewed before installation decisions are made.</li>
-            </ul>
-        </article>
-        <article class="content-card">
-            <h3>Review focus</h3>
-            <p>For a production-grade marketplace, this section should ultimately surface scanner output, certification details, and reviewer conclusions rather than a generic success badge.</p>
-        </article>
-    `;
+    document.getElementById("securityPanel").innerHTML = renderInfoCards(
+        skill.security_review,
+        [
+            {
+                title: "Security posture",
+                body: "This release is presented as a reviewed catalog artifact. The package metadata, release lineage, and certificate identifiers are visible in this page layout.",
+            },
+        ],
+    );
 
-    document.getElementById("runtimePanel").innerHTML = `
-        <article class="content-card">
-            <h3>Required runtime</h3>
-            <ul class="content-list">
-                <li>Compatible SocialHub CLI environment</li>
-                <li>Network access required by the workflow this skill performs</li>
-                <li>Ability to load the packaged skill bundle and its manifest</li>
-            </ul>
-        </article>
-        <article class="content-card">
-            <h3>Operational expectations</h3>
-            <p>Teams should verify category fit, runtime assumptions, and release history before installing the latest package.</p>
-        </article>
-    `;
+    document.getElementById("runtimePanel").innerHTML = renderInfoCards(
+        skill.runtime_requirements,
+        [
+            {
+                title: "Required runtime",
+                items: [
+                    "Compatible SocialHub CLI environment",
+                    "Network access required by the workflow this skill performs",
+                    "Ability to load the packaged skill bundle and its manifest",
+                ],
+            },
+        ],
+    );
 
-    document.getElementById("installPanel").innerHTML = `
-        <article class="content-card">
-            <h3>Typical install path</h3>
-            <p>Browse the catalog, inspect the version history, then retrieve the package metadata and install the current published release through the CLI or a managed store flow.</p>
-        </article>
-        <article class="content-card">
-            <h3>What to validate before install</h3>
-            <ul class="content-list">
-                <li>Publisher identity matches your approval policy</li>
-                <li>Latest version is the intended release</li>
-                <li>Package metadata and certificate data are present</li>
-            </ul>
-        </article>
-    `;
+    document.getElementById("installPanel").innerHTML = renderInstallCards(skill);
 
-    document.getElementById("filesPanel").innerHTML = `
-        <article class="content-card">
-            <h3>Included documentation</h3>
-            <p>This layout reserves room for README content, usage notes, file manifests, and installation instructions once the backend exposes them in a richer form.</p>
-        </article>
-        <article class="content-card">
-            <h3>Expected file surface</h3>
-            <ul class="content-list">
-                <li>Skill manifest</li>
-                <li>Release package archive</li>
-                <li>Version-specific notes</li>
-            </ul>
-        </article>
-    `;
+    document.getElementById("filesPanel").innerHTML = renderInfoCards(
+        skill.docs_sections,
+        [
+            {
+                title: "Included documentation",
+                body: "This layout reserves room for README content, usage notes, file manifests, and installation instructions once the backend exposes them in a richer form.",
+            },
+        ],
+    );
 
     document.getElementById("versionsPanel").innerHTML = versions.length
         ? versions.map((item) => `
@@ -670,4 +656,70 @@ function escapeHtml(value) {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
+}
+
+function renderCommandBlock(command) {
+    const escaped = escapeHtml(command);
+    return `
+        <div class="code-block">
+            <code>${escaped}</code>
+            <button class="copy-btn" type="button" data-copy-text="${escaped}">Copy</button>
+        </div>
+    `;
+}
+
+function renderInfoCards(items, fallback) {
+    const source = Array.isArray(items) && items.length ? items : fallback;
+    return source.map((item) => {
+        const title = escapeHtml(item.title || "Details");
+        const body = item.body ? `<p>${escapeHtml(item.body)}</p>` : "";
+        const list = Array.isArray(item.items) && item.items.length
+            ? `<ul class="content-list">${item.items.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
+            : "";
+        return `
+            <article class="content-card">
+                <h3>${title}</h3>
+                ${body}
+                ${list}
+            </article>
+        `;
+    }).join("");
+}
+
+function renderInstallCards(skill) {
+    const guidance = Array.isArray(skill.install_guidance) && skill.install_guidance.length
+        ? skill.install_guidance
+        : [
+            {
+                title: "Install the latest published release",
+                body: "Copy the command below and run it inside the SocialHub CLI.",
+                command: `socialhub skills install ${skill.name}`,
+            },
+            {
+                title: "Pin a specific version",
+                body: "Use a version-pinned install for deterministic rollouts.",
+                command: `socialhub skills install ${skill.name}@${(skill.latest_version || "1.0.0")}`,
+            },
+        ];
+
+    const cards = guidance.map((item) => `
+        <article class="content-card">
+            <h3>${escapeHtml(item.title || "Install")}</h3>
+            <p>${escapeHtml(item.body || "")}</p>
+            ${item.command ? renderCommandBlock(item.command) : ""}
+        </article>
+    `);
+
+    cards.push(`
+        <article class="content-card">
+            <h3>What to validate before install</h3>
+            <ul class="content-list">
+                <li>Publisher identity matches your approval policy</li>
+                <li>Latest version is the intended release</li>
+                <li>Package metadata and certificate data are present</li>
+                <li>The CLI environment already has access to the target store endpoint</li>
+            </ul>
+        </article>
+    `);
+    return cards.join("");
 }
