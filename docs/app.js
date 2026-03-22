@@ -566,6 +566,9 @@ function emptyState(message) {
 }
 
 function renderSkillDetailPage(skill, versions, downloadInfo) {
+    const latestInstallCommand = `socialhub skills install ${skill.name}`;
+    const pinnedInstallCommand = `socialhub skills install ${skill.name}@${(skill.latest_version || "1.0.0")}`;
+
     document.getElementById("skillName").textContent = skill.display_name || skill.name;
     document.getElementById("skillSlug").textContent = skill.name;
     document.getElementById("skillSummary").textContent = skill.summary || "";
@@ -576,6 +579,19 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
         <span class="detail-meta-item">Category: ${escapeHtml(skill.category || "unknown")}</span>
         <span class="detail-meta-item">Latest version: ${escapeHtml(skill.latest_version || "n/a")}</span>
         <span class="detail-meta-item">Downloads: ${escapeHtml(String(skill.download_count || 0))}</span>
+    `;
+    document.getElementById("detailHeroActions").innerHTML = `
+        <button class="btn btn-primary btn-lg" type="button" data-copy-text="${escapeHtml(latestInstallCommand)}">Copy install command</button>
+        <a class="btn btn-outline btn-lg" href="#versions">Review versions</a>
+    `;
+    document.getElementById("installSummaryPanel").innerHTML = `
+        <p class="detail-side-card-text">Install this skill from the SocialHub CLI instead of downloading an archive manually.</p>
+        ${renderCommandBlock(latestInstallCommand)}
+        <div class="detail-mini-list">
+            <div><span>Latest release</span><strong>${escapeHtml(skill.latest_version || "n/a")}</strong></div>
+            <div><span>Publisher</span><strong>${escapeHtml(skill.developer?.name || "Unknown")}</strong></div>
+            <div><span>Package metadata</span><strong>${downloadInfo ? "Available" : "Pending"}</strong></div>
+        </div>
     `;
 
     document.getElementById("trustPanel").innerHTML = `
@@ -588,7 +604,7 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
 
     document.getElementById("packagePanel").innerHTML = downloadInfo
         ? `
-            <div class="trust-row"><span>Install command</span><strong>socialhub skills install ${escapeHtml(skill.name)}</strong></div>
+            <div class="trust-row"><span>Install command</span><strong class="mono">${escapeHtml(latestInstallCommand)}</strong></div>
             <div class="trust-row"><span>Package hash</span><strong class="mono">${escapeHtml(downloadInfo.package_hash)}</strong></div>
             <div class="trust-row"><span>Package size</span><strong>${escapeHtml(String(downloadInfo.package_size))} bytes</strong></div>
             <div class="trust-row"><span>Certificate</span><strong>${escapeHtml(downloadInfo.certificate_serial || "Not issued")}</strong></div>
@@ -620,7 +636,7 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
         ],
     );
 
-    document.getElementById("installPanel").innerHTML = renderInstallCards(skill);
+    document.getElementById("installPanel").innerHTML = renderInstallCards(skill, latestInstallCommand, pinnedInstallCommand);
 
     document.getElementById("filesPanel").innerHTML = renderInfoCards(
         skill.docs_sections,
@@ -643,6 +659,10 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
                 <div class="version-card-meta">
                     <span>Hash: ${escapeHtml(item.package_hash)}</span>
                     <span>Size: ${escapeHtml(String(item.package_size))} bytes</span>
+                    <span>Published: ${formatDate(item.published_at)}</span>
+                </div>
+                <div class="version-card-actions">
+                    ${renderCommandBlock(`socialhub skills install ${skill.name}@${item.version}`)}
                 </div>
             </article>
         `).join("")
@@ -686,19 +706,19 @@ function renderInfoCards(items, fallback) {
     }).join("");
 }
 
-function renderInstallCards(skill) {
+function renderInstallCards(skill, latestInstallCommand, pinnedInstallCommand) {
     const guidance = Array.isArray(skill.install_guidance) && skill.install_guidance.length
         ? skill.install_guidance
         : [
             {
                 title: "Install the latest published release",
                 body: "Copy the command below and run it inside the SocialHub CLI.",
-                command: `socialhub skills install ${skill.name}`,
+                command: latestInstallCommand,
             },
             {
                 title: "Pin a specific version",
                 body: "Use a version-pinned install for deterministic rollouts.",
-                command: `socialhub skills install ${skill.name}@${(skill.latest_version || "1.0.0")}`,
+                command: pinnedInstallCommand,
             },
         ];
 
@@ -722,4 +742,16 @@ function renderInstallCards(skill) {
         </article>
     `);
     return cards.join("");
+}
+
+function formatDate(value) {
+    if (!value) {
+        return "Not published";
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "Not published" : date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
 }
