@@ -24,78 +24,69 @@
         </div>
     </nav>
 
-    <section class="hero">
+    <section class="hero product-hero">
         <div class="hero-bg"></div>
         <div class="container">
-            <div class="hero-content">
-                <div class="hero-badge">
-                    <span class="badge-icon">Live</span>
-                    Officially reviewed skills
-                </div>
-                <h1 class="hero-title">
-                    Extend your <span class="text-gradient">SocialHub</span> workflow with trusted skills
-                </h1>
-                <p class="hero-subtitle">
-                    Discover certified skills for analytics, automation, and integrations before your team installs them through the CLI.
-                </p>
-                <div class="hero-search">
-                    <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <path d="m21 21-4.35-4.35"></path>
-                    </svg>
-                    <input type="search" id="searchInput" placeholder="Search skills by name, summary, or workflow" autocomplete="off">
-                    <a class="btn btn-primary" href="#catalog">Search</a>
-                </div>
-                <div class="hero-stats">
-                    <div class="stat-item">
-                        <span class="stat-number" id="heroSkillCount">0</span>
-                        <span class="stat-label">Published skills</span>
+            <div class="product-hero-grid">
+                <div class="product-copy">
+                    <div class="hero-badge">
+                        <span class="badge-icon">Live</span>
+                        Officially reviewed skills
                     </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <span class="stat-number" id="featuredCount">0</span>
-                        <span class="stat-label">Featured picks</span>
+                    <h1 class="hero-title">
+                        Extend your <span class="text-gradient">SocialHub</span> workflow with trusted skills
+                    </h1>
+                    <p class="hero-subtitle">
+                        Discover certified skills for analytics, automation, and integrations before your team installs them through the CLI.
+                    </p>
+                    <div class="hero-search">
+                        <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                        <input type="search" id="searchInput" placeholder="Search skills by name, summary, or workflow" autocomplete="off">
+                        <a class="btn btn-primary" href="#catalog">Search</a>
                     </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <span class="stat-number">100%</span>
-                        <span class="stat-label">CLI installation flow</span>
+                    <div class="hero-stats product-stats">
+                        <div class="stat-item">
+                            <span class="stat-number" id="heroSkillCount">0</span>
+                            <span class="stat-label">Published skills</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <span class="stat-number" id="featuredCount">0</span>
+                            <span class="stat-label">Featured picks</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <span class="stat-number">100%</span>
+                            <span class="stat-label">CLI installation flow</span>
+                        </div>
                     </div>
                 </div>
+                <aside class="hero-sidecard">
+                    <h2>Before you install</h2>
+                    <p>Evaluate a skill the same way an operations team would before it reaches production.</p>
+                    <div class="hero-sidecard-list">
+                        <div>
+                            <strong>Review the publisher</strong>
+                            <span>Confirm who maintains the skill and whether the publishing history looks stable and accountable.</span>
+                        </div>
+                        <div>
+                            <strong>Inspect the release</strong>
+                            <span>Open the detail page to review runtime requirements, security notes, and current version metadata.</span>
+                        </div>
+                        <div>
+                            <strong>Install from the CLI</strong>
+                            <span>Copy the install command only after the skill passes your evaluation and rollout criteria.</span>
+                        </div>
+                    </div>
+                </aside>
             </div>
         </div>
     </section>
 
     <main>
-        <section class="section-block section-toned">
-            <div class="container">
-                <div class="section-heading compact">
-                    <div>
-                        <p class="section-kicker">Before you install</p>
-                        <h2>Evaluate release quality before it reaches your operators.</h2>
-                        <p class="catalog-intro">Use the storefront to verify the publisher, inspect the latest release, and copy the CLI install command only when the skill meets your standards.</p>
-                    </div>
-                </div>
-                <div class="journey-grid">
-                    <article class="journey-card">
-                        <span>1</span>
-                        <h3>Review the publisher</h3>
-                        <p>Confirm who maintains the skill and whether the publishing history looks stable and accountable.</p>
-                    </article>
-                    <article class="journey-card">
-                        <span>2</span>
-                        <h3>Inspect the release</h3>
-                        <p>Open the detail page to check version metadata, runtime requirements, and security notes before rollout.</p>
-                    </article>
-                    <article class="journey-card">
-                        <span>3</span>
-                        <h3>Install from the CLI</h3>
-                        <p>Copy the install command into SocialHub CLI only after the skill passes your evaluation and rollout criteria.</p>
-                    </article>
-                </div>
-            </div>
-        </section>
-
         <section class="categories" id="catalog">
             <div class="container">
                 <div class="category-tabs" id="categoryChips"></div>
