@@ -2021,6 +2021,7 @@ a:hover {
     display: grid;
     grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
     gap: 26px;
+    align-items: start;
 }
 
 .detail-hero-actions {
@@ -2085,6 +2086,10 @@ a:hover {
 .detail-side {
     display: grid;
     gap: 18px;
+}
+
+.detail-hero-grid > .detail-side-card {
+    align-self: start;
 }
 
 .detail-side-card-accent {
