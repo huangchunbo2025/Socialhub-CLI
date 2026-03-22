@@ -29,11 +29,16 @@ function bindCommonElements() {
     els.apiBaseDisplays = document.querySelectorAll("[data-api-base]");
     els.userNameDisplays = document.querySelectorAll("[data-user-name]");
     els.userRoleDisplays = document.querySelectorAll("[data-user-role]");
+    els.tabButtons = document.querySelectorAll("[data-tab-target]");
+    els.tabPanels = document.querySelectorAll("[data-tab-panel]");
 }
 
 function bindCommonEvents() {
     els.logoutButtons.forEach((button) => {
         button.addEventListener("click", () => logout(true));
+    });
+    els.tabButtons.forEach((button) => {
+        button.addEventListener("click", () => activateTab(button.dataset.tabTarget));
     });
 }
 
@@ -147,6 +152,15 @@ function renderHeaderState() {
     });
     document.querySelectorAll("[data-auth='user']").forEach((el) => {
         el.hidden = !state.token;
+    });
+}
+
+function activateTab(tabName) {
+    els.tabButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.tabTarget === tabName);
+    });
+    els.tabPanels.forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.tabPanel === tabName);
     });
 }
 
