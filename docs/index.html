@@ -19,14 +19,10 @@
             </a>
             <div class="nav-links">
                 <a href="index.html" class="nav-link active">Store</a>
-                <a href="developer.html" class="nav-link">Developers</a>
-                <a href="admin.html" class="nav-link">Admin</a>
             </div>
             <div class="nav-actions">
-                <a class="btn btn-outline" href="login.html" data-auth="guest">Sign in</a>
-                <a class="btn btn-primary" href="register.html" data-auth="guest">Create account</a>
-                <a class="btn btn-outline" href="developer.html" data-auth="user" hidden>Workspace</a>
-                <button class="btn btn-primary" data-action="logout" data-auth="user" hidden>Logout</button>
+                <a class="btn btn-outline" href="developer-login.html">Developer portal</a>
+                <a class="btn btn-primary" href="admin-login.html">Admin console</a>
             </div>
         </div>
     </nav>
@@ -43,11 +39,11 @@
                     <h1 class="hero-title">Discover certified skills that teams can trust in production.</h1>
                     <p class="hero-subtitle">
                         Browse reviewed automations, analytics helpers, and marketing workflows.
-                        Developers publish through a dedicated portal. Platform admins review every release before it appears here.
+                        Publisher accounts and admin accounts use their own dedicated entry points and operational surfaces.
                     </p>
                     <div class="hero-actions">
                         <a class="btn btn-primary btn-lg" href="#catalog">Browse catalog</a>
-                        <a class="btn btn-outline btn-lg" href="developer.html">Open developer portal</a>
+                        <a class="btn btn-outline btn-lg" href="developer-login.html">Publisher access</a>
                     </div>
                     <div class="hero-stats product-stats">
                         <div class="stat-item">
@@ -61,27 +57,27 @@
                         </div>
                         <div class="stat-divider"></div>
                         <div class="stat-item">
-                            <span class="stat-number" data-user-name>Guest</span>
-                            <span class="stat-label">Current session</span>
+                            <span class="stat-number">3</span>
+                            <span class="stat-label">Distinct entry modes</span>
                         </div>
                     </div>
                 </div>
                 <aside class="hero-sidecard">
-                    <h2>Connected backend</h2>
-                    <p>Storefront data is served from the live Render API.</p>
+                    <h2>Access model</h2>
+                    <p>The storefront does not double as a workspace. Each role enters through a separate page and journey.</p>
                     <code data-api-base></code>
                     <div class="hero-sidecard-list">
                         <div>
-                            <strong>Authentication</strong>
-                            <span>Dedicated login and registration pages</span>
+                            <strong>Store users</strong>
+                            <span>Browse published catalog entries and review trust signals here.</span>
                         </div>
                         <div>
-                            <strong>Publishing flow</strong>
-                            <span>Developer workspace and review queue are isolated from the storefront</span>
+                            <strong>Developer accounts</strong>
+                            <span>Use the developer access path for skill creation and release submission.</span>
                         </div>
                         <div>
-                            <strong>Admin controls</strong>
-                            <span>Moderation and certificate actions stay in the admin dashboard</span>
+                            <strong>Admin accounts</strong>
+                            <span>Use the admin console for moderation, revocation, and operational controls.</span>
                         </div>
                     </div>
                 </aside>
@@ -97,7 +93,7 @@
                         <p class="section-kicker">Featured</p>
                         <h2>Editor-curated skills ready for immediate evaluation</h2>
                     </div>
-                    <a href="register.html" class="text-link">Become a developer</a>
+                    <a href="register.html" class="text-link">Apply as a developer</a>
                 </div>
                 <div class="card-grid" id="featuredSkills"></div>
             </div>
@@ -125,25 +121,25 @@
             <div class="container">
                 <div class="section-heading">
                     <div>
-                        <p class="section-kicker">How it works</p>
-                        <h2>A cleaner operating model than a single mixed dashboard</h2>
+                        <p class="section-kicker">Entry points</p>
+                        <h2>Separate roles should not share the same first-run experience</h2>
                     </div>
                 </div>
                 <div class="journey-grid">
                     <article class="journey-card">
                         <span>1</span>
-                        <h3>Users browse here</h3>
-                        <p>The storefront stays focused on discovery, trust signals, and product detail.</p>
+                        <h3>Store</h3>
+                        <p>Catalog discovery, detail review, and trust evaluation live on the public storefront.</p>
                     </article>
                     <article class="journey-card">
                         <span>2</span>
-                        <h3>Developers publish in workspace</h3>
-                        <p>Creation, upload, and profile management live in the developer portal, not on the catalog page.</p>
+                        <h3>Developers</h3>
+                        <p>Registration, login, skill creation, and release submission live in the publisher path.</p>
                     </article>
                     <article class="journey-card">
                         <span>3</span>
-                        <h3>Admins review separately</h3>
-                        <p>Approval, rejection, and certificate actions stay in the admin dashboard with clear separation of duties.</p>
+                        <h3>Admin</h3>
+                        <p>Moderation, certificate actions, and platform metrics stay in the admin-only console.</p>
                     </article>
                 </div>
             </div>
@@ -153,7 +149,7 @@
     <div class="modal" id="skillModal">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-            <button class="modal-close" id="modalClose" aria-label="Close detail panel">×</button>
+            <button class="modal-close" id="modalClose" aria-label="Close detail panel">&times;</button>
             <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
@@ -165,20 +161,19 @@
             <div class="footer-content">
                 <div class="footer-brand">
                     <img src="logo.png" alt="SocialHub.AI" class="logo-img-footer">
-                    <p class="footer-tagline">A focused storefront for published skills, with separate operational portals for builders and reviewers.</p>
+                    <p class="footer-tagline">A storefront for discovery, with separate account entry points for publishers and platform administrators.</p>
                 </div>
                 <div class="footer-links">
                     <div class="footer-column">
-                        <h4>Explore</h4>
-                        <a href="index.html">Store</a>
-                        <a href="login.html">Sign in</a>
-                        <a href="register.html">Register</a>
+                        <h4>Store</h4>
+                        <a href="index.html">Catalog</a>
+                        <a href="#catalog">Browse skills</a>
                     </div>
                     <div class="footer-column">
-                        <h4>Operations</h4>
-                        <a href="developer.html">Developer portal</a>
-                        <a href="admin.html">Admin dashboard</a>
-                        <a href="skills-store-render-deploy.md">Deployment guide</a>
+                        <h4>Role-specific access</h4>
+                        <a href="register.html">Developer registration</a>
+                        <a href="developer-login.html">Developer sign in</a>
+                        <a href="admin-login.html">Admin sign in</a>
                     </div>
                 </div>
             </div>

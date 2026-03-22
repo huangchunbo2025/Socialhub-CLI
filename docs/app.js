@@ -49,6 +49,8 @@ async function initializePage() {
             await initStorePage();
             break;
         case "login":
+        case "developer-login":
+        case "admin-login":
             await initLoginPage();
             break;
         case "register":
@@ -63,10 +65,6 @@ async function initializePage() {
         default:
             break;
     }
-}
-
-function normalizeBaseUrl(value) {
-    return value.trim().replace(/\/+$/, "");
 }
 
 function getApiUrl(path) {
@@ -86,9 +84,9 @@ async function apiFetch(path, options = {}) {
         ...options,
         headers,
     });
-
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+
     if (!response.ok) {
         const detail = payload?.detail?.error || payload?.error;
         throw new Error(detail?.message || response.statusText || "Request failed");
@@ -114,7 +112,7 @@ function logout(showMessage) {
         showToast("Signed out.");
     }
     if (page === "developer" || page === "admin") {
-        window.location.href = "login.html";
+        window.location.href = page === "admin" ? "admin-login.html" : "login.html";
     }
 }
 
@@ -146,12 +144,6 @@ function renderHeaderState() {
     });
     els.userRoleDisplays.forEach((el) => {
         el.textContent = userRole;
-    });
-    document.querySelectorAll("[data-auth='guest']").forEach((el) => {
-        el.hidden = Boolean(state.token);
-    });
-    document.querySelectorAll("[data-auth='user']").forEach((el) => {
-        el.hidden = !state.token;
     });
 }
 
@@ -201,6 +193,7 @@ async function initLoginPage() {
         redirectByRole(existing.role);
         return;
     }
+
     const form = document.getElementById("loginForm");
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -211,6 +204,14 @@ async function initLoginPage() {
                 body: JSON.stringify(payload),
             });
             setSession(data.access_token, data.user);
+            if (page === "admin-login" && data.user.role !== "store_admin") {
+                logout(false);
+                throw new Error("This entry point is for store admin accounts only.");
+            }
+            if ((page === "login" || page === "developer-login") && data.user.role !== "developer") {
+                logout(false);
+                throw new Error("This entry point is for developer accounts only.");
+            }
             showToast("Signed in.");
             redirectByRole(data.user.role);
         } catch (error) {
@@ -286,7 +287,7 @@ async function initAdminPage() {
 async function requireRole(role) {
     const user = await loadCurrentUser();
     if (!user) {
-        window.location.href = "login.html";
+        window.location.href = role === "store_admin" ? "admin-login.html" : "login.html";
         return null;
     }
     if (user.role !== role) {
