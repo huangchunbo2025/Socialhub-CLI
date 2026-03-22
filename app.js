@@ -278,6 +278,10 @@ async function initSkillPage() {
 async function initLoginPage() {
     const existing = await loadCurrentUser();
     if (existing) {
+        if (page === "login") {
+            window.location.href = "user.html";
+            return;
+        }
         redirectByRole(existing.role);
         return;
     }
@@ -301,6 +305,10 @@ async function initLoginPage() {
                 throw new Error("This entry point is for developer accounts only.");
             }
             showToast("Signed in.");
+            if (page === "login") {
+                window.location.href = "user.html";
+                return;
+            }
             redirectByRole(data.user.role);
         } catch (error) {
             showToast(error.message, true);
@@ -355,14 +363,6 @@ async function initUserPage() {
     const user = await loadCurrentUser();
     if (!user) {
         window.location.href = "login.html";
-        return;
-    }
-    if (user.role === "developer") {
-        window.location.href = "developer.html";
-        return;
-    }
-    if (user.role === "store_admin") {
-        window.location.href = "admin.html";
         return;
     }
 
