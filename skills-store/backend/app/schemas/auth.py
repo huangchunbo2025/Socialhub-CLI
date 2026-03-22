@@ -30,6 +30,11 @@ class UserResponse(BaseModel):
     status: str
     bio: str | None
     website: str | None
+    saved_skills: list[str] = []
+
+
+class SavedSkillsRequest(BaseModel):
+    skill_names: list[str] = []
 
 
 class LoginResponse(BaseModel):
