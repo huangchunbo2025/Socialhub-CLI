@@ -20,6 +20,7 @@
             <div class="nav-links">
                 <a href="index.html" class="nav-link">Store</a>
                 <a href="admin.html" class="nav-link active">Admin</a>
+                <a href="login.html" class="nav-link">Switch account</a>
             </div>
             <div class="nav-actions">
                 <button class="btn btn-primary" data-action="logout">Logout</button>
@@ -34,42 +35,51 @@
             <p id="profileEmail"></p>
             <span class="status-chip" id="profileRole"></span>
             <div class="sidebar-note">
-                <strong>Scope</strong>
-                <p>Review submissions, monitor core operating metrics, and revoke certificates when needed.</p>
+                <strong>Purpose</strong>
+                <p>Operate a moderation-focused dashboard with clear separation across metrics, review work, and certificate actions.</p>
             </div>
+            <nav class="subnav">
+                <button class="subnav-item active" data-tab-target="overview">Overview</button>
+                <button class="subnav-item" data-tab-target="queue">Review Queue</button>
+                <button class="subnav-item" data-tab-target="certificates">Certificates</button>
+                <button class="subnav-item" data-tab-target="metrics">Metrics</button>
+            </nav>
         </aside>
 
-        <section class="dashboard-main">
-            <div class="dashboard-grid">
-                <section class="dashboard-section">
-                    <div class="section-heading compact">
-                        <div>
-                            <p class="section-kicker">Operations</p>
-                            <h2>Platform metrics</h2>
-                        </div>
-                    </div>
-                    <div class="metric-grid" id="adminStats"></div>
-                </section>
-
-                <section class="dashboard-section">
-                    <div class="section-heading compact">
-                        <div>
-                            <p class="section-kicker">Certificates</p>
-                            <h2>Revoke signed releases</h2>
-                        </div>
-                    </div>
-                    <form id="revokeForm" class="dash-form">
-                        <label>Certificate serial<input type="text" name="certificate_serial" required></label>
-                        <label>Reason<textarea name="comment" rows="4"></textarea></label>
-                        <button class="btn btn-secondary" type="submit">Revoke certificate</button>
-                    </form>
-                </section>
-            </div>
-
-            <div class="dashboard-section">
+        <section class="dashboard-main tab-shell">
+            <section class="dashboard-section tab-panel active" data-tab-panel="overview">
                 <div class="section-heading">
                     <div>
-                        <p class="section-kicker">Review queue</p>
+                        <p class="section-kicker">Overview</p>
+                        <h2>Admin workspace status</h2>
+                    </div>
+                </div>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <span>Backend</span>
+                        <strong data-api-base></strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Session role</span>
+                        <strong data-user-role></strong>
+                    </div>
+                </div>
+                <div class="review-grid top-gap">
+                    <article class="dash-card">
+                        <h3>Moderation-first layout</h3>
+                        <p class="dash-meta">Review actions are isolated from storefront browsing and developer publishing work.</p>
+                    </article>
+                    <article class="dash-card">
+                        <h3>Certificate controls</h3>
+                        <p class="dash-meta">Revocation remains separate from review queue handling to reduce operational mistakes.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="queue">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Review Queue</p>
                         <h2>Moderate incoming releases</h2>
                     </div>
                     <select id="reviewStatusFilter">
@@ -81,7 +91,31 @@
                     </select>
                 </div>
                 <div class="review-grid" id="reviewsList"></div>
-            </div>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="certificates">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Certificates</p>
+                        <h2>Revoke signed releases</h2>
+                    </div>
+                </div>
+                <form id="revokeForm" class="dash-form">
+                    <label>Certificate serial<input type="text" name="certificate_serial" required></label>
+                    <label>Reason<textarea name="comment" rows="4"></textarea></label>
+                    <button class="btn btn-secondary" type="submit">Revoke certificate</button>
+                </form>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="metrics">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Metrics</p>
+                        <h2>Platform counters</h2>
+                    </div>
+                </div>
+                <div class="metric-grid" id="adminStats"></div>
+            </section>
         </section>
     </main>
 

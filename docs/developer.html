@@ -35,113 +35,53 @@
             <p id="profileEmail"></p>
             <span class="status-chip" id="profileRole"></span>
             <div class="sidebar-note">
-                <strong>Workspace goal</strong>
-                <p>Manage your profile, create new skills, and submit release packages for review.</p>
+                <strong>Purpose</strong>
+                <p>Publish skills through a clean flow: overview, skill management, release submissions, and profile maintenance.</p>
             </div>
+            <nav class="subnav">
+                <button class="subnav-item active" data-tab-target="overview">Overview</button>
+                <button class="subnav-item" data-tab-target="skills">My Skills</button>
+                <button class="subnav-item" data-tab-target="create">Create Skill</button>
+                <button class="subnav-item" data-tab-target="releases">Releases</button>
+                <button class="subnav-item" data-tab-target="profile">Profile</button>
+            </nav>
         </aside>
 
-        <section class="dashboard-main">
-            <div class="dashboard-grid">
-                <section class="dashboard-section">
-                    <div class="section-heading compact">
-                        <div>
-                            <p class="section-kicker">Workspace</p>
-                            <h2>Operational guidance</h2>
-                        </div>
-                    </div>
-                    <div class="metric-grid">
-                        <div class="metric-card">
-                            <span>Backend</span>
-                            <strong data-api-base></strong>
-                        </div>
-                        <div class="metric-card">
-                            <span>Session</span>
-                            <strong data-user-role></strong>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="dashboard-section">
-                    <div class="section-heading compact">
-                        <div>
-                            <p class="section-kicker">Publishing path</p>
-                            <h2>Expected flow</h2>
-                        </div>
-                    </div>
-                    <div class="review-grid">
-                        <article class="dash-card">
-                            <h3>Create the catalog entry</h3>
-                            <p class="dash-meta">Define the skill once before you upload any release package.</p>
-                        </article>
-                        <article class="dash-card">
-                            <h3>Upload a versioned zip package</h3>
-                            <p class="dash-meta">The package is submitted for review and does not appear in the catalog immediately.</p>
-                        </article>
-                    </div>
-                </section>
-            </div>
-
-            <div class="dashboard-section">
+        <section class="dashboard-main tab-shell">
+            <section class="dashboard-section tab-panel active" data-tab-panel="overview">
                 <div class="section-heading">
                     <div>
-                        <p class="section-kicker">Profile</p>
-                        <h2>Update publisher metadata</h2>
+                        <p class="section-kicker">Overview</p>
+                        <h2>Developer workspace status</h2>
                     </div>
                 </div>
-                <form id="profileForm" class="dash-form">
-                    <label>Name<input type="text" name="name"></label>
-                    <label>Bio<textarea name="bio" rows="4"></textarea></label>
-                    <label>Website<input type="url" name="website"></label>
-                    <button class="btn btn-secondary" type="submit">Save profile</button>
-                </form>
-            </div>
-
-            <div class="dashboard-grid">
-                <section class="dashboard-section">
-                    <div class="section-heading compact">
-                        <div>
-                            <p class="section-kicker">New skill</p>
-                            <h2>Create catalog entry</h2>
-                        </div>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <span>Backend</span>
+                        <strong data-api-base></strong>
                     </div>
-                    <form id="createSkillForm" class="dash-form">
-                        <label>Name<input type="text" name="name" placeholder="ops-daily-summary" required></label>
-                        <label>Display name<input type="text" name="display_name" required></label>
-                        <label>Category
-                            <select name="category" required id="developerCategorySelect">
-                                <option value="">Choose category</option>
-                            </select>
-                        </label>
-                        <label>Summary<textarea name="summary" rows="3" required></textarea></label>
-                        <label>Description<textarea name="description" rows="5" required></textarea></label>
-                        <label>Tags<input type="text" name="tags" placeholder="ops, reporting, summary"></label>
-                        <label>Icon URL<input type="url" name="icon_url"></label>
-                        <button class="btn btn-primary" type="submit">Create skill</button>
-                    </form>
-                </section>
-
-                <section class="dashboard-section">
-                    <div class="section-heading compact">
-                        <div>
-                            <p class="section-kicker">Release</p>
-                            <h2>Upload new version</h2>
-                        </div>
+                    <div class="metric-card">
+                        <span>Session role</span>
+                        <strong data-user-role></strong>
                     </div>
-                    <form id="uploadVersionForm" class="dash-form" enctype="multipart/form-data">
-                        <label>Skill name<input type="text" name="skill_name" required></label>
-                        <label>Version<input type="text" name="version" placeholder="1.0.0" required></label>
-                        <label>Release notes<textarea name="release_notes" rows="4"></textarea></label>
-                        <label>Zip package<input type="file" name="package" accept=".zip" required></label>
-                        <button class="btn btn-primary" type="submit">Submit for review</button>
-                    </form>
-                </section>
-            </div>
+                </div>
+                <div class="review-grid top-gap">
+                    <article class="dash-card">
+                        <h3>Catalog-first workflow</h3>
+                        <p class="dash-meta">Create a skill entry once, then publish subsequent versions against that record.</p>
+                    </article>
+                    <article class="dash-card">
+                        <h3>Release review path</h3>
+                        <p class="dash-meta">Uploaded packages enter moderation and only appear in the storefront after approval.</p>
+                    </article>
+                </div>
+            </section>
 
-            <div class="dashboard-section">
+            <section class="dashboard-section tab-panel" data-tab-panel="skills">
                 <div class="section-heading">
                     <div>
-                        <p class="section-kicker">Portfolio</p>
-                        <h2>Your published and pending skills</h2>
+                        <p class="section-kicker">My Skills</p>
+                        <h2>Published and in-flight catalog entries</h2>
                     </div>
                 </div>
                 <div class="console-table-wrap">
@@ -160,7 +100,61 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="create">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Create Skill</p>
+                        <h2>Create a new catalog entry</h2>
+                    </div>
+                </div>
+                <form id="createSkillForm" class="dash-form">
+                    <label>Name<input type="text" name="name" placeholder="ops-daily-summary" required></label>
+                    <label>Display name<input type="text" name="display_name" required></label>
+                    <label>Category
+                        <select name="category" required id="developerCategorySelect">
+                            <option value="">Choose category</option>
+                        </select>
+                    </label>
+                    <label>Summary<textarea name="summary" rows="3" required></textarea></label>
+                    <label>Description<textarea name="description" rows="5" required></textarea></label>
+                    <label>Tags<input type="text" name="tags" placeholder="ops, reporting, summary"></label>
+                    <label>Icon URL<input type="url" name="icon_url"></label>
+                    <button class="btn btn-primary" type="submit">Create skill</button>
+                </form>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="releases">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Releases</p>
+                        <h2>Submit a new version package</h2>
+                    </div>
+                </div>
+                <form id="uploadVersionForm" class="dash-form" enctype="multipart/form-data">
+                    <label>Skill name<input type="text" name="skill_name" required></label>
+                    <label>Version<input type="text" name="version" placeholder="1.0.0" required></label>
+                    <label>Release notes<textarea name="release_notes" rows="4"></textarea></label>
+                    <label>Zip package<input type="file" name="package" accept=".zip" required></label>
+                    <button class="btn btn-primary" type="submit">Submit for review</button>
+                </form>
+            </section>
+
+            <section class="dashboard-section tab-panel" data-tab-panel="profile">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Profile</p>
+                        <h2>Update publisher metadata</h2>
+                    </div>
+                </div>
+                <form id="profileForm" class="dash-form">
+                    <label>Name<input type="text" name="name"></label>
+                    <label>Bio<textarea name="bio" rows="4"></textarea></label>
+                    <label>Website<input type="url" name="website"></label>
+                    <button class="btn btn-secondary" type="submit">Save profile</button>
+                </form>
+            </section>
         </section>
     </main>
 
