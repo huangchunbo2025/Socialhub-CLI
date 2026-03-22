@@ -90,6 +90,31 @@ function bindCommonEvents() {
         });
     }
     document.addEventListener("click", async (event) => {
+        const saveButton = event.target.closest("[data-save-skill]");
+        if (saveButton) {
+            const skillName = saveButton.dataset.saveSkill;
+            const saved = toggleSavedSkill(skillName);
+            if (page === "user") {
+                renderUserSkills();
+            } else if (page === "store") {
+                renderCatalog();
+            } else if (page === "skill") {
+                const skill = state.skills.find((item) => item.name === skillName);
+                const params = new URLSearchParams(window.location.search);
+                if (skill && params.get("name") === skillName) {
+                    const versions = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}/versions`);
+                    let downloadInfo = null;
+                    try {
+                        downloadInfo = await apiFetch(`/api/v1/skills/${encodeURIComponent(skillName)}/download-info`);
+                    } catch {
+                        downloadInfo = null;
+                    }
+                    renderSkillDetailPage(skill, versions, downloadInfo);
+                }
+            }
+            showToast(saved ? "Added to My skills." : "Removed from My skills.");
+            return;
+        }
         const button = event.target.closest("[data-copy-text]");
         if (!button) {
             return;
@@ -272,6 +297,10 @@ async function initSkillPage() {
         downloadInfo = null;
     }
 
+    if (!state.skills.find((item) => item.name === skill.name)) {
+        state.skills.push(skill);
+    }
+
     renderSkillDetailPage(skill, versions, downloadInfo);
 }
 
@@ -390,7 +419,7 @@ async function initUserPage() {
                         </div>
                         <span class="status-chip">${skill.status === "active" ? "Enabled" : "Disabled"}</span>
                     </div>
-                    <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} · Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
+                    <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} | Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
                     <div class="dash-actions">
                         <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">Open detail page</a>
                     </div>
@@ -403,6 +432,26 @@ async function initUserPage() {
 
 function getUserSkillOverrides() {
     return JSON.parse(localStorage.getItem("skillsStoreUserSkillStates") || "{}");
+}
+
+function getSavedSkillNames() {
+    return JSON.parse(localStorage.getItem("skillsStoreSavedSkills") || "[]");
+}
+
+function isSkillSaved(skillName) {
+    return getSavedSkillNames().includes(skillName);
+}
+
+function toggleSavedSkill(skillName) {
+    const saved = new Set(getSavedSkillNames());
+    if (saved.has(skillName)) {
+        saved.delete(skillName);
+        localStorage.setItem("skillsStoreSavedSkills", JSON.stringify([...saved]));
+        return false;
+    }
+    saved.add(skillName);
+    localStorage.setItem("skillsStoreSavedSkills", JSON.stringify([...saved]));
+    return true;
 }
 
 function setUserSkillOverride(skillName, enabled) {
@@ -423,7 +472,10 @@ function renderUserSkills() {
     if (!els.userSkillList) {
         return;
     }
-    const suggested = state.skills.slice(0, 3);
+    const savedNames = getSavedSkillNames();
+    const suggested = savedNames.length
+        ? savedNames.map((name) => state.skills.find((item) => item.name === name)).filter(Boolean)
+        : state.skills.slice(0, 3);
     els.userSkillList.innerHTML = suggested.length
         ? suggested.map((skill) => {
             const enabled = getUserSkillEnabled(skill);
@@ -440,12 +492,13 @@ function renderUserSkills() {
                     </div>
                     <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} · Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
                     <div class="dash-actions">
+                        <button class="btn btn-secondary btn-sm" type="button" data-save-skill="${escapeHtml(skill.name)}">Remove from My skills</button>
                         <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">Open detail page</a>
                     </div>
                 </article>
             `;
         }).join("")
-        : emptyState("No suggested skills yet.");
+        : emptyState("No saved skills yet. Add skills from the catalog or a detail page.");
 
     els.userSkillList.querySelectorAll("[data-skill-toggle]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -458,6 +511,13 @@ function renderUserSkills() {
             setUserSkillOverride(skillName, nextEnabled);
             renderUserSkills();
             showToast(`Skill ${nextEnabled ? "enabled" : "disabled"}.`);
+        });
+    });
+    els.userSkillList.querySelectorAll("[data-save-skill]").forEach((button) => {
+        button.addEventListener("click", () => {
+            toggleSavedSkill(button.dataset.saveSkill);
+            renderUserSkills();
+            showToast("Removed from My skills.");
         });
     });
 }
@@ -769,6 +829,7 @@ function renderSkillCard(skill) {
             <p class="skill-summary">${escapeHtml(skill.summary || "No summary provided.")}</p>
             <div class="skill-card-foot">
                 <span>${escapeHtml(skill.latest_version || "No version")}</span>
+                <button class="btn btn-secondary btn-sm" type="button" data-save-skill="${escapeHtml(skill.name)}">${isSkillSaved(skill.name) ? "Saved" : "Add to My skills"}</button>
                 <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">View details</a>
             </div>
         </article>
@@ -800,6 +861,7 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
     `;
     document.getElementById("detailHeroActions").innerHTML = `
         <button class="btn btn-primary btn-lg" type="button" data-copy-text="${escapeHtml(latestInstallCommand)}">Copy install command</button>
+        <button class="btn btn-secondary btn-lg" type="button" data-save-skill="${escapeHtml(skill.name)}">${isSkillSaved(skill.name) ? "Saved to My skills" : "Add to My skills"}</button>
         <a class="btn btn-outline btn-lg" href="#versions">Review versions</a>
     `;
     document.getElementById("installSummaryPanel").innerHTML = `
