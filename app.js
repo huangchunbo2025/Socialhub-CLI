@@ -64,6 +64,9 @@ function bindCommonElements() {
     els.userRoleDisplays = document.querySelectorAll("[data-user-role]");
     els.tabButtons = document.querySelectorAll("[data-tab-target]");
     els.tabPanels = document.querySelectorAll("[data-tab-panel]");
+    els.cliButton = document.getElementById("cliBtn");
+    els.cliModal = document.getElementById("cliModal");
+    els.cliModalClose = document.getElementById("cliModalClose");
 }
 
 function bindCommonEvents() {
@@ -73,6 +76,19 @@ function bindCommonEvents() {
     els.tabButtons.forEach((button) => {
         button.addEventListener("click", () => activateTab(button.dataset.tabTarget));
     });
+    if (els.cliButton && els.cliModal) {
+        els.cliButton.addEventListener("click", () => {
+            els.cliModal.classList.add("active");
+        });
+    }
+    if (els.cliModalClose && els.cliModal) {
+        els.cliModalClose.addEventListener("click", () => {
+            els.cliModal.classList.remove("active");
+        });
+        els.cliModal.querySelector(".modal-overlay")?.addEventListener("click", () => {
+            els.cliModal.classList.remove("active");
+        });
+    }
     document.addEventListener("click", async (event) => {
         const button = event.target.closest("[data-copy-text]");
         if (!button) {
