@@ -398,6 +398,68 @@ async function initUserPage() {
             `).join("")
             : emptyState("No suggested skills yet.");
     }
+    renderUserSkills();
+}
+
+function getUserSkillOverrides() {
+    return JSON.parse(localStorage.getItem("skillsStoreUserSkillStates") || "{}");
+}
+
+function setUserSkillOverride(skillName, enabled) {
+    const overrides = getUserSkillOverrides();
+    overrides[skillName] = enabled ? "enabled" : "disabled";
+    localStorage.setItem("skillsStoreUserSkillStates", JSON.stringify(overrides));
+}
+
+function getUserSkillEnabled(skill) {
+    const overrides = getUserSkillOverrides();
+    if (overrides[skill.name]) {
+        return overrides[skill.name] === "enabled";
+    }
+    return skill.status === "active";
+}
+
+function renderUserSkills() {
+    if (!els.userSkillList) {
+        return;
+    }
+    const suggested = state.skills.slice(0, 3);
+    els.userSkillList.innerHTML = suggested.length
+        ? suggested.map((skill) => {
+            const enabled = getUserSkillEnabled(skill);
+            return `
+                <article class="dash-card">
+                    <div class="dash-card-head">
+                        <div>
+                            <h3>${escapeHtml(skill.display_name || skill.name)}</h3>
+                            <p>${escapeHtml(skill.summary || "No summary provided.")}</p>
+                        </div>
+                        <button class="status-chip status-toggle${enabled ? " enabled" : " disabled"}" type="button" data-skill-toggle="${escapeHtml(skill.name)}">
+                            ${enabled ? "Enabled" : "Disabled"}
+                        </button>
+                    </div>
+                    <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} · Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
+                    <div class="dash-actions">
+                        <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">Open detail page</a>
+                    </div>
+                </article>
+            `;
+        }).join("")
+        : emptyState("No suggested skills yet.");
+
+    els.userSkillList.querySelectorAll("[data-skill-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const skillName = button.dataset.skillToggle;
+            const skill = state.skills.find((item) => item.name === skillName);
+            if (!skill) {
+                return;
+            }
+            const nextEnabled = !getUserSkillEnabled(skill);
+            setUserSkillOverride(skillName, nextEnabled);
+            renderUserSkills();
+            showToast(`Skill ${nextEnabled ? "enabled" : "disabled"}.`);
+        });
+    });
 }
 
 async function initAdminPage() {

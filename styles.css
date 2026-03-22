@@ -2082,6 +2082,27 @@ a:hover {
     text-transform: capitalize;
 }
 
+.status-toggle {
+    border: none;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.status-toggle.enabled {
+    background: rgba(16, 185, 129, 0.16);
+    color: #047857;
+}
+
+.status-toggle.disabled {
+    background: rgba(148, 163, 184, 0.18);
+    color: #475569;
+}
+
+.status-toggle:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+}
+
 .modal-skill-head {
     display: flex;
     justify-content: space-between;
