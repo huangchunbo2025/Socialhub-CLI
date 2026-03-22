@@ -476,6 +476,7 @@ function renderUserSkills() {
     els.userSkillList.innerHTML = suggested.length
         ? suggested.map((skill) => {
             const enabled = getUserSkillEnabled(skill);
+            const saved = isSkillSaved(skill.name);
             return `
                 <article class="dash-card">
                     <div class="dash-card-head">
@@ -489,7 +490,7 @@ function renderUserSkills() {
                     </div>
                     <p class="dash-meta">Latest version: ${escapeHtml(skill.latest_version || "n/a")} · Downloads: ${escapeHtml(String(skill.download_count || 0))}</p>
                     <div class="dash-actions">
-                        <button class="btn btn-secondary btn-sm" type="button" data-save-skill="${escapeHtml(skill.name)}">Remove from My skills</button>
+                        <button class="btn btn-secondary btn-sm" type="button" data-save-skill="${escapeHtml(skill.name)}">${saved ? "Remove from My skills" : "Add to My skills"}</button>
                         <a class="btn btn-outline btn-sm" href="skill.html?name=${encodeURIComponent(skill.name)}">Open detail page</a>
                     </div>
                 </article>
@@ -512,9 +513,9 @@ function renderUserSkills() {
     });
     els.userSkillList.querySelectorAll("[data-save-skill]").forEach((button) => {
         button.addEventListener("click", () => {
-            toggleSavedSkill(button.dataset.saveSkill);
+            const saved = toggleSavedSkill(button.dataset.saveSkill);
             renderUserSkills();
-            showToast("Removed from My skills.");
+            showToast(saved ? "Added to My skills." : "Removed from My skills.");
         });
     });
     els.userSkillList.querySelectorAll(".dash-meta").forEach((item) => {
