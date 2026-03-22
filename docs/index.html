@@ -90,44 +90,28 @@
                         <h2>Find the right skill faster</h2>
                         <p class="catalog-intro">Filter by category, narrow by intent, and inspect install-ready skills before copying the CLI command.</p>
                     </div>
-                    <div class="catalog-filters catalog-filters-stack">
-                        <div class="catalog-search-wrap">
-                            <input type="search" id="searchInput" placeholder="Search by skill name, summary, workflow, or use case">
-                        </div>
-                        <div class="catalog-select-wrap">
-                            <select id="categorySelect">
-                                <option value="">All categories</option>
-                            </select>
-                        </div>
+                    <div class="catalog-filters">
+                        <input type="search" id="searchInput" placeholder="Search by skill name, summary, workflow, or use case">
+                        <select id="categorySelect">
+                            <option value="">All categories</option>
+                        </select>
                     </div>
                 </div>
-                <div class="catalog-layout">
-                    <aside class="catalog-sidebar">
-                        <div class="catalog-sidecard">
-                            <p class="section-kicker">Categories</p>
-                            <div class="category-chip-list" id="categoryChips"></div>
-                        </div>
-                        <div class="catalog-sidecard">
-                            <p class="section-kicker">Install flow</p>
-                            <ol class="catalog-steps">
-                                <li>Open a skill detail page and review the publisher, release metadata, and security notes.</li>
-                                <li>Copy the CLI install command for the latest release or a pinned version.</li>
-                                <li>Run the command inside SocialHub CLI and validate the installed release locally.</li>
-                            </ol>
-                        </div>
-                    </aside>
-                    <div class="catalog-main">
-                        <div class="catalog-toolbar">
-                            <div class="catalog-toolbar-copy">
-                                <strong id="catalogResultCount">0 skills</strong>
-                                <span>Published and available for CLI installation</span>
-                            </div>
-                            <a class="text-link" href="skill.html?name=sales-daily-brief">View an example detail page</a>
-                        </div>
-                        <div class="card-grid" id="catalogSkills"></div>
-                    </article>
+                <div class="catalog-categories">
+                    <div class="catalog-categories-head">
+                        <strong>Categories</strong>
+                        <span>Use categories first, then search within a narrower set of install-ready skills.</span>
                     </div>
+                    <div class="category-chip-list" id="categoryChips"></div>
                 </div>
+                <div class="catalog-toolbar">
+                    <div class="catalog-toolbar-copy">
+                        <strong id="catalogResultCount">0 skills</strong>
+                        <span>Published and available for CLI installation</span>
+                    </div>
+                    <span class="catalog-toolbar-note">Open a skill detail page before you copy the install command.</span>
+                </div>
+                <div class="card-grid" id="catalogSkills"></div>
             </div>
         </section>
 
