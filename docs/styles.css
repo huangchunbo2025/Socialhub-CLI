@@ -1515,24 +1515,14 @@ a:hover {
 
 .catalog-filters {
     display: flex;
-    gap: 12px;
+    gap: 14px;
     flex-wrap: wrap;
-}
-
-.catalog-filters-stack {
-    flex-direction: column;
-    align-items: stretch;
-    min-width: 360px;
-}
-
-.catalog-search-wrap,
-.catalog-select-wrap {
-    width: 100%;
+    align-items: center;
 }
 
 .catalog-intro {
     margin-top: 12px;
-    max-width: 760px;
+    max-width: 680px;
     color: var(--text-secondary);
 }
 
@@ -1553,48 +1543,28 @@ a:hover {
 }
 
 .catalog-filters input {
-    min-width: 320px;
-}
-
-.catalog-layout {
-    display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
-}
-
-.catalog-sidebar {
-    display: grid;
-    gap: 18px;
-    position: sticky;
-    top: 96px;
-}
-
-.catalog-sidecard {
-    padding: 22px;
-    border-radius: 22px;
-    background: white;
-    border: 1px solid #e8eef4;
-    box-shadow: var(--shadow-md);
+    min-width: 340px;
 }
 
 .category-chip-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
+    margin-top: 16px;
 }
 
 .category-chip {
-    border: 1px solid #d9e5f1;
-    background: #f8fbfd;
+    border: 1px solid #d6e1ec;
+    background: white;
     color: var(--primary);
-    padding: 10px 14px;
+    padding: 10px 16px;
     border-radius: 999px;
     cursor: pointer;
     font: inherit;
     font-size: 13px;
     font-weight: 600;
     transition: var(--transition);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .category-chip:hover,
@@ -1604,16 +1574,25 @@ a:hover {
     color: white;
 }
 
-.catalog-steps {
-    display: grid;
-    gap: 12px;
-    padding-left: 18px;
+.catalog-categories {
+    margin-bottom: 24px;
+    padding: 24px;
+    border-radius: 24px;
+    background: #f5f8fb;
+    border: 1px solid #e2eaf2;
+}
+
+.catalog-categories-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: start;
     color: var(--text-secondary);
 }
 
-.catalog-main {
-    display: grid;
-    gap: 20px;
+.catalog-categories-head strong {
+    color: var(--primary);
+    font-size: 18px;
 }
 
 .catalog-toolbar {
@@ -1621,11 +1600,12 @@ a:hover {
     justify-content: space-between;
     gap: 20px;
     align-items: center;
-    padding: 18px 22px;
-    border-radius: 22px;
+    padding: 18px 0 0;
+    border-radius: 0;
     background: white;
-    border: 1px solid #e8eef4;
-    box-shadow: var(--shadow-md);
+    border: 0;
+    box-shadow: none;
+    margin-bottom: 20px;
 }
 
 .catalog-toolbar-copy {
@@ -1643,20 +1623,34 @@ a:hover {
     font-size: 14px;
 }
 
+.catalog-toolbar-note {
+    color: var(--text-secondary);
+    font-size: 14px;
+    max-width: 420px;
+    text-align: right;
+}
+
 .card-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 22px;
+    gap: 20px;
 }
 
 .skill-card {
     display: grid;
-    gap: 16px;
+    gap: 14px;
     padding: 24px;
-    border-radius: 22px;
+    border-radius: 20px;
     background: white;
-    border: 1px solid #e8eef4;
-    box-shadow: 0 12px 30px rgba(18, 28, 61, 0.08);
+    border: 1px solid #e3eaf1;
+    box-shadow: 0 10px 24px rgba(18, 28, 61, 0.06);
+    transition: var(--transition);
+}
+
+.skill-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 34px rgba(18, 28, 61, 0.1);
+    border-color: #cfdbe8;
 }
 
 .skill-card-top,
@@ -1668,13 +1662,17 @@ a:hover {
 }
 
 .skill-card h3 {
-    font-size: 22px;
+    font-size: 21px;
     color: var(--primary);
 }
 
 .skill-summary,
 .skill-downloads {
     color: var(--text-secondary);
+}
+
+.catalog-toolbar + .card-grid {
+    margin-top: 0;
 }
 
 .journey-grid {
@@ -2245,7 +2243,6 @@ a:hover {
     .auth-panel,
     .dashboard-shell,
     .dashboard-grid,
-    .catalog-layout,
     .card-grid,
     .journey-grid,
     .journey-grid-compact,
@@ -2262,6 +2259,7 @@ a:hover {
 @media (max-width: 760px) {
     .section-heading,
     .catalog-filters,
+    .catalog-categories-head,
     .catalog-toolbar,
     .hero-actions,
     .detail-hero-actions,
@@ -2271,16 +2269,13 @@ a:hover {
         align-items: stretch;
     }
 
-    .catalog-filters-stack {
-        min-width: 0;
-    }
-
-    .catalog-sidebar {
-        position: static;
-    }
-
     .section-heading h2 {
         font-size: 28px;
+    }
+
+    .catalog-toolbar-note {
+        max-width: none;
+        text-align: left;
     }
 
     .auth-shell,
