@@ -110,6 +110,19 @@ a:hover {
     color: var(--accent);
 }
 
+.btn-cli {
+    background: #050816;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: white;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.btn-cli:hover {
+    background: #0b1022;
+    color: white;
+    transform: translateY(-1px);
+}
+
 .btn-secondary {
     background: var(--bg-secondary);
     color: var(--text);
