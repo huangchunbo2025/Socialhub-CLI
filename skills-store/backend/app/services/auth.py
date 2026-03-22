@@ -127,3 +127,15 @@ async def update_developer_profile(
     await session.commit()
     await session.refresh(developer)
     return developer
+
+
+async def update_saved_skills(
+    session: AsyncSession,
+    developer: Developer,
+    skill_names: list[str],
+) -> Developer:
+    normalized = [name.strip() for name in skill_names if name and name.strip()]
+    developer.saved_skills = sorted(set(normalized))
+    await session.commit()
+    await session.refresh(developer)
+    return developer

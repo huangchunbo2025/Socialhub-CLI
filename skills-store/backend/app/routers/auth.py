@@ -5,8 +5,8 @@ from ..auth.dependencies import get_current_user
 from ..auth.jwt import create_access_token
 from ..database import get_db_session
 from ..models import Developer
-from ..schemas.auth import LoginRequest, RegisterRequest, UpdateProfileRequest, UserResponse
-from ..services.auth import authenticate_developer, create_developer, update_developer_profile
+from ..schemas.auth import LoginRequest, RegisterRequest, SavedSkillsRequest, UpdateProfileRequest, UserResponse
+from ..services.auth import authenticate_developer, create_developer, update_developer_profile, update_saved_skills
 
 router = APIRouter(tags=["auth"])
 
@@ -20,6 +20,7 @@ def _serialize_user(user: Developer) -> UserResponse:
         status=user.status.value,
         bio=user.bio,
         website=user.website,
+        saved_skills=user.saved_skills or [],
     )
 
 
@@ -72,3 +73,18 @@ async def update_me(
         website=payload.website,
     )
     return {"data": _serialize_user(developer)}
+
+
+@router.get("/auth/me/skills")
+async def get_my_skills(current_user: Developer = Depends(get_current_user)) -> dict[str, list[str]]:
+    return {"data": current_user.saved_skills or []}
+
+
+@router.put("/auth/me/skills")
+async def put_my_skills(
+    payload: SavedSkillsRequest,
+    current_user: Developer = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, list[str]]:
+    developer = await update_saved_skills(session, current_user, payload.skill_names)
+    return {"data": developer.saved_skills or []}

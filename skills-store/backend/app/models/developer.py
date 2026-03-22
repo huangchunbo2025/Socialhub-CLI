@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -26,6 +27,7 @@ class Developer(TimestampMixin, Base):
     )
     bio: Mapped[str | None] = mapped_column(Text(), nullable=True)
     website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    saved_skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     skills = relationship("Skill", back_populates="developer")
