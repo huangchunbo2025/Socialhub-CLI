@@ -1519,6 +1519,23 @@ a:hover {
     flex-wrap: wrap;
 }
 
+.catalog-filters-stack {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 360px;
+}
+
+.catalog-search-wrap,
+.catalog-select-wrap {
+    width: 100%;
+}
+
+.catalog-intro {
+    margin-top: 12px;
+    max-width: 760px;
+    color: var(--text-secondary);
+}
+
 .catalog-filters input,
 .catalog-filters select,
 .dash-form input,
@@ -1537,6 +1554,93 @@ a:hover {
 
 .catalog-filters input {
     min-width: 320px;
+}
+
+.catalog-layout {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.catalog-sidebar {
+    display: grid;
+    gap: 18px;
+    position: sticky;
+    top: 96px;
+}
+
+.catalog-sidecard {
+    padding: 22px;
+    border-radius: 22px;
+    background: white;
+    border: 1px solid #e8eef4;
+    box-shadow: var(--shadow-md);
+}
+
+.category-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.category-chip {
+    border: 1px solid #d9e5f1;
+    background: #f8fbfd;
+    color: var(--primary);
+    padding: 10px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    transition: var(--transition);
+}
+
+.category-chip:hover,
+.category-chip.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.catalog-steps {
+    display: grid;
+    gap: 12px;
+    padding-left: 18px;
+    color: var(--text-secondary);
+}
+
+.catalog-main {
+    display: grid;
+    gap: 20px;
+}
+
+.catalog-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: center;
+    padding: 18px 22px;
+    border-radius: 22px;
+    background: white;
+    border: 1px solid #e8eef4;
+    box-shadow: var(--shadow-md);
+}
+
+.catalog-toolbar-copy {
+    display: grid;
+    gap: 4px;
+}
+
+.catalog-toolbar-copy strong {
+    color: var(--primary);
+    font-size: 18px;
+}
+
+.catalog-toolbar-copy span {
+    color: var(--text-secondary);
+    font-size: 14px;
 }
 
 .card-grid {
@@ -2141,6 +2245,7 @@ a:hover {
     .auth-panel,
     .dashboard-shell,
     .dashboard-grid,
+    .catalog-layout,
     .card-grid,
     .journey-grid,
     .journey-grid-compact,
@@ -2157,12 +2262,21 @@ a:hover {
 @media (max-width: 760px) {
     .section-heading,
     .catalog-filters,
+    .catalog-toolbar,
     .hero-actions,
     .detail-hero-actions,
     .skill-card-top,
     .skill-card-foot {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .catalog-filters-stack {
+        min-width: 0;
+    }
+
+    .catalog-sidebar {
+        position: static;
     }
 
     .section-heading h2 {
