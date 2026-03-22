@@ -1798,6 +1798,96 @@ a:hover {
     word-break: break-all;
 }
 
+.auth-storeframe {
+    margin-top: 34px;
+    display: grid;
+    gap: 18px;
+}
+
+.auth-storeframe-main {
+    padding: 22px 24px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.08) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+}
+
+.auth-storeframe-main h3 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: white;
+}
+
+.auth-storeframe-main p {
+    max-width: none;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.auth-storeframe-meta {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.auth-storeframe-meta div {
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-storeframe-meta strong {
+    display: block;
+    font-size: 20px;
+    line-height: 1;
+    color: white;
+    margin-bottom: 8px;
+}
+
+.auth-storeframe-meta span {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+}
+
+.auth-storeframe-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.auth-store-card {
+    min-height: 168px;
+    padding: 20px 22px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.auth-store-card h4 {
+    font-size: 17px;
+    color: white;
+    margin-bottom: 10px;
+}
+
+.auth-store-card p {
+    max-width: none;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.auth-store-card ul {
+    margin-top: 14px;
+    padding-left: 18px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.auth-store-card li {
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
 .auth-card {
     padding: 28px;
     border-radius: 24px;
@@ -2288,6 +2378,11 @@ a:hover {
 
     .dashboard-sidebar {
         position: static;
+    }
+
+    .auth-storeframe-meta,
+    .auth-storeframe-grid {
+        grid-template-columns: 1fr;
     }
 }
 
