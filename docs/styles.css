@@ -1579,6 +1579,10 @@ a:hover {
     gap: 20px;
 }
 
+.journey-grid-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .journey-card {
     padding: 26px;
     border-radius: 22px;
@@ -2139,6 +2143,7 @@ a:hover {
     .dashboard-grid,
     .card-grid,
     .journey-grid,
+    .journey-grid-compact,
     .detail-hero-grid,
     .detail-grid {
         grid-template-columns: 1fr;
