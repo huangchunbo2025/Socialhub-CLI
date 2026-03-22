@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="login">
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SocialHub.AI" class="logo-img">
+                <span class="nav-divider">|</span>
+                <span class="nav-subtitle">Skills Store</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Store</a>
+                <a href="register.html" class="nav-link">Register</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="auth-shell">
+        <section class="auth-panel">
+            <div class="auth-copy">
+                <p class="section-kicker">Authentication</p>
+                <h1>Sign in to your workspace</h1>
+                <p>Developers land in the publishing portal. Store admins land in the moderation dashboard.</p>
+                <div class="auth-highlights">
+                    <div><strong>Developer demo</strong><span>developer@skills-store.local</span></div>
+                    <div><strong>Admin demo</strong><span>admin@skills-store.local</span></div>
+                    <div><strong>Backend</strong><code data-api-base></code></div>
+                </div>
+            </div>
+            <div class="auth-card">
+                <h2>Sign in</h2>
+                <form id="loginForm" class="console-form">
+                    <label>Email<input type="email" name="email" required></label>
+                    <label>Password<input type="password" name="password" minlength="8" required></label>
+                    <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+                </form>
+                <p class="auth-inline-note">Need an account? <a href="register.html">Create one</a></p>
+            </div>
+        </section>
+    </main>
+
+    <div class="console-toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>

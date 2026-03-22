@@ -3,256 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Skills Store Console - SocialHub.AI</title>
+    <title>Skills Store - SocialHub.AI</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-<body>
+<body data-page="store">
     <nav class="navbar">
         <div class="nav-container">
-            <a href="#storefront" class="nav-logo">
+            <a href="index.html" class="nav-logo">
                 <img src="logo.png" alt="SocialHub.AI" class="logo-img">
                 <span class="nav-divider">|</span>
-                <span class="nav-subtitle">Skills Store Console</span>
+                <span class="nav-subtitle">Skills Store</span>
             </a>
             <div class="nav-links">
-                <a href="#storefront" class="nav-link active">Store</a>
-                <a href="#account" class="nav-link">Account</a>
-                <a href="#developer" class="nav-link">Developer</a>
-                <a href="#admin" class="nav-link">Admin</a>
+                <a href="index.html" class="nav-link active">Store</a>
+                <a href="developer.html" class="nav-link">Developers</a>
+                <a href="admin.html" class="nav-link">Admin</a>
             </div>
             <div class="nav-actions">
-                <button class="btn btn-outline" id="refreshBtn">Refresh</button>
-                <button class="btn btn-primary" id="logoutBtn">Logout</button>
+                <a class="btn btn-outline" href="login.html" data-auth="guest">Sign in</a>
+                <a class="btn btn-primary" href="register.html" data-auth="guest">Create account</a>
+                <a class="btn btn-outline" href="developer.html" data-auth="user" hidden>Workspace</a>
+                <button class="btn btn-primary" data-action="logout" data-auth="user" hidden>Logout</button>
             </div>
         </div>
     </nav>
 
-    <section class="hero console-hero">
+    <section class="hero product-hero">
         <div class="hero-bg"></div>
         <div class="container">
-            <div class="hero-content">
-                <div class="hero-badge">
-                    <span class="badge-icon">API</span>
-                    Live Skills Store Frontend
-                </div>
-                <h1 class="hero-title">Operate the <span class="text-gradient">Skills Store</span> from one console</h1>
-                <p class="hero-subtitle">
-                    Connect this static frontend to your Render backend, browse published skills,
-                    register users, submit versions, and process reviews without leaving the page.
-                </p>
-                <div class="console-api-panel">
-                    <div class="console-api-header">
-                        <h2>Backend Endpoint</h2>
-                        <p>Point this frontend to your Render API or local FastAPI server.</p>
+            <div class="product-hero-grid">
+                <div class="product-copy">
+                    <div class="hero-badge">
+                        <span class="badge-icon">Live</span>
+                        Verified skills for SocialHub operators
                     </div>
-                    <div class="console-api-form">
-                        <input type="url" id="apiBaseInput" placeholder="https://skills-store-backend.onrender.com">
-                        <button class="btn btn-primary" id="saveApiBtn">Save Endpoint</button>
+                    <h1 class="hero-title">Discover certified skills that teams can trust in production.</h1>
+                    <p class="hero-subtitle">
+                        Browse reviewed automations, analytics helpers, and marketing workflows.
+                        Developers publish through a dedicated portal. Platform admins review every release before it appears here.
+                    </p>
+                    <div class="hero-actions">
+                        <a class="btn btn-primary btn-lg" href="#catalog">Browse catalog</a>
+                        <a class="btn btn-outline btn-lg" href="developer.html">Open developer portal</a>
                     </div>
-                    <div class="console-status-row">
-                        <span class="console-status-pill" id="apiStatusPill">Endpoint not tested</span>
-                        <span class="console-status-text" id="apiStatusText">Set an API base URL, then refresh.</span>
-                    </div>
-                </div>
-                <div class="hero-stats">
-                    <div class="stat-item">
-                        <span class="stat-number" id="statsSkills">0</span>
-                        <span class="stat-label">Visible skills</span>
-                    </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <span class="stat-number" id="statsFeatured">0</span>
-                        <span class="stat-label">Featured</span>
-                    </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <span class="stat-number" id="statsReviews">0</span>
-                        <span class="stat-label">Pending reviews</span>
+                    <div class="hero-stats product-stats">
+                        <div class="stat-item">
+                            <span class="stat-number" id="heroSkillCount">0</span>
+                            <span class="stat-label">Published skills</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <span class="stat-number" id="featuredCount">0</span>
+                            <span class="stat-label">Featured picks</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <span class="stat-number" data-user-name>Guest</span>
+                            <span class="stat-label">Current session</span>
+                        </div>
                     </div>
                 </div>
+                <aside class="hero-sidecard">
+                    <h2>Connected backend</h2>
+                    <p>Storefront data is served from the live Render API.</p>
+                    <code data-api-base></code>
+                    <div class="hero-sidecard-list">
+                        <div>
+                            <strong>Authentication</strong>
+                            <span>Dedicated login and registration pages</span>
+                        </div>
+                        <div>
+                            <strong>Publishing flow</strong>
+                            <span>Developer workspace and review queue are isolated from the storefront</span>
+                        </div>
+                        <div>
+                            <strong>Admin controls</strong>
+                            <span>Moderation and certificate actions stay in the admin dashboard</span>
+                        </div>
+                    </div>
+                </aside>
             </div>
         </div>
     </section>
 
-    <main class="console-main">
-        <section class="console-section" id="storefront">
+    <main>
+        <section class="section-block section-toned">
             <div class="container">
-                <div class="console-section-head">
+                <div class="section-heading">
                     <div>
-                        <p class="section-kicker">Storefront</p>
-                        <h2 class="section-title">Published skills and live catalog data</h2>
+                        <p class="section-kicker">Featured</p>
+                        <h2>Editor-curated skills ready for immediate evaluation</h2>
                     </div>
-                    <div class="console-inline-actions">
+                    <a href="register.html" class="text-link">Become a developer</a>
+                </div>
+                <div class="card-grid" id="featuredSkills"></div>
+            </div>
+        </section>
+
+        <section class="section-block" id="catalog">
+            <div class="container">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Catalog</p>
+                        <h2>Search the live published catalog</h2>
+                    </div>
+                    <div class="catalog-filters">
                         <input type="search" id="searchInput" placeholder="Search by name, display name, or summary">
                         <select id="categorySelect">
                             <option value="">All categories</option>
                         </select>
                     </div>
                 </div>
-                <div class="console-grid two-column">
-                    <div class="console-panel">
-                        <div class="console-panel-head">
-                            <h3>Featured skills</h3>
-                            <span class="panel-meta" id="featuredMeta">0 items</span>
-                        </div>
-                        <div class="console-card-list" id="featuredSkills"></div>
-                    </div>
-                    <div class="console-panel">
-                        <div class="console-panel-head">
-                            <h3>All published skills</h3>
-                            <span class="panel-meta" id="skillsMeta">0 items</span>
-                        </div>
-                        <div class="console-card-list" id="skillsList"></div>
-                    </div>
-                </div>
+                <div class="card-grid" id="catalogSkills"></div>
             </div>
         </section>
 
-        <section class="console-section" id="account">
+        <section class="section-block section-toned">
             <div class="container">
-                <div class="console-section-head">
+                <div class="section-heading">
                     <div>
-                        <p class="section-kicker">Account</p>
-                        <h2 class="section-title">Register, sign in, and manage your profile</h2>
+                        <p class="section-kicker">How it works</p>
+                        <h2>A cleaner operating model than a single mixed dashboard</h2>
                     </div>
                 </div>
-                <div class="console-grid three-column">
-                    <div class="console-panel">
-                        <div class="console-panel-head"><h3>Register</h3></div>
-                        <form id="registerForm" class="console-form">
-                            <label>Email<input type="email" name="email" required></label>
-                            <label>Name<input type="text" name="name" required></label>
-                            <label>Password<input type="password" name="password" minlength="8" required></label>
-                            <button class="btn btn-primary btn-block" type="submit">Create developer account</button>
-                        </form>
-                    </div>
-                    <div class="console-panel">
-                        <div class="console-panel-head"><h3>Login</h3></div>
-                        <form id="loginForm" class="console-form">
-                            <label>Email<input type="email" name="email" required></label>
-                            <label>Password<input type="password" name="password" minlength="8" required></label>
-                            <button class="btn btn-primary btn-block" type="submit">Sign in</button>
-                        </form>
-                    </div>
-                    <div class="console-panel">
-                        <div class="console-panel-head">
-                            <h3>Current user</h3>
-                            <span class="panel-meta" id="userRole">Guest</span>
-                        </div>
-                        <form id="profileForm" class="console-form">
-                            <label>Name<input type="text" name="name"></label>
-                            <label>Bio<textarea name="bio" rows="4"></textarea></label>
-                            <label>Website<input type="url" name="website"></label>
-                            <button class="btn btn-secondary btn-block" type="submit">Update profile</button>
-                        </form>
-                        <div class="console-user-card" id="currentUserCard"><p>No active session.</p></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="console-section" id="developer">
-            <div class="container">
-                <div class="console-section-head">
-                    <div>
-                        <p class="section-kicker">Developer</p>
-                        <h2 class="section-title">Create a skill and submit new versions</h2>
-                    </div>
-                </div>
-                <div class="console-grid two-column">
-                    <div class="console-panel">
-                        <div class="console-panel-head"><h3>Create skill</h3></div>
-                        <form id="createSkillForm" class="console-form">
-                            <label>Name<input type="text" name="name" placeholder="sales-daily-brief" required></label>
-                            <label>Display name<input type="text" name="display_name" required></label>
-                            <label>Category
-                                <select name="category" required id="developerCategorySelect">
-                                    <option value="">Choose category</option>
-                                </select>
-                            </label>
-                            <label>Summary<textarea name="summary" rows="3" required></textarea></label>
-                            <label>Description<textarea name="description" rows="5" required></textarea></label>
-                            <label>Tags<input type="text" name="tags" placeholder="crm, automation, reporting"></label>
-                            <label>Icon URL<input type="url" name="icon_url" placeholder="https://..."></label>
-                            <button class="btn btn-primary btn-block" type="submit">Create skill</button>
-                        </form>
-                    </div>
-                    <div class="console-panel">
-                        <div class="console-panel-head"><h3>Upload version</h3></div>
-                        <form id="uploadVersionForm" class="console-form" enctype="multipart/form-data">
-                            <label>Skill name<input type="text" name="skill_name" required></label>
-                            <label>Version<input type="text" name="version" placeholder="1.0.0" required></label>
-                            <label>Release notes<textarea name="release_notes" rows="4"></textarea></label>
-                            <label>Zip package<input type="file" name="package" accept=".zip" required></label>
-                            <button class="btn btn-primary btn-block" type="submit">Submit version for review</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="console-panel">
-                    <div class="console-panel-head">
-                        <h3>My skills</h3>
-                        <span class="panel-meta" id="developerSkillsMeta">Login required</span>
-                    </div>
-                    <div class="console-table-wrap">
-                        <table class="console-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Category</th>
-                                    <th>Latest version</th>
-                                    <th>Status</th>
-                                    <th>Downloads</th>
-                                </tr>
-                            </thead>
-                            <tbody id="developerSkillsBody">
-                                <tr><td colspan="5">No data yet.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="console-section" id="admin">
-            <div class="container">
-                <div class="console-section-head">
-                    <div>
-                        <p class="section-kicker">Admin</p>
-                        <h2 class="section-title">Review queue, moderation, and service stats</h2>
-                    </div>
-                    <div class="console-inline-actions">
-                        <select id="reviewStatusFilter">
-                            <option value="">All review states</option>
-                            <option value="pending">Pending</option>
-                            <option value="in_review">In review</option>
-                            <option value="approved">Approved</option>
-                            <option value="rejected">Rejected</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="console-grid two-column">
-                    <div class="console-panel">
-                        <div class="console-panel-head"><h3>Admin stats</h3></div>
-                        <div class="console-metric-grid" id="adminStats"></div>
-                    </div>
-                    <div class="console-panel">
-                        <div class="console-panel-head"><h3>Certificate revoke</h3></div>
-                        <form id="revokeForm" class="console-form">
-                            <label>Certificate serial<input type="text" name="certificate_serial" required></label>
-                            <label>Reason<textarea name="comment" rows="4"></textarea></label>
-                            <button class="btn btn-secondary btn-block" type="submit">Revoke certificate</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="console-panel">
-                    <div class="console-panel-head">
-                        <h3>Review queue</h3>
-                        <span class="panel-meta" id="reviewsMeta">0 records</span>
-                    </div>
-                    <div class="console-card-list" id="reviewsList"></div>
+                <div class="journey-grid">
+                    <article class="journey-card">
+                        <span>1</span>
+                        <h3>Users browse here</h3>
+                        <p>The storefront stays focused on discovery, trust signals, and product detail.</p>
+                    </article>
+                    <article class="journey-card">
+                        <span>2</span>
+                        <h3>Developers publish in workspace</h3>
+                        <p>Creation, upload, and profile management live in the developer portal, not on the catalog page.</p>
+                    </article>
+                    <article class="journey-card">
+                        <span>3</span>
+                        <h3>Admins review separately</h3>
+                        <p>Approval, rejection, and certificate actions stay in the admin dashboard with clear separation of duties.</p>
+                    </article>
                 </div>
             </div>
         </section>
@@ -261,12 +153,7 @@
     <div class="modal" id="skillModal">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-            <button class="modal-close" id="modalClose" aria-label="Close detail panel">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 6 6 18"></path>
-                    <path d="m6 6 12 12"></path>
-                </svg>
-            </button>
+            <button class="modal-close" id="modalClose" aria-label="Close detail panel">×</button>
             <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
@@ -278,20 +165,20 @@
             <div class="footer-content">
                 <div class="footer-brand">
                     <img src="logo.png" alt="SocialHub.AI" class="logo-img-footer">
-                    <p class="footer-tagline">Frontend shell for the Skills Store backend MVP.</p>
+                    <p class="footer-tagline">A focused storefront for published skills, with separate operational portals for builders and reviewers.</p>
                 </div>
                 <div class="footer-links">
                     <div class="footer-column">
-                        <h4>Platform</h4>
-                        <a href="#storefront">Store</a>
-                        <a href="#developer">Developer</a>
-                        <a href="#admin">Admin</a>
+                        <h4>Explore</h4>
+                        <a href="index.html">Store</a>
+                        <a href="login.html">Sign in</a>
+                        <a href="register.html">Register</a>
                     </div>
                     <div class="footer-column">
-                        <h4>Docs</h4>
-                        <a href="skills-store-render-deploy.md">Render deploy guide</a>
-                        <a href="skills-store-design.md">Store design</a>
-                        <a href="skills-store-engineering-guidelines.md">Engineering guidelines</a>
+                        <h4>Operations</h4>
+                        <a href="developer.html">Developer portal</a>
+                        <a href="admin.html">Admin dashboard</a>
+                        <a href="skills-store-render-deploy.md">Deployment guide</a>
                     </div>
                 </div>
             </div>

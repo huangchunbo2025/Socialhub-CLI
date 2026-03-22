@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Portal - Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="developer">
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SocialHub.AI" class="logo-img">
+                <span class="nav-divider">|</span>
+                <span class="nav-subtitle">Developer Portal</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Store</a>
+                <a href="developer.html" class="nav-link active">Developer</a>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-primary" data-action="logout">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="dashboard-shell">
+        <aside class="dashboard-sidebar">
+            <p class="section-kicker">Developer account</p>
+            <h1 id="profileName">Loading...</h1>
+            <p id="profileEmail"></p>
+            <span class="status-chip" id="profileRole"></span>
+            <div class="sidebar-note">
+                <strong>Workspace goal</strong>
+                <p>Manage your profile, create new skills, and submit release packages for review.</p>
+            </div>
+        </aside>
+
+        <section class="dashboard-main">
+            <div class="dashboard-section">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Profile</p>
+                        <h2>Update publisher metadata</h2>
+                    </div>
+                </div>
+                <form id="profileForm" class="dash-form">
+                    <label>Name<input type="text" name="name"></label>
+                    <label>Bio<textarea name="bio" rows="4"></textarea></label>
+                    <label>Website<input type="url" name="website"></label>
+                    <button class="btn btn-secondary" type="submit">Save profile</button>
+                </form>
+            </div>
+
+            <div class="dashboard-grid">
+                <section class="dashboard-section">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">New skill</p>
+                            <h2>Create catalog entry</h2>
+                        </div>
+                    </div>
+                    <form id="createSkillForm" class="dash-form">
+                        <label>Name<input type="text" name="name" placeholder="ops-daily-summary" required></label>
+                        <label>Display name<input type="text" name="display_name" required></label>
+                        <label>Category
+                            <select name="category" required id="developerCategorySelect">
+                                <option value="">Choose category</option>
+                            </select>
+                        </label>
+                        <label>Summary<textarea name="summary" rows="3" required></textarea></label>
+                        <label>Description<textarea name="description" rows="5" required></textarea></label>
+                        <label>Tags<input type="text" name="tags" placeholder="ops, reporting, summary"></label>
+                        <label>Icon URL<input type="url" name="icon_url"></label>
+                        <button class="btn btn-primary" type="submit">Create skill</button>
+                    </form>
+                </section>
+
+                <section class="dashboard-section">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Release</p>
+                            <h2>Upload new version</h2>
+                        </div>
+                    </div>
+                    <form id="uploadVersionForm" class="dash-form" enctype="multipart/form-data">
+                        <label>Skill name<input type="text" name="skill_name" required></label>
+                        <label>Version<input type="text" name="version" placeholder="1.0.0" required></label>
+                        <label>Release notes<textarea name="release_notes" rows="4"></textarea></label>
+                        <label>Zip package<input type="file" name="package" accept=".zip" required></label>
+                        <button class="btn btn-primary" type="submit">Submit for review</button>
+                    </form>
+                </section>
+            </div>
+
+            <div class="dashboard-section">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Portfolio</p>
+                        <h2>Your published and pending skills</h2>
+                    </div>
+                </div>
+                <div class="console-table-wrap">
+                    <table class="console-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Category</th>
+                                <th>Latest version</th>
+                                <th>Status</th>
+                                <th>Downloads</th>
+                            </tr>
+                        </thead>
+                        <tbody id="developerSkillsBody">
+                            <tr><td colspan="5">No skills yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div class="console-toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>

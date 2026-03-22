@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="admin">
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SocialHub.AI" class="logo-img">
+                <span class="nav-divider">|</span>
+                <span class="nav-subtitle">Admin Dashboard</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Store</a>
+                <a href="admin.html" class="nav-link active">Admin</a>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-primary" data-action="logout">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="dashboard-shell admin-shell">
+        <aside class="dashboard-sidebar">
+            <p class="section-kicker">Store admin</p>
+            <h1 id="profileName">Loading...</h1>
+            <p id="profileEmail"></p>
+            <span class="status-chip" id="profileRole"></span>
+            <div class="sidebar-note">
+                <strong>Scope</strong>
+                <p>Review submissions, monitor core operating metrics, and revoke certificates when needed.</p>
+            </div>
+        </aside>
+
+        <section class="dashboard-main">
+            <div class="dashboard-grid">
+                <section class="dashboard-section">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Operations</p>
+                            <h2>Platform metrics</h2>
+                        </div>
+                    </div>
+                    <div class="metric-grid" id="adminStats"></div>
+                </section>
+
+                <section class="dashboard-section">
+                    <div class="section-heading compact">
+                        <div>
+                            <p class="section-kicker">Certificates</p>
+                            <h2>Revoke signed releases</h2>
+                        </div>
+                    </div>
+                    <form id="revokeForm" class="dash-form">
+                        <label>Certificate serial<input type="text" name="certificate_serial" required></label>
+                        <label>Reason<textarea name="comment" rows="4"></textarea></label>
+                        <button class="btn btn-secondary" type="submit">Revoke certificate</button>
+                    </form>
+                </section>
+            </div>
+
+            <div class="dashboard-section">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-kicker">Review queue</p>
+                        <h2>Moderate incoming releases</h2>
+                    </div>
+                    <select id="reviewStatusFilter">
+                        <option value="">All review states</option>
+                        <option value="pending">Pending</option>
+                        <option value="in_review">In review</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+                <div class="review-grid" id="reviewsList"></div>
+            </div>
+        </section>
+    </main>
+
+    <div class="console-toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>

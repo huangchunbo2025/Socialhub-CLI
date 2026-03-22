@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account - Skills Store</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="register">
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SocialHub.AI" class="logo-img">
+                <span class="nav-divider">|</span>
+                <span class="nav-subtitle">Skills Store</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Store</a>
+                <a href="login.html" class="nav-link">Sign in</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="auth-shell">
+        <section class="auth-panel">
+            <div class="auth-copy">
+                <p class="section-kicker">Developer onboarding</p>
+                <h1>Create your publisher account</h1>
+                <p>Registration creates a developer account. Platform admin access remains separately managed.</p>
+                <div class="auth-highlights">
+                    <div><strong>Built for</strong><span>Skill publishers and maintainers</span></div>
+                    <div><strong>After sign-up</strong><span>You will sign in and enter the developer workspace</span></div>
+                    <div><strong>Backend</strong><code data-api-base></code></div>
+                </div>
+            </div>
+            <div class="auth-card">
+                <h2>Create account</h2>
+                <form id="registerForm" class="console-form">
+                    <label>Email<input type="email" name="email" required></label>
+                    <label>Name<input type="text" name="name" required></label>
+                    <label>Password<input type="password" name="password" minlength="8" required></label>
+                    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+                </form>
+                <p class="auth-inline-note">Already registered? <a href="login.html">Sign in</a></p>
+            </div>
+        </section>
+    </main>
+
+    <div class="console-toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>
