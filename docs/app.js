@@ -192,9 +192,13 @@ async function initStorePage() {
     els.catalogResultCount = document.getElementById("catalogResultCount");
     els.heroCount = document.getElementById("heroSkillCount");
     els.featuredCount = document.getElementById("featuredCount");
+    els.sortSelect = document.getElementById("sortSelect");
 
     els.searchInput.addEventListener("input", renderCatalog);
     els.categorySelect.addEventListener("change", renderCatalog);
+    if (els.sortSelect) {
+        els.sortSelect.addEventListener("change", renderCatalog);
+    }
 
     await Promise.all([loadCategories(), loadFeaturedSkills(), loadSkills()]);
     renderCatalog();
@@ -407,11 +411,21 @@ function renderCatalog() {
     }
     const term = (els.searchInput?.value || "").trim().toLowerCase();
     const category = els.categorySelect?.value || "";
+    const sortBy = els.sortSelect?.value || "downloads";
     const filtered = state.skills.filter((item) => {
         const matchesCategory = !category || item.category === category;
         const haystack = [item.name, item.display_name, item.summary].join(" ").toLowerCase();
         const matchesSearch = !term || haystack.includes(term);
         return matchesCategory && matchesSearch;
+    });
+    filtered.sort((a, b) => {
+        if (sortBy === "name") {
+            return String(a.display_name || a.name).localeCompare(String(b.display_name || b.name));
+        }
+        if (sortBy === "version") {
+            return String(b.latest_version || "").localeCompare(String(a.latest_version || ""));
+        }
+        return Number(b.download_count || 0) - Number(a.download_count || 0);
     });
     if (els.catalogResultCount) {
         els.catalogResultCount.textContent = `${filtered.length} skill${filtered.length === 1 ? "" : "s"}`;

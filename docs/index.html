@@ -82,36 +82,43 @@
     </section>
 
     <main>
-        <section class="section-block" id="catalog">
+        <section class="categories" id="catalog">
             <div class="container">
-                <div class="section-heading">
+                <div class="category-tabs" id="categoryChips"></div>
+                <select id="categorySelect" hidden>
+                    <option value="">All categories</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="skills-section">
+            <div class="container">
+                <div class="skills-header">
                     <div>
-                        <p class="section-kicker">Catalog</p>
-                        <h2>Find the right skill faster</h2>
-                        <p class="catalog-intro">Filter by category, narrow by intent, and inspect install-ready skills before copying the CLI command.</p>
+                        <h2 class="section-title">Catalog</h2>
+                        <p class="catalog-intro">Search published skills, compare release quality, and open the detail page before copying the CLI install command.</p>
                     </div>
-                    <div class="catalog-filters">
-                        <input type="search" id="searchInput" placeholder="Search by skill name, summary, workflow, or use case">
-                        <select id="categorySelect">
-                            <option value="">All categories</option>
-                        </select>
+                    <div class="skills-controls">
+                        <div class="catalog-search-inline">
+                            <input type="search" id="searchInput" placeholder="Search by skill name, summary, workflow, or use case">
+                        </div>
+                        <div class="skills-sort">
+                            <select id="sortSelect">
+                                <option value="downloads">Most installed</option>
+                                <option value="name">Name</option>
+                                <option value="version">Latest version</option>
+                            </select>
+                        </div>
                     </div>
-                </div>
-                <div class="catalog-categories">
-                    <div class="catalog-categories-head">
-                        <strong>Categories</strong>
-                        <span>Use categories first, then search within a narrower set of install-ready skills.</span>
-                    </div>
-                    <div class="category-chip-list" id="categoryChips"></div>
                 </div>
                 <div class="catalog-toolbar">
                     <div class="catalog-toolbar-copy">
                         <strong id="catalogResultCount">0 skills</strong>
                         <span>Published and available for CLI installation</span>
                     </div>
-                    <span class="catalog-toolbar-note">Open a skill detail page before you copy the install command.</span>
+                    <span class="catalog-toolbar-note">Review the skill page for trust signals, release notes, and install guidance.</span>
                 </div>
-                <div class="card-grid" id="catalogSkills"></div>
+                <div class="skills-grid" id="catalogSkills"></div>
             </div>
         </section>
 
