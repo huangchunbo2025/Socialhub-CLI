@@ -232,7 +232,7 @@ async function initRegisterPage() {
             });
             showToast("Account created. Please sign in.");
             window.setTimeout(() => {
-                window.location.href = "login.html";
+                window.location.href = "developer-login.html";
             }, 800);
         } catch (error) {
             showToast(error.message, true);
