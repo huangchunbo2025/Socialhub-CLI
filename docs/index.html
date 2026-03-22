@@ -1,273 +1,302 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Skills Store - SocialHub.AI</title>
+    <title>Skills Store Console - SocialHub.AI</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
-            <a href="#" class="nav-logo">
+            <a href="#storefront" class="nav-logo">
                 <img src="logo.png" alt="SocialHub.AI" class="logo-img">
                 <span class="nav-divider">|</span>
-                <span class="nav-subtitle">Skills Store</span>
+                <span class="nav-subtitle">Skills Store Console</span>
             </a>
             <div class="nav-links">
-                <a href="#" class="nav-link active">商店</a>
-                <a href="#installed" class="nav-link">已安装</a>
-                <a href="#developer" class="nav-link">开发者</a>
-                <a href="https://docs.socialhub.ai" class="nav-link" target="_blank">文档</a>
+                <a href="#storefront" class="nav-link active">Store</a>
+                <a href="#account" class="nav-link">Account</a>
+                <a href="#developer" class="nav-link">Developer</a>
+                <a href="#admin" class="nav-link">Admin</a>
             </div>
             <div class="nav-actions">
-                <button class="btn btn-outline" id="cliBtn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="4 17 10 11 4 5"></polyline>
-                        <line x1="12" y1="19" x2="20" y2="19"></line>
-                    </svg>
-                    CLI 安装
-                </button>
-                <button class="btn btn-primary" id="loginBtn">登录</button>
+                <button class="btn btn-outline" id="refreshBtn">Refresh</button>
+                <button class="btn btn-primary" id="logoutBtn">Logout</button>
             </div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="hero">
+    <section class="hero console-hero">
         <div class="hero-bg"></div>
         <div class="container">
             <div class="hero-content">
                 <div class="hero-badge">
-                    <span class="badge-icon">✓</span>
-                    官方认证技能
+                    <span class="badge-icon">API</span>
+                    Live Skills Store Frontend
                 </div>
-                <h1 class="hero-title">
-                    扩展你的 <span class="text-gradient">SocialHub</span> 能力
-                </h1>
+                <h1 class="hero-title">Operate the <span class="text-gradient">Skills Store</span> from one console</h1>
                 <p class="hero-subtitle">
-                    发现、安装官方认证的技能插件，为你的客户互动平台增添强大功能
+                    Connect this static frontend to your Render backend, browse published skills,
+                    register users, submit versions, and process reviews without leaving the page.
                 </p>
-                <div class="hero-search">
-                    <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <path d="m21 21-4.35-4.35"></path>
-                    </svg>
-                    <input type="text" id="searchInput" placeholder="搜索技能..." autocomplete="off">
-                    <button class="btn btn-primary" id="searchBtn">搜索</button>
+                <div class="console-api-panel">
+                    <div class="console-api-header">
+                        <h2>Backend Endpoint</h2>
+                        <p>Point this frontend to your Render API or local FastAPI server.</p>
+                    </div>
+                    <div class="console-api-form">
+                        <input type="url" id="apiBaseInput" placeholder="https://skills-store-backend.onrender.com">
+                        <button class="btn btn-primary" id="saveApiBtn">Save Endpoint</button>
+                    </div>
+                    <div class="console-status-row">
+                        <span class="console-status-pill" id="apiStatusPill">Endpoint not tested</span>
+                        <span class="console-status-text" id="apiStatusText">Set an API base URL, then refresh.</span>
+                    </div>
                 </div>
                 <div class="hero-stats">
                     <div class="stat-item">
-                        <span class="stat-number">8</span>
-                        <span class="stat-label">官方技能</span>
+                        <span class="stat-number" id="statsSkills">0</span>
+                        <span class="stat-label">Visible skills</span>
                     </div>
                     <div class="stat-divider"></div>
                     <div class="stat-item">
-                        <span class="stat-number">50K+</span>
-                        <span class="stat-label">总下载量</span>
+                        <span class="stat-number" id="statsFeatured">0</span>
+                        <span class="stat-label">Featured</span>
                     </div>
                     <div class="stat-divider"></div>
                     <div class="stat-item">
-                        <span class="stat-number">100%</span>
-                        <span class="stat-label">安全认证</span>
+                        <span class="stat-number" id="statsReviews">0</span>
+                        <span class="stat-label">Pending reviews</span>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Categories -->
-    <section class="categories">
-        <div class="container">
-            <div class="category-tabs" id="categoryTabs">
-                <button class="category-tab active" data-category="all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    全部
-                </button>
-                <button class="category-tab" data-category="data">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
-                        <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
-                        <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
-                    </svg>
-                    数据处理
-                </button>
-                <button class="category-tab" data-category="analytics">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 3v18h18"></path>
-                        <path d="m19 9-5 5-4-4-3 3"></path>
-                    </svg>
-                    数据分析
-                </button>
-                <button class="category-tab" data-category="marketing">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
-                        <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                    </svg>
-                    营销工具
-                </button>
-                <button class="category-tab" data-category="integration">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22v-5"></path>
-                        <path d="M9 8V2"></path>
-                        <path d="M15 8V2"></path>
-                        <path d="M12 8a4 4 0 0 0-4 4v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1a4 4 0 0 0-4-4Z"></path>
-                    </svg>
-                    系统集成
-                </button>
-                <button class="category-tab" data-category="utility">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-                    </svg>
-                    实用工具
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Skills Grid -->
-    <section class="skills-section">
-        <div class="container">
-            <div class="skills-header">
-                <h2 class="section-title">精选技能</h2>
-                <div class="skills-sort">
-                    <select id="sortSelect">
-                        <option value="downloads">按下载量</option>
-                        <option value="rating">按评分</option>
-                        <option value="newest">最新发布</option>
-                    </select>
+    <main class="console-main">
+        <section class="console-section" id="storefront">
+            <div class="container">
+                <div class="console-section-head">
+                    <div>
+                        <p class="section-kicker">Storefront</p>
+                        <h2 class="section-title">Published skills and live catalog data</h2>
+                    </div>
+                    <div class="console-inline-actions">
+                        <input type="search" id="searchInput" placeholder="Search by name, display name, or summary">
+                        <select id="categorySelect">
+                            <option value="">All categories</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="console-grid two-column">
+                    <div class="console-panel">
+                        <div class="console-panel-head">
+                            <h3>Featured skills</h3>
+                            <span class="panel-meta" id="featuredMeta">0 items</span>
+                        </div>
+                        <div class="console-card-list" id="featuredSkills"></div>
+                    </div>
+                    <div class="console-panel">
+                        <div class="console-panel-head">
+                            <h3>All published skills</h3>
+                            <span class="panel-meta" id="skillsMeta">0 items</span>
+                        </div>
+                        <div class="console-card-list" id="skillsList"></div>
+                    </div>
                 </div>
             </div>
-            <div class="skills-grid" id="skillsGrid">
-                <!-- Skills will be loaded here -->
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Skill Detail Modal -->
+        <section class="console-section" id="account">
+            <div class="container">
+                <div class="console-section-head">
+                    <div>
+                        <p class="section-kicker">Account</p>
+                        <h2 class="section-title">Register, sign in, and manage your profile</h2>
+                    </div>
+                </div>
+                <div class="console-grid three-column">
+                    <div class="console-panel">
+                        <div class="console-panel-head"><h3>Register</h3></div>
+                        <form id="registerForm" class="console-form">
+                            <label>Email<input type="email" name="email" required></label>
+                            <label>Name<input type="text" name="name" required></label>
+                            <label>Password<input type="password" name="password" minlength="8" required></label>
+                            <button class="btn btn-primary btn-block" type="submit">Create developer account</button>
+                        </form>
+                    </div>
+                    <div class="console-panel">
+                        <div class="console-panel-head"><h3>Login</h3></div>
+                        <form id="loginForm" class="console-form">
+                            <label>Email<input type="email" name="email" required></label>
+                            <label>Password<input type="password" name="password" minlength="8" required></label>
+                            <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+                        </form>
+                    </div>
+                    <div class="console-panel">
+                        <div class="console-panel-head">
+                            <h3>Current user</h3>
+                            <span class="panel-meta" id="userRole">Guest</span>
+                        </div>
+                        <form id="profileForm" class="console-form">
+                            <label>Name<input type="text" name="name"></label>
+                            <label>Bio<textarea name="bio" rows="4"></textarea></label>
+                            <label>Website<input type="url" name="website"></label>
+                            <button class="btn btn-secondary btn-block" type="submit">Update profile</button>
+                        </form>
+                        <div class="console-user-card" id="currentUserCard"><p>No active session.</p></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="console-section" id="developer">
+            <div class="container">
+                <div class="console-section-head">
+                    <div>
+                        <p class="section-kicker">Developer</p>
+                        <h2 class="section-title">Create a skill and submit new versions</h2>
+                    </div>
+                </div>
+                <div class="console-grid two-column">
+                    <div class="console-panel">
+                        <div class="console-panel-head"><h3>Create skill</h3></div>
+                        <form id="createSkillForm" class="console-form">
+                            <label>Name<input type="text" name="name" placeholder="sales-daily-brief" required></label>
+                            <label>Display name<input type="text" name="display_name" required></label>
+                            <label>Category
+                                <select name="category" required id="developerCategorySelect">
+                                    <option value="">Choose category</option>
+                                </select>
+                            </label>
+                            <label>Summary<textarea name="summary" rows="3" required></textarea></label>
+                            <label>Description<textarea name="description" rows="5" required></textarea></label>
+                            <label>Tags<input type="text" name="tags" placeholder="crm, automation, reporting"></label>
+                            <label>Icon URL<input type="url" name="icon_url" placeholder="https://..."></label>
+                            <button class="btn btn-primary btn-block" type="submit">Create skill</button>
+                        </form>
+                    </div>
+                    <div class="console-panel">
+                        <div class="console-panel-head"><h3>Upload version</h3></div>
+                        <form id="uploadVersionForm" class="console-form" enctype="multipart/form-data">
+                            <label>Skill name<input type="text" name="skill_name" required></label>
+                            <label>Version<input type="text" name="version" placeholder="1.0.0" required></label>
+                            <label>Release notes<textarea name="release_notes" rows="4"></textarea></label>
+                            <label>Zip package<input type="file" name="package" accept=".zip" required></label>
+                            <button class="btn btn-primary btn-block" type="submit">Submit version for review</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="console-panel">
+                    <div class="console-panel-head">
+                        <h3>My skills</h3>
+                        <span class="panel-meta" id="developerSkillsMeta">Login required</span>
+                    </div>
+                    <div class="console-table-wrap">
+                        <table class="console-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Latest version</th>
+                                    <th>Status</th>
+                                    <th>Downloads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="developerSkillsBody">
+                                <tr><td colspan="5">No data yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="console-section" id="admin">
+            <div class="container">
+                <div class="console-section-head">
+                    <div>
+                        <p class="section-kicker">Admin</p>
+                        <h2 class="section-title">Review queue, moderation, and service stats</h2>
+                    </div>
+                    <div class="console-inline-actions">
+                        <select id="reviewStatusFilter">
+                            <option value="">All review states</option>
+                            <option value="pending">Pending</option>
+                            <option value="in_review">In review</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="console-grid two-column">
+                    <div class="console-panel">
+                        <div class="console-panel-head"><h3>Admin stats</h3></div>
+                        <div class="console-metric-grid" id="adminStats"></div>
+                    </div>
+                    <div class="console-panel">
+                        <div class="console-panel-head"><h3>Certificate revoke</h3></div>
+                        <form id="revokeForm" class="console-form">
+                            <label>Certificate serial<input type="text" name="certificate_serial" required></label>
+                            <label>Reason<textarea name="comment" rows="4"></textarea></label>
+                            <button class="btn btn-secondary btn-block" type="submit">Revoke certificate</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="console-panel">
+                    <div class="console-panel-head">
+                        <h3>Review queue</h3>
+                        <span class="panel-meta" id="reviewsMeta">0 records</span>
+                    </div>
+                    <div class="console-card-list" id="reviewsList"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
     <div class="modal" id="skillModal">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-            <button class="modal-close" id="modalClose">
+            <button class="modal-close" id="modalClose" aria-label="Close detail panel">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6 6 18"></path>
                     <path d="m6 6 12 12"></path>
                 </svg>
             </button>
-            <div class="modal-body" id="modalBody">
-                <!-- Skill details will be loaded here -->
-            </div>
+            <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
 
-    <!-- CLI Modal -->
-    <div class="modal" id="cliModal">
-        <div class="modal-overlay"></div>
-        <div class="modal-content modal-sm">
-            <button class="modal-close" id="cliModalClose">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 6 6 18"></path>
-                    <path d="m6 6 12 12"></path>
-                </svg>
-            </button>
-            <div class="modal-body">
-                <div class="cli-install-header">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <polyline points="4 17 10 11 4 5"></polyline>
-                        <line x1="12" y1="19" x2="20" y2="19"></line>
-                    </svg>
-                    <h3>通过 CLI 安装技能</h3>
-                </div>
-                <p class="cli-description">使用 SocialHub CLI 命令行工具安装和管理技能</p>
-                <div class="cli-steps">
-                    <div class="cli-step">
-                        <span class="step-number">1</span>
-                        <div class="step-content">
-                            <h4>安装 CLI</h4>
-                            <div class="code-block">
-                                <code>pip install socialhub-cli</code>
-                                <button class="copy-btn" data-code="pip install socialhub-cli">复制</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="cli-step">
-                        <span class="step-number">2</span>
-                        <div class="step-content">
-                            <h4>浏览技能商店</h4>
-                            <div class="code-block">
-                                <code>sh skills browse</code>
-                                <button class="copy-btn" data-code="sh skills browse">复制</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="cli-step">
-                        <span class="step-number">3</span>
-                        <div class="step-content">
-                            <h4>安装技能</h4>
-                            <div class="code-block">
-                                <code>sh skills install &lt;skill-name&gt;</code>
-                                <button class="copy-btn" data-code="sh skills install <skill-name>">复制</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <a href="https://github.com/huangchunbo2025/Socialhub-CLI" class="btn btn-primary btn-block" target="_blank">
-                    查看 GitHub 仓库
-                </a>
-            </div>
-        </div>
-    </div>
+    <div class="console-toast" id="toast"></div>
 
-    <!-- Footer -->
     <footer class="footer">
         <div class="container">
             <div class="footer-content">
                 <div class="footer-brand">
-                    <a href="#" class="footer-logo">
-                        <img src="logo.png" alt="SocialHub.AI" class="logo-img-footer">
-                    </a>
-                    <p class="footer-tagline">Stop Adding AI, We Are AI.</p>
+                    <img src="logo.png" alt="SocialHub.AI" class="logo-img-footer">
+                    <p class="footer-tagline">Frontend shell for the Skills Store backend MVP.</p>
                 </div>
                 <div class="footer-links">
                     <div class="footer-column">
-                        <h4>产品</h4>
-                        <a href="#">客户数据平台</a>
-                        <a href="#">营销自动化</a>
-                        <a href="#">客户分析</a>
-                        <a href="#">Skills Store</a>
+                        <h4>Platform</h4>
+                        <a href="#storefront">Store</a>
+                        <a href="#developer">Developer</a>
+                        <a href="#admin">Admin</a>
                     </div>
                     <div class="footer-column">
-                        <h4>开发者</h4>
-                        <a href="#">API 文档</a>
-                        <a href="#">SDK</a>
-                        <a href="#">技能开发指南</a>
-                        <a href="#">GitHub</a>
-                    </div>
-                    <div class="footer-column">
-                        <h4>公司</h4>
-                        <a href="#">关于我们</a>
-                        <a href="#">联系我们</a>
-                        <a href="#">隐私政策</a>
-                        <a href="#">服务条款</a>
+                        <h4>Docs</h4>
+                        <a href="skills-store-render-deploy.md">Render deploy guide</a>
+                        <a href="skills-store-design.md">Store design</a>
+                        <a href="skills-store-engineering-guidelines.md">Engineering guidelines</a>
                     </div>
                 </div>
             </div>
             <div class="footer-bottom">
-                <div class="footer-badges">
-                    <span class="badge">SOC 2</span>
-                    <span class="badge">GDPR</span>
-                    <span class="badge">ISO 27001</span>
-                </div>
-                <p class="copyright">© 2024 SocialHub.AI. All rights reserved.</p>
+                <p class="copyright">&copy; 2026 SocialHub.AI. All rights reserved.</p>
             </div>
         </div>
     </footer>
