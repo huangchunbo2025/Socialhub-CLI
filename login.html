@@ -16,6 +16,10 @@
                 <img src="logo.png" alt="SocialHub.AI" class="logo-img">
                 <span class="nav-divider">|</span>
                 <span class="nav-subtitle">Store Access</span>
+            </a>
+            <div class="nav-actions">
+                <button class="btn btn-cli" id="cliBtn" type="button">&gt;_ CLI Install</button>
+                <a class="btn btn-primary" href="index.html">Back to store</a>
             </div>
         </div>
     </nav>
@@ -25,7 +29,41 @@
             <div class="auth-copy">
                 <p class="section-kicker">Store entry</p>
                 <h1>Sign in to continue from the storefront</h1>
-                <p>This entry point is for store users who browse skills, evaluate releases, and copy CLI install commands. Developer and admin access use separate sign-in pages.</p>
+                <p>Keep the storefront workflow simple: review a skill, confirm the release, then return to the catalog ready to install through the CLI.</p>
+                <div class="auth-storeframe">
+                    <div class="auth-storeframe-main">
+                        <h3>Use the store like an operator, not a downloader</h3>
+                        <p>Browse the catalog, compare release details, and move to installation only after the skill passes your team review. This entry is built for store users who evaluate and install through the CLI.</p>
+                        <div class="auth-storeframe-meta">
+                            <div>
+                                <strong>1</strong>
+                                <span>Catalog-first evaluation path</span>
+                            </div>
+                            <div>
+                                <strong>CLI</strong>
+                                <span>Installation happens in SocialHub CLI</span>
+                            </div>
+                            <div>
+                                <strong>Live</strong>
+                                <span>Published data is loaded from the store backend</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="auth-storeframe-grid">
+                        <article class="auth-store-card">
+                            <h4>What to confirm before install</h4>
+                            <ul>
+                                <li>Publisher identity and release stability</li>
+                                <li>Runtime requirements and install guidance</li>
+                                <li>Security review notes and version history</li>
+                            </ul>
+                        </article>
+                        <article class="auth-store-card">
+                            <h4>What you unlock after sign-in</h4>
+                            <p>Return to the storefront with access to your user workspace, shortlisted skills, and the same CLI-first installation flow used across the catalog.</p>
+                        </article>
+                    </div>
+                </div>
             </div>
             <div class="auth-card">
                 <h2>Store sign in</h2>
@@ -39,6 +77,81 @@
     </main>
 
     <div class="console-toast" id="toast"></div>
+    <div class="modal" id="cliModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <button class="modal-close" id="cliModalClose" aria-label="Close CLI modal">×</button>
+            <div class="modal-body">
+                <div class="cli-install-header">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <polyline points="4 17 10 11 4 5"></polyline>
+                        <line x1="12" y1="19" x2="20" y2="19"></line>
+                    </svg>
+                    <h3>Install through the CLI</h3>
+                </div>
+                <p class="cli-description">Use the SocialHub CLI to browse, install, and manage certified skills from the store.</p>
+                <div class="cli-steps">
+                    <div class="cli-step">
+                        <span class="step-number">1</span>
+                        <div class="step-content">
+                            <h4>Install the CLI</h4>
+                            <div class="code-block">
+                                <code>pip install socialhub-cli</code>
+                                <button class="copy-btn" type="button" data-copy-text="pip install socialhub-cli">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cli-step">
+                        <span class="step-number">2</span>
+                        <div class="step-content">
+                            <h4>Browse the store</h4>
+                            <div class="code-block">
+                                <code>socialhub skills browse</code>
+                                <button class="copy-btn" type="button" data-copy-text="socialhub skills browse">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cli-step">
+                        <span class="step-number">3</span>
+                        <div class="step-content">
+                            <h4>Install a skill</h4>
+                            <div class="code-block">
+                                <code>socialhub skills install &lt;skill-name&gt;</code>
+                                <button class="copy-btn" type="button" data-copy-text="socialhub skills install <skill-name>">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <a href="https://github.com/huangchunbo2025/Socialhub-CLI" class="btn btn-primary btn-block" target="_blank" rel="noreferrer">View GitHub repository</a>
+            </div>
+        </div>
+    </div>
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="logo.png" alt="SocialHub.AI" class="logo-img-footer">
+                    <p class="footer-tagline">A storefront for trusted discovery, with separate operational portals for publishers and platform administrators.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Store</h4>
+                        <a href="index.html">Catalog</a>
+                        <a href="skill.html?name=sales-daily-brief">Example skill</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Access</h4>
+                        <a href="login.html">Store sign in</a>
+                        <a href="developer-login.html">Developer sign in</a>
+                        <a href="admin-login.html">Admin sign in</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p class="copyright">&copy; 2026 SocialHub.AI. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
     <script src="app.js"></script>
 </body>
 </html>
