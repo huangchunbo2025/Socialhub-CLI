@@ -1513,16 +1513,9 @@ a:hover {
     color: var(--primary);
 }
 
-.catalog-filters {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-    align-items: center;
-}
-
 .catalog-intro {
     margin-top: 12px;
-    max-width: 680px;
+    max-width: 760px;
     color: var(--text-secondary);
 }
 
@@ -1542,70 +1535,13 @@ a:hover {
     font: inherit;
 }
 
-.catalog-filters input {
-    min-width: 340px;
-}
-
-.category-chip-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 16px;
-}
-
-.category-chip {
-    border: 1px solid #d6e1ec;
-    background: white;
-    color: var(--primary);
-    padding: 10px 16px;
-    border-radius: 999px;
-    cursor: pointer;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    transition: var(--transition);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.category-chip:hover,
-.category-chip.active {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: white;
-}
-
-.catalog-categories {
-    margin-bottom: 24px;
-    padding: 24px;
-    border-radius: 24px;
-    background: #f5f8fb;
-    border: 1px solid #e2eaf2;
-}
-
-.catalog-categories-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 18px;
-    align-items: start;
-    color: var(--text-secondary);
-}
-
-.catalog-categories-head strong {
-    color: var(--primary);
-    font-size: 18px;
-}
-
 .catalog-toolbar {
     display: flex;
     justify-content: space-between;
     gap: 20px;
     align-items: center;
-    padding: 18px 0 0;
-    border-radius: 0;
-    background: white;
-    border: 0;
-    box-shadow: none;
-    margin-bottom: 20px;
+    padding: 0 0 20px;
+    margin-bottom: 4px;
 }
 
 .catalog-toolbar-copy {
@@ -1628,12 +1564,6 @@ a:hover {
     font-size: 14px;
     max-width: 420px;
     text-align: right;
-}
-
-.card-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 20px;
 }
 
 .skill-card {
@@ -1671,8 +1601,62 @@ a:hover {
     color: var(--text-secondary);
 }
 
-.catalog-toolbar + .card-grid {
-    margin-top: 0;
+.skills-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.catalog-search-inline input {
+    width: min(420px, 100%);
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: white;
+    font: inherit;
+}
+
+.category-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.category-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.category-chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.category-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.category-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
 }
 
 .journey-grid {
