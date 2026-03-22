@@ -1714,9 +1714,46 @@ a:hover {
     border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+.subnav {
+    display: grid;
+    gap: 10px;
+    margin-top: 26px;
+}
+
+.subnav-item {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.82);
+    font: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.subnav-item:hover,
+.subnav-item.active {
+    background: rgba(255, 255, 255, 0.14);
+    color: white;
+}
+
 .dashboard-main {
     display: grid;
     gap: 24px;
+}
+
+.tab-shell {
+    align-content: start;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
 }
 
 .dashboard-grid {
@@ -1773,6 +1810,10 @@ a:hover {
 .review-grid {
     display: grid;
     gap: 16px;
+}
+
+.top-gap {
+    margin-top: 18px;
 }
 
 .dash-card {
