@@ -557,11 +557,6 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
     document.getElementById("skillName").textContent = skill.display_name || skill.name;
     document.getElementById("skillSlug").textContent = skill.name;
     document.getElementById("skillSummary").textContent = skill.summary || "";
-    document.getElementById("skillCategory").textContent = skill.category || "unknown";
-    document.getElementById("skillStatus").textContent = skill.status || "active";
-    document.getElementById("skillDownloads").textContent = String(skill.download_count || 0);
-    document.getElementById("skillLatestVersion").textContent = skill.latest_version || "n/a";
-    document.getElementById("skillAuthor").textContent = skill.developer?.name || "Unknown publisher";
     document.getElementById("skillDescription").textContent = skill.description || "";
     document.getElementById("skillTags").innerHTML = (skill.tags || []).map((tag) => `<span class="status-chip">${escapeHtml(tag)}</span>`).join("") || emptyState("No tags");
 
@@ -586,6 +581,70 @@ function renderSkillDetailPage(skill, versions, downloadInfo) {
             <div class="trust-row"><span>Public key</span><strong>${escapeHtml(downloadInfo.public_key_id || "n/a")}</strong></div>
         `
         : emptyState("Package metadata is not available yet.");
+
+    document.getElementById("securityPanel").innerHTML = `
+        <article class="content-card">
+            <h3>Security posture</h3>
+            <p>This release is presented as a reviewed catalog artifact. The package metadata, release lineage, and certificate identifiers are visible in this page layout.</p>
+        </article>
+        <article class="content-card">
+            <h3>Recommended trust signals</h3>
+            <ul class="content-list">
+                <li>Publisher identity is visible and consistent across the storefront.</li>
+                <li>Current release metadata is isolated from long-form description content.</li>
+                <li>Version history can be reviewed before installation decisions are made.</li>
+            </ul>
+        </article>
+        <article class="content-card">
+            <h3>Review focus</h3>
+            <p>For a production-grade marketplace, this section should ultimately surface scanner output, certification details, and reviewer conclusions rather than a generic success badge.</p>
+        </article>
+    `;
+
+    document.getElementById("runtimePanel").innerHTML = `
+        <article class="content-card">
+            <h3>Required runtime</h3>
+            <ul class="content-list">
+                <li>Compatible SocialHub CLI environment</li>
+                <li>Network access required by the workflow this skill performs</li>
+                <li>Ability to load the packaged skill bundle and its manifest</li>
+            </ul>
+        </article>
+        <article class="content-card">
+            <h3>Operational expectations</h3>
+            <p>Teams should verify category fit, runtime assumptions, and release history before installing the latest package.</p>
+        </article>
+    `;
+
+    document.getElementById("installPanel").innerHTML = `
+        <article class="content-card">
+            <h3>Typical install path</h3>
+            <p>Browse the catalog, inspect the version history, then retrieve the package metadata and install the current published release through the CLI or a managed store flow.</p>
+        </article>
+        <article class="content-card">
+            <h3>What to validate before install</h3>
+            <ul class="content-list">
+                <li>Publisher identity matches your approval policy</li>
+                <li>Latest version is the intended release</li>
+                <li>Package metadata and certificate data are present</li>
+            </ul>
+        </article>
+    `;
+
+    document.getElementById("filesPanel").innerHTML = `
+        <article class="content-card">
+            <h3>Included documentation</h3>
+            <p>This layout reserves room for README content, usage notes, file manifests, and installation instructions once the backend exposes them in a richer form.</p>
+        </article>
+        <article class="content-card">
+            <h3>Expected file surface</h3>
+            <ul class="content-list">
+                <li>Skill manifest</li>
+                <li>Release package archive</li>
+                <li>Version-specific notes</li>
+            </ul>
+        </article>
+    `;
 
     document.getElementById("versionsPanel").innerHTML = versions.length
         ? versions.map((item) => `
