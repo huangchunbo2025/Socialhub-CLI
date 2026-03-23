@@ -5,8 +5,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db_session
-from ..models import Developer, DeveloperRole, DeveloperStatus
-from ..services.auth import get_developer_by_id
+from ..models import Developer, DeveloperRole, DeveloperStatus, User
+from ..services.auth import get_developer_by_id, get_user_by_id
 from .jwt import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -24,6 +24,8 @@ async def get_current_user(
 
     try:
         payload = decode_access_token(credentials.credentials)
+        if payload.get("type") != "developer":
+            raise ValueError("Invalid principal type")
         user_id = int(payload["sub"])
     except (KeyError, TypeError, ValueError):
         raise HTTPException(
@@ -33,6 +35,37 @@ async def get_current_user(
 
     user = await get_developer_by_id(session, user_id)
     if user is None or user.status != DeveloperStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "UNAUTHORIZED", "message": "User is not available"}},
+        )
+
+    return user
+
+
+async def get_current_storefront_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: AsyncSession = Depends(get_db_session),
+) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "UNAUTHORIZED", "message": "Missing access token"}},
+        )
+
+    try:
+        payload = decode_access_token(credentials.credentials)
+        if payload.get("type") != "user":
+            raise ValueError("Invalid principal type")
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "UNAUTHORIZED", "message": "Invalid access token"}},
+        ) from None
+
+    user = await get_user_by_id(session, user_id)
+    if user is None or user.status != "active":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": {"code": "UNAUTHORIZED", "message": "User is not available"}},

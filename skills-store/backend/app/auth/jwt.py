@@ -9,13 +9,20 @@ from ..config import settings
 ALGORITHM = "HS256"
 
 
-def create_access_token(user_id: int, email: str, role: str) -> tuple[str, int]:
+def create_access_token(
+    user_id: int,
+    email: str,
+    role: str | None = None,
+    *,
+    principal_type: str = "developer",
+) -> tuple[str, int]:
     expires_delta = timedelta(hours=settings.jwt_expire_hours)
     now = datetime.now(UTC)
     expire_at = now + expires_delta
     payload = {
         "sub": str(user_id),
         "email": email,
+        "type": principal_type,
         "role": role,
         "iat": int(now.timestamp()),
         "exp": int(expire_at.timestamp()),

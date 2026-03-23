@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/Layout";
 import SkillCard from "../components/SkillCard";
-import { apiFetch, loadSavedSkills, saveSavedSkills } from "../lib/api";
+import { apiFetch, loadCurrentStorefrontUser, loadMyUserSkills } from "../lib/api";
 import { CATEGORY_META } from "../lib/categoryMeta";
-import { getSavedSkillNames } from "../lib/session";
 
 export default function CatalogPage() {
   const [skills, setSkills] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [savedSkills, setSavedSkills] = useState(getSavedSkillNames());
+  const [installedSkills, setInstalledSkills] = useState([]);
+  const [storefrontUser, setStorefrontUser] = useState(null);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -19,15 +19,17 @@ export default function CatalogPage() {
     async function load() {
       try {
         setLoading(true);
-        const [catalog, categoryList] = await Promise.all([
+        const user = await loadCurrentStorefrontUser();
+        const [catalog, categoryList, library] = await Promise.all([
           apiFetch("/api/v1/skills"),
-          apiFetch("/api/v1/categories")
+          apiFetch("/api/v1/categories"),
+          user ? loadMyUserSkills() : Promise.resolve([])
         ]);
-        const storedSaved = await loadSavedSkills();
         if (cancelled) return;
+        setStorefrontUser(user);
         setSkills(catalog.data || catalog || []);
         setCategories(categoryList || []);
-        setSavedSkills(storedSaved);
+        setInstalledSkills(library || []);
       } catch (loadError) {
         if (!cancelled) setError(loadError.message || "Failed to load catalog.");
       } finally {
@@ -48,18 +50,6 @@ export default function CatalogPage() {
       return matchesCategory && matchesQuery;
     });
   }, [skills, activeCategory, query]);
-
-  async function handleToggleSaved(skillName) {
-    const current = new Set(savedSkills);
-    if (current.has(skillName)) {
-      current.delete(skillName);
-    } else {
-      current.add(skillName);
-    }
-    const persisted = await saveSavedSkills([...current]);
-    setSavedSkills(persisted);
-    return persisted.includes(skillName);
-  }
 
   return (
     <Layout
@@ -132,8 +122,8 @@ export default function CatalogPage() {
             <SkillCard
               key={skill.id}
               skill={skill}
-              saved={savedSkills.includes(skill.name)}
-              onToggleSaved={handleToggleSaved}
+              installed={installedSkills.some((item) => item.skill_name === skill.name)}
+              isSignedIn={Boolean(storefrontUser)}
             />
           ))}
         </section>

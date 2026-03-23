@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { apiFetch, loadSavedSkills, saveSavedSkills } from "../lib/api";
-import { getSavedSkillNames, getStoredUser } from "../lib/session";
+import {
+  apiFetch,
+  installUserSkill,
+  loadCurrentStorefrontUser,
+  loadMyUserSkills,
+  removeUserSkill,
+} from "../lib/api";
 import { useToast } from "../components/ToastProvider";
 
 function renderListSection(section) {
@@ -24,28 +29,32 @@ function renderListSection(section) {
 
 export default function SkillDetailPage() {
   const { name } = useParams();
+  const navigate = useNavigate();
   const [skill, setSkill] = useState(null);
   const [versions, setVersions] = useState([]);
-  const [savedSkills, setSavedSkills] = useState(getSavedSkillNames());
+  const [storefrontUser, setStorefrontUser] = useState(null);
+  const [installedSkills, setInstalledSkills] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [installing, setInstalling] = useState(false);
   const toast = useToast();
-  const canSave = Boolean(getStoredUser());
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
         setLoading(true);
-        const [detail, versionList] = await Promise.all([
+        const user = await loadCurrentStorefrontUser();
+        const [detail, versionList, library] = await Promise.all([
           apiFetch(`/api/v1/skills/${encodeURIComponent(name)}`),
-          apiFetch(`/api/v1/skills/${encodeURIComponent(name)}/versions`)
+          apiFetch(`/api/v1/skills/${encodeURIComponent(name)}/versions`),
+          user ? loadMyUserSkills() : Promise.resolve([])
         ]);
-        const storedSaved = await loadSavedSkills();
         if (cancelled) return;
+        setStorefrontUser(user);
         setSkill(detail);
         setVersions(versionList || []);
-        setSavedSkills(storedSaved);
+        setInstalledSkills(library || []);
       } catch (loadError) {
         if (!cancelled) setError(loadError.message || "Failed to load skill detail.");
       } finally {
@@ -58,17 +67,32 @@ export default function SkillDetailPage() {
     };
   }, [name]);
 
-  async function handleToggleSaved(skillName) {
-    const current = new Set(savedSkills);
-    if (current.has(skillName)) {
-      current.delete(skillName);
-    } else {
-      current.add(skillName);
+  const installed = installedSkills.some((item) => item.skill_name === skill?.name);
+
+  async function handleLibraryAction() {
+    if (!skill) {
+      return;
     }
-    const persisted = await saveSavedSkills([...current]);
-    setSavedSkills(persisted);
-    const nowSaved = persisted.includes(skillName);
-    toast.show(nowSaved ? "Added to My skills." : "Removed from My skills.");
+    if (!storefrontUser) {
+      navigate("/user-login");
+      return;
+    }
+    try {
+      setInstalling(true);
+      if (installed) {
+        await removeUserSkill(skill.name);
+        setInstalledSkills((current) => current.filter((item) => item.skill_name !== skill.name));
+        toast.show("Removed from your library.");
+      } else {
+        const item = await installUserSkill(skill.name);
+        setInstalledSkills((current) => [...current.filter((entry) => entry.skill_name !== skill.name), item]);
+        toast.show("Added to your library.");
+      }
+    } catch (actionError) {
+      toast.show(actionError.message || "Failed to update library.");
+    } finally {
+      setInstalling(false);
+    }
   }
 
   return (
@@ -83,15 +107,18 @@ export default function SkillDetailPage() {
               <button
                 className="outline-button wide"
                 type="button"
-                disabled={!canSave}
-                onClick={() => handleToggleSaved(skill.name)}
+                disabled={installing}
+                onClick={handleLibraryAction}
               >
-                {!canSave
-                  ? "Sign in to save"
-                  : savedSkills.includes(skill.name)
-                    ? "Saved to My skills"
-                    : "Add to My skills"}
+                {!storefrontUser
+                  ? "Login to Install"
+                  : installed
+                    ? "Uninstall"
+                    : "Install"}
               </button>
+            {storefrontUser && installed ? (
+              <p className="inline-note">Added to your library. Run <code>socialhub skills install {skill.name}</code> in CLI to use it.</p>
+            ) : null}
             </aside>
           ) : null
       }
@@ -151,7 +178,7 @@ export default function SkillDetailPage() {
             <div className="section-header">
               <h3>Versions</h3>
               <Link className="secondary-link" to="/user">
-                Go to My skills
+                Go to library
               </Link>
             </div>
             <div className="version-list">

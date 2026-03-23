@@ -113,6 +113,9 @@ export default function LoginPage() {
               {submitting ? "Signing in..." : "Continue to My skills"}
             </button>
           </form>
+          <p className="auth-switch-copy">
+            Looking to use skills? <Link to="/user-login">Sign in as a storefront user.</Link>
+          </p>
         </article>
       </section>
     </Layout>

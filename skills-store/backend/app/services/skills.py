@@ -15,6 +15,8 @@ from ..models import (
     SkillCertification,
     SkillReview,
     SkillStatus,
+    User,
+    UserSkill,
     SkillVersion,
     VersionStatus,
 )
@@ -85,6 +87,21 @@ def serialize_skill_version(version: SkillVersion) -> dict:
         "release_notes": version.release_notes,
         "submitted_at": version.submitted_at,
         "published_at": version.published_at,
+    }
+
+
+def serialize_user_skill(user_skill: UserSkill) -> dict:
+    version = user_skill.skill_version
+    skill = user_skill.skill
+    return {
+        "skill_name": skill.name,
+        "display_name": skill.display_name,
+        "version": version.version,
+        "category": skill.category.value,
+        "is_enabled": user_skill.is_enabled,
+        "downloaded_at": user_skill.downloaded_at.isoformat().replace("+00:00", "Z"),
+        "description": skill.description,
+        "package_hash": version.package_hash,
     }
 
 
@@ -304,6 +321,80 @@ async def get_latest_downloadable_version(session: AsyncSession, name: str, vers
     )
     certification = (await session.execute(cert_stmt)).scalar_one_or_none()
     return skill, chosen, certification
+
+
+async def _get_user_skill(session: AsyncSession, user: User, skill_name: str) -> UserSkill | None:
+    stmt: Select[tuple[UserSkill]] = (
+        select(UserSkill)
+        .join(UserSkill.skill)
+        .join(UserSkill.skill_version)
+        .where(UserSkill.user_id == user.id, Skill.name == _normalize_skill_name(skill_name))
+        .options(selectinload(UserSkill.skill), selectinload(UserSkill.skill_version))
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def list_user_library(session: AsyncSession, user: User) -> list[dict]:
+    stmt: Select[tuple[UserSkill]] = (
+        select(UserSkill)
+        .where(UserSkill.user_id == user.id)
+        .options(selectinload(UserSkill.skill), selectinload(UserSkill.skill_version))
+        .order_by(UserSkill.downloaded_at.desc(), UserSkill.id.desc())
+    )
+    result = await session.execute(stmt)
+    items = result.scalars().unique().all()
+    return [serialize_user_skill(item) for item in items]
+
+
+async def add_skill_to_user_library(
+    session: AsyncSession,
+    user: User,
+    skill_name: str,
+    version: str | None,
+) -> dict:
+    existing = await _get_user_skill(session, user, skill_name)
+    if existing is not None:
+        raise _error("SKILL_ALREADY_IN_LIBRARY", "Skill already in library", status.HTTP_409_CONFLICT)
+
+    skill, chosen_version, _ = await get_latest_downloadable_version(session, skill_name, version)
+    user_skill = UserSkill(
+        user_id=user.id,
+        skill_id=skill.id,
+        skill_version_id=chosen_version.id,
+        is_enabled=True,
+    )
+    session.add(user_skill)
+    await session.commit()
+
+    created = await _get_user_skill(session, user, skill.name)
+    if created is None:
+        raise _error("USER_SKILL_CREATE_FAILED", "Failed to add skill to library", status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return serialize_user_skill(created)
+
+
+async def remove_skill_from_user_library(session: AsyncSession, user: User, skill_name: str) -> None:
+    user_skill = await _get_user_skill(session, user, skill_name)
+    if user_skill is None:
+        raise _error("SKILL_NOT_IN_LIBRARY", "Skill not in library", status.HTTP_404_NOT_FOUND)
+
+    await session.delete(user_skill)
+    await session.commit()
+
+
+async def toggle_user_skill(session: AsyncSession, user: User, skill_name: str, enabled: bool) -> dict:
+    user_skill = await _get_user_skill(session, user, skill_name)
+    if user_skill is None:
+        raise _error("SKILL_NOT_IN_LIBRARY", "Skill not in library", status.HTTP_404_NOT_FOUND)
+
+    user_skill.is_enabled = enabled
+    user_skill.updated_at = datetime.now(UTC)
+    await session.commit()
+
+    refreshed = await _get_user_skill(session, user, skill_name)
+    if refreshed is None:
+        raise _error("SKILL_NOT_IN_LIBRARY", "Skill not in library", status.HTTP_404_NOT_FOUND)
+    return serialize_user_skill(refreshed)
 
 
 async def list_reviews(

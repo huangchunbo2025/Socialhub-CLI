@@ -541,6 +541,25 @@ input {
   color: var(--text);
 }
 
+.button-link {
+  text-decoration: none;
+}
+
+.inline-note,
+.workspace-meta,
+.auth-switch-copy {
+  color: var(--text-secondary);
+}
+
+.inline-note {
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.auth-switch-copy {
+  margin-top: 14px;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
