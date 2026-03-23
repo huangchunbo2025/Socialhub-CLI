@@ -42,13 +42,23 @@ export default function LoginPage() {
       title="Sign in to continue from the storefront"
       subtitle="Keep the flow simple: review a skill, confirm the release, then return to your workspace ready to install through the CLI."
       actions={
-        <aside className="side-note">
+        <aside className="hero-sidecard">
           <h2>What changes after sign-in</h2>
-          <ul>
-            <li>Keep a personal list of skills you want to track.</li>
-            <li>Switch saved skills on or off in your workspace.</li>
-            <li>Return to the catalog without losing your shortlist.</li>
-          </ul>
+          <p>Signing in adds a lightweight personal workspace without changing the public storefront flow.</p>
+          <div className="hero-sidecard-list">
+            <div>
+              <strong>Keep a working set</strong>
+              <span>Save the skills you want to revisit without rebuilding your shortlist every session.</span>
+            </div>
+            <div>
+              <strong>Switch local state</strong>
+              <span>Enable or disable saved skills inside your workspace while you evaluate rollout readiness.</span>
+            </div>
+            <div>
+              <strong>Stay CLI-first</strong>
+              <span>Use the same install path after sign-in: evaluate the skill, then copy the CLI command.</span>
+            </div>
+          </div>
         </aside>
       }
     >
@@ -103,9 +113,6 @@ export default function LoginPage() {
               {submitting ? "Signing in..." : "Continue to My skills"}
             </button>
           </form>
-          <Link className="secondary-link auth-back-link" to="/">
-            Back to store
-          </Link>
         </article>
       </section>
     </Layout>
