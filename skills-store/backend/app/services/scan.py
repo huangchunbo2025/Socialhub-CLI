@@ -1,7 +1,35 @@
 from __future__ import annotations
 
 from io import BytesIO
+import re
 import zipfile
+
+
+BLOCKED_CODE_PATTERNS: dict[str, re.Pattern[str]] = {
+    "python_eval": re.compile(r"(?<!\w)eval\s*\(", re.IGNORECASE),
+    "python_exec": re.compile(r"(?<!\w)exec\s*\(", re.IGNORECASE),
+    "pickle_loads": re.compile(r"pickle\s*\.\s*loads\s*\(", re.IGNORECASE),
+    "os_system": re.compile(r"os\s*\.\s*system\s*\(", re.IGNORECASE),
+    "subprocess_shell": re.compile(r"subprocess\s*\.\s*(run|Popen|call)\s*\([^)]*shell\s*=\s*True", re.IGNORECASE | re.DOTALL),
+}
+
+TEXT_SCAN_SUFFIXES = (
+    ".py",
+    ".pyw",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".txt",
+    ".md",
+    ".sh",
+)
 
 
 def run_basic_scan(package_bytes: bytes, manifest: dict) -> tuple[dict, dict]:
@@ -47,6 +75,31 @@ def run_basic_scan(package_bytes: bytes, manifest: dict) -> tuple[dict, dict]:
             checks.append({"name": "archive_size", "result": "failed"})
         else:
             checks.append({"name": "archive_size", "result": "passed"})
+
+        dangerous_hits: list[str] = []
+        for name in names:
+            lowered = name.lower()
+            if not lowered.endswith(TEXT_SCAN_SUFFIXES):
+                continue
+            try:
+                content = archive.read(name).decode("utf-8", errors="ignore")
+            except Exception:
+                continue
+            for rule_name, pattern in BLOCKED_CODE_PATTERNS.items():
+                if pattern.search(content):
+                    dangerous_hits.append(f"{name}: {rule_name}")
+
+        if dangerous_hits:
+            issues.append(
+                {
+                    "name": "dangerous_code_patterns",
+                    "message": "Dangerous code patterns detected",
+                }
+            )
+            warnings.extend([f"Blocked pattern detected: {item}" for item in dangerous_hits[:20]])
+            checks.append({"name": "dangerous_code_scan", "result": "failed"})
+        else:
+            checks.append({"name": "dangerous_code_scan", "result": "passed"})
 
     scan_status = "passed" if not issues else "failed"
     risk_level = "low"

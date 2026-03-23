@@ -139,3 +139,46 @@ async def update_saved_skills(
     await session.commit()
     await session.refresh(developer)
     return developer
+
+
+async def ensure_store_admin_account(
+    session: AsyncSession,
+    *,
+    email: str,
+    password: str,
+    name: str,
+) -> Developer:
+    normalized_email = normalize_email(email)
+    existing = await get_developer_by_email(session, normalized_email)
+
+    if existing is None:
+        developer = Developer(
+            email=normalized_email,
+            password_hash=hash_password(password),
+            name=name.strip() or "Store Admin",
+            role=DeveloperRole.STORE_ADMIN,
+            status=DeveloperStatus.ACTIVE,
+        )
+        session.add(developer)
+        await session.commit()
+        await session.refresh(developer)
+        return developer
+
+    changed = False
+    if existing.role != DeveloperRole.STORE_ADMIN:
+        existing.role = DeveloperRole.STORE_ADMIN
+        changed = True
+    if existing.status != DeveloperStatus.ACTIVE:
+        existing.status = DeveloperStatus.ACTIVE
+        changed = True
+    if name.strip() and existing.name != name.strip():
+        existing.name = name.strip()
+        changed = True
+    if not verify_password(password, existing.password_hash):
+        existing.password_hash = hash_password(password)
+        changed = True
+
+    if changed:
+        await session.commit()
+        await session.refresh(existing)
+    return existing
