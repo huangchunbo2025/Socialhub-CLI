@@ -1,10 +1,13 @@
 import { Link } from "react-router-dom";
+import { getStoredUser } from "../lib/session";
 import { useToast } from "./ToastProvider";
 import { CATEGORY_META } from "../lib/categoryMeta";
 
 export default function SkillCard({ skill, saved, onToggleSaved }) {
   const toast = useToast();
   const categoryMeta = CATEGORY_META[skill.category] || CATEGORY_META.all;
+  const user = getStoredUser();
+  const canSave = Boolean(user);
 
   return (
     <article className="skill-card">
@@ -40,12 +43,16 @@ export default function SkillCard({ skill, saved, onToggleSaved }) {
         <button
           className="outline-button"
           type="button"
+          disabled={!canSave}
           onClick={async () => {
+            if (!canSave) {
+              return;
+            }
             const nextSaved = await onToggleSaved?.(skill.name);
             toast.show(nextSaved ? "Added to My skills." : "Removed from My skills.");
           }}
         >
-          {saved ? "Saved" : "Add to My skills"}
+          {!canSave ? "Sign in to save" : saved ? "Saved" : "Add to My skills"}
         </button>
       </div>
     </article>
