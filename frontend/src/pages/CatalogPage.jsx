@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/Layout";
 import SkillCard from "../components/SkillCard";
 import { apiFetch, loadSavedSkills, saveSavedSkills } from "../lib/api";
+import { CATEGORY_META } from "../lib/categoryMeta";
 import { getSavedSkillNames } from "../lib/session";
 
 export default function CatalogPage() {
@@ -65,13 +66,23 @@ export default function CatalogPage() {
       title="Reviewed skills for real operators"
       subtitle="Search the live catalog, inspect detail pages, and install approved skills through the SocialHub CLI."
       actions={
-        <aside className="side-note">
+        <aside className="hero-sidecard">
           <h2>Before you install</h2>
-          <ul>
-            <li>Review the skill detail page before you run any command.</li>
-            <li>Confirm runtime requirements and release notes.</li>
-            <li>Install from the SocialHub CLI, not by downloading packages manually.</li>
-          </ul>
+          <p>Evaluate a skill the same way an operations team would before it reaches production.</p>
+          <div className="hero-sidecard-list">
+            <div>
+              <strong>Review the publisher</strong>
+              <span>Confirm who maintains the skill and whether the publishing history looks stable and accountable.</span>
+            </div>
+            <div>
+              <strong>Inspect the release</strong>
+              <span>Check runtime requirements, security notes, and current version metadata.</span>
+            </div>
+            <div>
+              <strong>Install from the CLI</strong>
+              <span>Copy the install command only after the skill passes your rollout criteria.</span>
+            </div>
+          </div>
         </aside>
       }
     >
@@ -86,22 +97,28 @@ export default function CatalogPage() {
         <p className="result-count">{filtered.length} skills visible</p>
       </section>
 
-      <section className="category-row">
+      <section className="category-tabs">
         <button
-          className={activeCategory === "all" ? "chip active" : "chip"}
+          className={activeCategory === "all" ? "category-chip active" : "category-chip"}
           type="button"
           onClick={() => setActiveCategory("all")}
         >
-          All
+          <span dangerouslySetInnerHTML={{ __html: CATEGORY_META.all.svg }} />
+          <span>All</span>
         </button>
         {categories.map((category) => (
           <button
             key={category.key}
-            className={activeCategory === category.key ? "chip active" : "chip"}
+            className={activeCategory === category.key ? "category-chip active" : "category-chip"}
             type="button"
             onClick={() => setActiveCategory(category.key)}
           >
-            {category.label}
+            <span
+              dangerouslySetInnerHTML={{
+                __html: (CATEGORY_META[category.key] || CATEGORY_META.all).svg
+              }}
+            />
+            <span>{category.label}</span>
           </button>
         ))}
       </section>
