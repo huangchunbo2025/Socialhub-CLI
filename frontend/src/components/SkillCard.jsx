@@ -1,18 +1,28 @@
 import { Link } from "react-router-dom";
 import { useToast } from "./ToastProvider";
+import { CATEGORY_META } from "../lib/categoryMeta";
 
 export default function SkillCard({ skill, saved, onToggleSaved }) {
   const toast = useToast();
+  const categoryMeta = CATEGORY_META[skill.category] || CATEGORY_META.all;
 
   return (
     <article className="skill-card">
-      <div className="skill-card-header">
-        <div>
-          <h3>{skill.display_name}</h3>
-          <p>{skill.summary}</p>
-        </div>
-        <span className={`status-pill status-${skill.status}`}>{saved ? "Saved" : skill.category}</span>
+      <div className="skill-card-top">
+        <span className="status-pill">{saved ? "Saved" : categoryMeta.label}</span>
+        <span className="skill-downloads">{skill.download_count ?? 0} downloads</span>
       </div>
+      <div className="skill-card-headline">
+        <div
+          className={`skill-icon ${categoryMeta.className}`}
+          dangerouslySetInnerHTML={{ __html: categoryMeta.svg }}
+        />
+        <div className="skill-card-title">
+          <h3>{skill.display_name}</h3>
+          <p className="skill-card-slug">{skill.name}</p>
+        </div>
+      </div>
+      <p className="skill-summary">{skill.summary}</p>
       <dl className="skill-meta">
         <div>
           <dt>Latest</dt>
