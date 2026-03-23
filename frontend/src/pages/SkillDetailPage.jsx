@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { apiFetch, loadSavedSkills, saveSavedSkills } from "../lib/api";
-import { getSavedSkillNames } from "../lib/session";
+import { getSavedSkillNames, getStoredUser } from "../lib/session";
 import { useToast } from "../components/ToastProvider";
 
 function renderListSection(section) {
@@ -30,6 +30,7 @@ export default function SkillDetailPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const toast = useToast();
+  const canSave = Boolean(getStoredUser());
 
   useEffect(() => {
     let cancelled = false;
@@ -82,9 +83,14 @@ export default function SkillDetailPage() {
               <button
                 className="outline-button wide"
                 type="button"
+                disabled={!canSave}
                 onClick={() => handleToggleSaved(skill.name)}
               >
-                {savedSkills.includes(skill.name) ? "Saved to My skills" : "Add to My skills"}
+                {!canSave
+                  ? "Sign in to save"
+                  : savedSkills.includes(skill.name)
+                    ? "Saved to My skills"
+                    : "Add to My skills"}
               </button>
             </aside>
           ) : null

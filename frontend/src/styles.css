@@ -529,6 +529,13 @@ input {
   cursor: pointer;
 }
 
+.outline-button:disabled,
+.btn:disabled,
+.state-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .secondary-link {
   border: 1px solid var(--border);
   color: var(--text);
