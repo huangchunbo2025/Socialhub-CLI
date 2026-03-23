@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,6 +29,9 @@ class Settings(BaseSettings):
     package_storage_root: Path = Path("./data/packages")
     ed25519_private_key_path: Path = Path("./secrets/ed25519-private.pem")
     ed25519_public_key_id: str = "ed25519-main"
+    admin_email: Optional[str] = None
+    admin_password: Optional[str] = None
+    admin_name: str = "Store Admin"
 
     model_config = SettingsConfigDict(
         env_file=".env",

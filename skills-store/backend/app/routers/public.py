@@ -1,7 +1,8 @@
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -185,21 +186,24 @@ async def get_download_info(
 
 
 @router.get("/crl")
-async def get_crl(session: AsyncSession = Depends(get_db_session)) -> dict[str, dict[str, object]]:
+async def get_crl(session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     stmt: Select[tuple[SkillCertification]] = select(SkillCertification).where(
         SkillCertification.revoked_at.is_not(None)
     )
     revoked = (await session.execute(stmt)).scalars().all()
-    return {
-        "data": {
-            "issued_at": None,
-            "revoked_certificates": [
-                {
-                    "certificate_serial": item.certificate_serial,
-                    "revoked_at": item.revoked_at,
-                    "reason": item.revoke_reason,
-                }
-                for item in revoked
-            ],
-        }
+    updated_at = max((item.revoked_at for item in revoked if item.revoked_at), default=datetime.now(UTC))
+    payload = {
+        "version": 1,
+        "updated_at": updated_at.isoformat().replace("+00:00", "Z"),
+        "revoked": [
+            {
+                "certificate_id": item.certificate_serial,
+                "revoked_at": item.revoked_at.isoformat().replace("+00:00", "Z") if item.revoked_at else None,
+                "reason": item.revoke_reason,
+            }
+            for item in revoked
+        ],
+        "revoked_skills": [],
+        "revoked_certificates": [item.certificate_serial for item in revoked],
     }
+    return JSONResponse(payload, headers={"Cache-Control": "max-age=3600"})

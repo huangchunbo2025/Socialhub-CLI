@@ -66,6 +66,13 @@ async def validate_and_store_package(skill_name: str, version: str, package: Upl
         _, manifest = _find_manifest(archive)
         normalized_manifest = _validate_manifest(manifest, skill_name, version)
     scan_summary, scan_detail = run_basic_scan(content, normalized_manifest)
+    if scan_summary.get("status") != "passed":
+        issue_messages = [item.get("message", "Scan failed") for item in scan_summary.get("issues", [])]
+        raise _error(
+            "INVALID_PACKAGE",
+            "; ".join(issue_messages) or "Package failed security scanning",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
 
     digest = hashlib.sha256(content).hexdigest()
     storage_root: Path = settings.package_storage_root
