@@ -1,17 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { apiFetch, loadCurrentUser, loadSavedSkills, saveSavedSkills } from "../lib/api";
-import { getSavedSkillNames, getSkillEnabledState, getStoredUser, toggleSkillEnabledState } from "../lib/session";
+import { loadCurrentStorefrontUser, loadMyUserSkills, removeUserSkill, toggleUserSkill } from "../lib/api";
+import { getStoredStorefrontUser } from "../lib/session";
 import { useToast } from "../components/ToastProvider";
 
 export default function UserPage() {
   const [skills, setSkills] = useState([]);
-  const [user, setUser] = useState(getStoredUser());
-  const [savedSkills, setSavedSkills] = useState(getSavedSkillNames());
+  const [user, setUser] = useState(getStoredStorefrontUser());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [version, setVersion] = useState(0);
   const toast = useToast();
 
   useEffect(() => {
@@ -19,20 +17,18 @@ export default function UserPage() {
     async function load() {
       try {
         setLoading(true);
-        const currentUser = await loadCurrentUser();
+        const currentUser = await loadCurrentStorefrontUser();
         if (cancelled) return;
         setUser(currentUser);
         if (!currentUser) {
           setLoading(false);
           return;
         }
-        const catalog = await apiFetch("/api/v1/skills");
-        const storedSaved = await loadSavedSkills();
+        const library = await loadMyUserSkills();
         if (cancelled) return;
-        setSkills(catalog.data || catalog || []);
-        setSavedSkills(storedSaved);
+        setSkills(library || []);
       } catch (loadError) {
-        if (!cancelled) setError(loadError.message || "Failed to load My skills.");
+        if (!cancelled) setError(loadError.message || "Failed to load My Skills.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -41,29 +37,10 @@ export default function UserPage() {
     return () => {
       cancelled = true;
     };
-  }, [version]);
-
-  const mySkills = useMemo(() => {
-    const saved = new Set(savedSkills);
-    return skills.filter((skill) => saved.has(skill.name));
-  }, [skills, savedSkills, version]);
-
-  async function handleToggleSaved(skillName) {
-    const current = new Set(savedSkills);
-    if (current.has(skillName)) {
-      current.delete(skillName);
-    } else {
-      current.add(skillName);
-    }
-    const persisted = await saveSavedSkills([...current]);
-    setSavedSkills(persisted);
-    const nowSaved = persisted.includes(skillName);
-    toast.show(nowSaved ? "Added to My skills." : "Removed from My skills.");
-    return nowSaved;
-  }
+  }, []);
 
   if (!loading && !user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/user-login" replace />;
   }
 
   return (
@@ -80,11 +57,11 @@ export default function UserPage() {
           </div>
           <div className="workspace-summary-stats">
             <div>
-              <strong>{mySkills.length}</strong>
-              <span>Saved skills</span>
+              <strong>{skills.length}</strong>
+              <span>Installed skills</span>
             </div>
             <div>
-              <strong>{mySkills.filter((skill) => getSkillEnabledState(skill.name)).length}</strong>
+              <strong>{skills.filter((skill) => skill.is_enabled).length}</strong>
               <span>Enabled now</span>
             </div>
           </div>
@@ -96,46 +73,60 @@ export default function UserPage() {
       {!loading && !error ? (
         <section className="panel">
           <div className="section-header">
-            <h2>Saved skills</h2>
-            <p>{mySkills.length} skills in your personal working set</p>
+            <h2>My Skills</h2>
+            <p>{skills.length} skills in your shared storefront library</p>
           </div>
-          {mySkills.length === 0 ? (
+          {skills.length === 0 ? (
             <div className="empty-state">
-              <p>No skills saved yet. Start from the catalog and add the skills you want to keep close.</p>
+              <p>Your library is empty. Browse the store to install skills.</p>
               <Link className="secondary-link" to="/">
-                Back to store
+                Browse catalog
               </Link>
             </div>
           ) : (
             <div className="workspace-list">
-              {mySkills.map((skill) => {
-                const enabled = getSkillEnabledState(skill.name);
+              {skills.map((skill) => {
                 return (
-                  <article key={skill.id} className="workspace-card">
+                  <article key={`${skill.skill_name}-${skill.version}`} className="workspace-card">
                     <div>
                       <h3>{skill.display_name}</h3>
-                      <p>{skill.summary}</p>
+                      <p>{skill.description}</p>
+                      <p className="workspace-meta">{skill.version} · {skill.category}</p>
                     </div>
                     <div className="workspace-actions">
                       <button
-                        className={enabled ? "state-button enabled" : "state-button disabled"}
+                        className={skill.is_enabled ? "state-button enabled" : "state-button disabled"}
                         type="button"
-                        onClick={() => {
-                          const next = toggleSkillEnabledState(skill.name);
-                          setVersion((value) => value + 1);
-                          toast.show(next ? "Skill enabled." : "Skill disabled.");
+                        onClick={async () => {
+                          try {
+                            const updated = await toggleUserSkill(skill.skill_name, !skill.is_enabled);
+                            setSkills((current) =>
+                              current.map((item) => (item.skill_name === skill.skill_name ? updated : item))
+                            );
+                            toast.show(updated.is_enabled ? "Skill enabled." : "Skill disabled.");
+                          } catch (toggleError) {
+                            toast.show(toggleError.message || "Failed to change skill state.");
+                          }
                         }}
                       >
-                        {enabled ? "Enabled" : "Disabled"}
+                        {skill.is_enabled ? "Enabled" : "Disabled"}
                       </button>
                       <button
                         className="outline-button"
                         type="button"
-                        onClick={() => handleToggleSaved(skill.name)}
+                        onClick={async () => {
+                          try {
+                            await removeUserSkill(skill.skill_name);
+                            setSkills((current) => current.filter((item) => item.skill_name !== skill.skill_name));
+                            toast.show("Removed from your library.");
+                          } catch (removeError) {
+                            toast.show(removeError.message || "Failed to remove skill.");
+                          }
+                        }}
                       >
-                        Remove from My skills
+                        Remove
                       </button>
-                      <Link className="secondary-link" to={`/skill/${encodeURIComponent(skill.name)}`}>
+                      <Link className="secondary-link" to={`/skill/${encodeURIComponent(skill.skill_name)}`}>
                         View detail
                       </Link>
                     </div>

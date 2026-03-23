@@ -1,18 +1,13 @@
 import { Link } from "react-router-dom";
-import { getStoredUser } from "../lib/session";
-import { useToast } from "./ToastProvider";
 import { CATEGORY_META } from "../lib/categoryMeta";
 
-export default function SkillCard({ skill, saved, onToggleSaved }) {
-  const toast = useToast();
+export default function SkillCard({ skill, installed, isSignedIn }) {
   const categoryMeta = CATEGORY_META[skill.category] || CATEGORY_META.all;
-  const user = getStoredUser();
-  const canSave = Boolean(user);
 
   return (
     <article className="skill-card">
       <div className="skill-card-top">
-        <span className="status-pill">{saved ? "Saved" : categoryMeta.label}</span>
+        <span className="status-pill">{installed ? "Installed" : categoryMeta.label}</span>
         <span className="skill-downloads">{skill.download_count ?? 0} downloads</span>
       </div>
       <div className="skill-card-headline">
@@ -40,20 +35,9 @@ export default function SkillCard({ skill, saved, onToggleSaved }) {
         <Link className="secondary-link" to={`/skill/${encodeURIComponent(skill.name)}`}>
           View detail
         </Link>
-        <button
-          className="outline-button"
-          type="button"
-          disabled={!canSave}
-          onClick={async () => {
-            if (!canSave) {
-              return;
-            }
-            const nextSaved = await onToggleSaved?.(skill.name);
-            toast.show(nextSaved ? "Added to My skills." : "Removed from My skills.");
-          }}
-        >
-          {!canSave ? "Sign in to save" : saved ? "Saved" : "Add to My skills"}
-        </button>
+        <Link className="outline-button button-link" to={isSignedIn ? `/skill/${encodeURIComponent(skill.name)}` : "/user-login"}>
+          {!isSignedIn ? "Login to Install" : installed ? "Installed" : "Install"}
+        </Link>
       </div>
     </article>
   );

@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Developer, DeveloperRole, DeveloperStatus
+from ..models import Developer, DeveloperRole, DeveloperStatus, User
 
 PBKDF2_ITERATIONS = 600_000
 PBKDF2_ALGORITHM = "sha256"
@@ -182,3 +182,49 @@ async def ensure_store_admin_account(
         await session.commit()
         await session.refresh(existing)
     return existing
+
+
+async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
+    stmt: Select[tuple[User]] = select(User).where(User.email == normalize_email(email))
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
+    stmt: Select[tuple[User]] = select(User).where(User.id == user_id)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def create_storefront_user(session: AsyncSession, email: str, password: str, name: str) -> User:
+    existing = await get_user_by_email(session, email)
+    if existing is not None:
+        raise _auth_error("DUPLICATE_EMAIL", "Email is already registered", status.HTTP_409_CONFLICT)
+
+    user = User(
+        email=normalize_email(email),
+        password_hash=hash_password(password),
+        name=name.strip(),
+        status="active",
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def authenticate_storefront_user(session: AsyncSession, email: str, password: str) -> User:
+    user = await get_user_by_email(session, email)
+    if user is None or not verify_password(password, user.password_hash):
+        raise _auth_error(
+            "INVALID_CREDENTIALS",
+            "Invalid email or password",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if user.status != "active":
+        raise _auth_error("FORBIDDEN", "Account is not active", status.HTTP_403_FORBIDDEN)
+
+    await session.commit()
+    await session.refresh(user)
+    return user

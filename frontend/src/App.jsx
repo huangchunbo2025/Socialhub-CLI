@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import CatalogPage from "./pages/CatalogPage";
 import LoginPage from "./pages/LoginPage";
 import SkillDetailPage from "./pages/SkillDetailPage";
+import UserLoginPage from "./pages/UserLoginPage";
 import UserPage from "./pages/UserPage";
 
 export default function App() {
@@ -9,6 +10,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<CatalogPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/user-login" element={<UserLoginPage />} />
       <Route path="/skill/:name" element={<SkillDetailPage />} />
       <Route path="/user" element={<UserPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

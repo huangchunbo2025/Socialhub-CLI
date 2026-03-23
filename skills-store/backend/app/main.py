@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import SessionLocal
-from .models import developer, skill, skill_certification, skill_review, skill_version  # noqa: F401
+from .models import developer, skill, skill_certification, skill_review, skill_version, user, user_skill  # noqa: F401
 from .models.base import Base
-from .routers import admin, auth, developer, public
+from .routers import admin, auth, developer, public, user_skills, users
 from .services.auth import ensure_store_admin_account
 
 app = FastAPI(title="Skills Store MVP", version="0.1.0")
@@ -70,6 +70,8 @@ async def startup() -> None:
     await bootstrap_admin_account()
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1")
+app.include_router(user_skills.router, prefix="/api/v1")
 app.include_router(public.router, prefix="/api/v1")
 app.include_router(developer.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")

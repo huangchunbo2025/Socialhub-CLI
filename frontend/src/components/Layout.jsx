@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { clearSession, getStoredUser } from "../lib/session";
+import { clearSession, clearStorefrontSession, getStoredStorefrontUser } from "../lib/session";
 
 function Footer() {
   return (
@@ -39,7 +39,7 @@ function Footer() {
 }
 
 export default function Layout({ title, subtitle, actions, children }) {
-  const user = getStoredUser();
+  const user = getStoredStorefrontUser();
 
   return (
     <div className="app-shell">
@@ -67,6 +67,7 @@ export default function Layout({ title, subtitle, actions, children }) {
                   className="btn btn-outline"
                   type="button"
                   onClick={() => {
+                    clearStorefrontSession();
                     clearSession();
                     window.location.hash = "#/";
                   }}
@@ -75,7 +76,7 @@ export default function Layout({ title, subtitle, actions, children }) {
                 </button>
               </>
             ) : (
-              <Link className="btn btn-primary" to="/login">
+              <Link className="btn btn-primary" to="/user-login">
                 Sign in
               </Link>
             )}
