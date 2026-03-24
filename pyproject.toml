@@ -48,8 +48,8 @@ dev = [
 ]
 
 [project.scripts]
-sh = "socialhub.cli.main:cli"
-socialhub = "socialhub.cli.main:cli"
+sh = "cli.main:cli"
+socialhub = "cli.main:cli"
 
 [project.urls]
 Homepage = "https://github.com/socialhub-ai/cli"
@@ -58,7 +58,7 @@ Repository = "https://github.com/socialhub-ai/cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["socialhub*"]
+include = ["cli*"]
 
 [tool.black]
 line-length = 100
@@ -79,4 +79,4 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=socialhub --cov-report=term-missing"
+addopts = "-v --cov=cli --cov-report=term-missing"

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from socialhub.cli.skills.security import (
+from cli.skills.security import (
     HashVerifier,
     KeyManager,
     PermissionChecker,
@@ -22,7 +22,7 @@ from socialhub.cli.skills.security import (
     SignatureVerifier,
     validate_skill_source,
 )
-from socialhub.cli.skills.models import SkillCertification, SkillManifest
+from cli.skills.models import SkillCertification, SkillManifest
 
 
 class TestHashVerifier:

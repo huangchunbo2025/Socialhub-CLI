@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from socialhub.cli.local.reader import (
+from cli.local.reader import (
     FileReadError,
     LocalDataReader,
     read_customers_csv,

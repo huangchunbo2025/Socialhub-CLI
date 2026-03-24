@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import sys
-skill_path = Path(__file__).parent.parent / "socialhub" / "cli" / "skills" / "store" / "report-generator"
+skill_path = Path(__file__).parent.parent / "cli" / "skills" / "store" / "report-generator"
 sys.path.insert(0, str(skill_path))
 
 from main import (

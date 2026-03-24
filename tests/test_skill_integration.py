@@ -13,7 +13,7 @@ import yaml
 # Add project root to path
 import sys
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "socialhub"))
+sys.path.insert(0, str(project_root / "cli"))
 
 
 class TestSkillInstallation:
@@ -29,7 +29,7 @@ class TestSkillInstallation:
     @pytest.fixture
     def report_generator_skill_path(self):
         """Get the path to the report-generator skill."""
-        return project_root / "socialhub" / "cli" / "skills" / "store" / "report-generator"
+        return project_root / "cli" / "skills" / "store" / "report-generator"
 
     def test_skill_manifest_is_valid(self, report_generator_skill_path):
         """Test that the skill.yaml manifest is valid."""
@@ -93,7 +93,7 @@ class TestSkillManifestModel:
     @pytest.fixture
     def report_generator_manifest(self):
         """Load the report-generator manifest."""
-        manifest_path = project_root / "socialhub" / "cli" / "skills" / "store" / "report-generator" / "skill.yaml"
+        manifest_path = project_root / "cli" / "skills" / "store" / "report-generator" / "skill.yaml"
         with open(manifest_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
 
@@ -227,7 +227,7 @@ class TestHealthCheck:
         """Test that skill manifest passes integrity check."""
         from cli.skills.security import HashVerifier
 
-        skill_path = project_root / "socialhub" / "cli" / "skills" / "store" / "report-generator"
+        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
         manifest_path = skill_path / "skill.yaml"
 
         verifier = HashVerifier()
@@ -266,7 +266,7 @@ class TestFullExecutionFlow:
 
     def test_skill_module_can_be_imported(self):
         """Test that the skill module can be imported."""
-        skill_path = project_root / "socialhub" / "cli" / "skills" / "store" / "report-generator"
+        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
         sys.path.insert(0, str(skill_path))
 
         try:
@@ -278,7 +278,7 @@ class TestFullExecutionFlow:
 
     def test_skill_can_execute_generate_command(self):
         """Test that the skill can execute the generate command."""
-        skill_path = project_root / "socialhub" / "cli" / "skills" / "store" / "report-generator"
+        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
         sys.path.insert(0, str(skill_path))
 
         try:
@@ -299,7 +299,7 @@ class TestFullExecutionFlow:
 
     def test_skill_can_execute_preview_command(self):
         """Test that the skill can execute the preview command."""
-        skill_path = project_root / "socialhub" / "cli" / "skills" / "store" / "report-generator"
+        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
         sys.path.insert(0, str(skill_path))
 
         try:

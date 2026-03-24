@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from socialhub.cli.skills.sandbox import (
+from cli.skills.sandbox import (
     FileSystemSandbox,
     FileAccessDeniedError,
     NetworkSandbox,
@@ -464,7 +464,7 @@ class TestSandboxIntegration:
 
     def test_permission_based_sandbox_creation(self):
         """Test that sandbox respects permissions."""
-        from socialhub.cli.skills.sandbox.manager import create_sandbox_from_permissions
+        from cli.skills.sandbox.manager import create_sandbox_from_permissions
 
         # No permissions = everything blocked
         manager = create_sandbox_from_permissions("test", set())
