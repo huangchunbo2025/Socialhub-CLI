@@ -487,7 +487,12 @@ def _sanitize_string_input(value: str, max_length: int = 100) -> str:
 
 
 def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str = None) -> list:
-    """Get campaign analytics from MCP database."""
+    """Get campaign analytics from MCP database.
+
+    Merges two sources:
+    - ads_das_activity_channel_effect_d : funnel metrics (target/reach/click/convert)
+    - ads_das_activity_analysis_d        : reward metrics (points/coupons/messages/participants)
+    """
     import re
 
     # Validate and compute safe date range
@@ -503,7 +508,7 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Build safe WHERE clause
+        # --- Query 1: funnel metrics ---
         conditions = []
         if start_date:
             date_str = start_date.isoformat()
@@ -511,20 +516,18 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
                 conditions.append(f"create_time >= '{date_str}'")
 
         if campaign_id:
-            # Sanitize campaign_id (alphanumeric only)
             safe_id = _sanitize_string_input(campaign_id, 50)
             if safe_id:
                 conditions.append(f"activity_id = '{safe_id}'")
 
         if name:
-            # Sanitize name for LIKE query
             safe_name = _sanitize_string_input(name, 100)
             if safe_name:
                 conditions.append(f"activity_name LIKE '%{safe_name}%'")
 
         where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
-        result = client.query(f"""
+        funnel_rows = client.query(f"""
             SELECT
                 activity_id,
                 activity_name,
@@ -542,13 +545,117 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
             LIMIT 50
         """, database=database)
 
-        if isinstance(result, list):
-            return result
-        return []
+        if not isinstance(funnel_rows, list):
+            return []
+
+        # --- Query 2: reward metrics from ads_das_activity_analysis_d ---
+        reward_where = ""
+        if start_date:
+            date_str = start_date.isoformat()
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+                reward_where = f"WHERE biz_date >= '{date_str}'"
+
+        reward_rows = client.query(f"""
+            SELECT
+                activity_code,
+                BITMAP_COUNT(BITMAP_UNION(activity_custs_bitnum)) AS participants,
+                SUM(activity_Points_Issued)      AS points_issued,
+                SUM(activity_coupon_issue_qty)   AS coupons_issued,
+                SUM(activity_msg_send_num)       AS messages_sent
+            FROM ads_das_activity_analysis_d
+            {reward_where}
+            GROUP BY activity_code
+        """, database=database)
+
+        # Build lookup: activity_code -> reward metrics
+        reward_map = {}
+        if isinstance(reward_rows, list):
+            for r in reward_rows:
+                code = str(r.get("activity_code") or "")
+                if code:
+                    reward_map[code] = r
+
+        # Merge: activity_id in funnel == activity_code in analysis
+        for row in funnel_rows:
+            aid = str(row.get("activity_id") or "")
+            reward = reward_map.get(aid, {})
+            row["participants"]   = reward.get("participants") or 0
+            row["points_issued"]  = reward.get("points_issued") or 0
+            row["coupons_issued"] = reward.get("coupons_issued") or 0
+            row["messages_sent"]  = reward.get("messages_sent") or 0
+
+        return funnel_rows
 
 
-def _get_mcp_points(config, period: str) -> dict:
-    """Get points analytics from MCP database."""
+def _print_campaigns_mcp(rows: list, export_path: str = None) -> None:
+    """Rich table output for MCP campaign results (funnel + reward metrics)."""
+    from rich.table import Table
+    from rich import box as rich_box
+
+    if not rows:
+        console.print("[yellow]No campaign data found[/yellow]")
+        return
+
+    if export_path:
+        format_output(rows, "json", export_path)
+        return
+
+    t = Table(box=rich_box.ROUNDED, header_style="bold cyan", show_lines=False)
+    t.add_column("ID",         style="dim",  max_width=14)
+    t.add_column("Name",                     max_width=24)
+    t.add_column("Status",     style="dim",  max_width=10)
+    t.add_column("Target",     justify="right")
+    t.add_column("Reach",      justify="right")
+    t.add_column("Click",      justify="right")
+    t.add_column("Convert",    justify="right")
+    t.add_column("Participants", justify="right", style="cyan")
+    t.add_column("Pts Issued", justify="right", style="green")
+    t.add_column("Coupons",    justify="right", style="green")
+    t.add_column("Messages",   justify="right", style="green")
+
+    def _n(v):
+        try:
+            return f"{int(v or 0):,}"
+        except (TypeError, ValueError):
+            return "-"
+
+    def _rate(part, total):
+        try:
+            p, t_ = int(part or 0), int(total or 0)
+            return f"{p/t_*100:.0f}%" if t_ else "-"
+        except (TypeError, ValueError, ZeroDivisionError):
+            return "-"
+
+    for r in rows:
+        reach   = r.get("reach_count")
+        target  = r.get("target_count")
+        convert = r.get("convert_count")
+        t.add_row(
+            str(r.get("activity_id") or "-"),
+            str(r.get("activity_name") or "-"),
+            str(r.get("status") or "-"),
+            _n(target),
+            f"{_n(reach)} ({_rate(reach, target)})",
+            _n(r.get("click_count")),
+            f"{_n(convert)} ({_rate(convert, reach)})",
+            _n(r.get("participants")),
+            _n(r.get("points_issued")),
+            _n(r.get("coupons_issued")),
+            _n(r.get("messages_sent")),
+        )
+
+    console.print()
+    console.print(t)
+    console.print(f"[dim]{len(rows)} campaign(s) | Reach% = reach/target | Convert% = convert/reach[/dim]")
+
+
+def _get_mcp_points(config, period: str, expiring_days: int = 0, breakdown: bool = False) -> dict:
+    """Get points analytics from MCP database.
+
+    Args:
+        expiring_days: when > 0, add expiration risk section
+        breakdown: when True, add per-operation_type breakdown
+    """
     # Validate and compute safe date range
     start_date, _ = _compute_date_range(period)
     date_filter = _safe_date_filter("create_time", start_date)
@@ -560,16 +667,20 @@ def _get_mcp_points(config, period: str) -> dict:
     )
     database = config.mcp.database
 
+    # Validate expiring_days
+    if not isinstance(expiring_days, int) or expiring_days < 0 or expiring_days > 3650:
+        expiring_days = 0
+
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Query points statistics with safe date filter
+        # --- Base summary ---
         result = client.query(f"""
             SELECT
-                SUM(CASE WHEN change_type = 'earn' THEN points ELSE 0 END) as total_earned,
-                SUM(CASE WHEN change_type = 'redeem' THEN points ELSE 0 END) as total_redeemed,
-                COUNT(DISTINCT member_id) as active_members,
-                COUNT(*) as total_transactions
+                SUM(CASE WHEN change_type = 'earn'   THEN points ELSE 0 END) AS total_earned,
+                SUM(CASE WHEN change_type = 'redeem' THEN points ELSE 0 END) AS total_redeemed,
+                COUNT(DISTINCT member_id) AS active_members,
+                COUNT(*) AS total_transactions
             FROM dwd_member_points_log
             {date_filter}
         """, database=database)
@@ -582,18 +693,132 @@ def _get_mcp_points(config, period: str) -> dict:
             "total_transactions": 0,
         }
 
-        if isinstance(result, list) and len(result) > 0:
+        if isinstance(result, list) and result:
             row = result[0]
-            data["total_earned"] = row.get("total_earned") or 0
-            data["total_redeemed"] = row.get("total_redeemed") or 0
-            data["active_members"] = row.get("active_members") or 0
+            data["total_earned"]       = row.get("total_earned") or 0
+            data["total_redeemed"]     = row.get("total_redeemed") or 0
+            data["active_members"]     = row.get("active_members") or 0
             data["total_transactions"] = row.get("total_transactions") or 0
+
+        # --- Expiration risk ---
+        if expiring_days > 0:
+            exp_result = client.query(f"""
+                SELECT
+                    SUM(points)              AS expiring_points,
+                    COUNT(DISTINCT member_id) AS affected_members
+                FROM dwd_member_points_log
+                WHERE effective_end_time > NOW()
+                  AND effective_end_time <= DATE_ADD(NOW(), INTERVAL {expiring_days} DAY)
+                  AND change_type = 'earn'
+            """, database=database)
+
+            data["expiring_days"] = expiring_days
+            data["expiring_points"] = 0
+            data["expiring_affected_members"] = 0
+            if isinstance(exp_result, list) and exp_result:
+                data["expiring_points"]           = exp_result[0].get("expiring_points") or 0
+                data["expiring_affected_members"] = exp_result[0].get("affected_members") or 0
+
+        # --- Breakdown by operation_type ---
+        if breakdown:
+            # operation_type: 1=purchase 2=promotion 3=return 4=manual+ 5=manual- 6=behavior 8=redeem-gift 9=redeem-coupon 11=expired
+            bd_result = client.query(f"""
+                SELECT
+                    operation_type,
+                    SUM(points)              AS total_points,
+                    COUNT(DISTINCT member_id) AS members,
+                    COUNT(*)                 AS transactions
+                FROM dwd_member_points_log
+                {date_filter}
+                GROUP BY operation_type
+                ORDER BY total_points DESC
+            """, database=database)
+
+            op_labels = {
+                "1": "Purchase earn", "2": "Promotion earn", "3": "Return deduct",
+                "4": "Manual add",    "5": "Manual deduct",  "6": "Behavior earn",
+                "8": "Redeem gift",   "9": "Redeem coupon",  "11": "Expired deduct",
+            }
+            breakdown_rows = []
+            if isinstance(bd_result, list):
+                for r in bd_result:
+                    op = str(r.get("operation_type") or "")
+                    breakdown_rows.append({
+                        "operation_type": op,
+                        "label":          op_labels.get(op, f"Type {op}"),
+                        "total_points":   r.get("total_points") or 0,
+                        "members":        r.get("members") or 0,
+                        "transactions":   r.get("transactions") or 0,
+                    })
+            data["breakdown"] = breakdown_rows
 
         return data
 
 
+def _print_points_mcp(data: dict) -> None:
+    """Rich output for MCP points analytics."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich import box as rich_box
+
+    earned   = int(data.get("total_earned") or 0)
+    redeemed = int(data.get("total_redeemed") or 0)
+    balance  = earned - redeemed
+    redemption_rate = f"{redeemed/earned*100:.1f}%" if earned else "-"
+
+    t = Table(show_header=False, box=rich_box.SIMPLE, padding=(0, 2))
+    t.add_column("Metric", style="dim", min_width=22)
+    t.add_column("Value", style="bold", justify="right", min_width=14)
+    t.add_column("Note", style="dim")
+
+    t.add_row("Total Earned",     f"{earned:,}",        f"Period: {data.get('period')}")
+    t.add_row("Total Redeemed",   f"{redeemed:,}",      f"Redemption rate: {redemption_rate}")
+    t.add_row("Net Balance",      f"{balance:,}",       "Earned minus redeemed")
+    t.add_row("Active Members",   f"{int(data.get('active_members') or 0):,}", "Had point activity")
+    t.add_row("Transactions",     f"{int(data.get('total_transactions') or 0):,}", "Total point events")
+
+    # Expiration risk section
+    if "expiring_days" in data:
+        exp_pts = int(data.get("expiring_points") or 0)
+        exp_mem = int(data.get("expiring_affected_members") or 0)
+        exp_pct = f"{exp_pts/earned*100:.1f}%" if earned else "-"
+        t.add_row("", "", "")
+        t.add_row(
+            f"[yellow]Expiring (next {data['expiring_days']}d)[/yellow]",
+            f"[yellow]{exp_pts:,}[/yellow]",
+            f"[yellow]{exp_mem:,} members affected ({exp_pct} of earned)[/yellow]",
+        )
+
+    console.print()
+    console.print(Panel(t, title="[bold cyan]Points Analytics[/bold cyan]", border_style="cyan"))
+
+    # Breakdown table
+    if "breakdown" in data and data["breakdown"]:
+        bt = Table(title="Points by Operation Type", box=rich_box.ROUNDED, header_style="bold cyan")
+        bt.add_column("Type", style="dim")
+        bt.add_column("Label")
+        bt.add_column("Points", justify="right", style="bold")
+        bt.add_column("Members", justify="right")
+        bt.add_column("Transactions", justify="right")
+
+        for r in data["breakdown"]:
+            bt.add_row(
+                str(r.get("operation_type") or "-"),
+                str(r.get("label") or "-"),
+                f"{int(r.get('total_points') or 0):,}",
+                f"{int(r.get('members') or 0):,}",
+                f"{int(r.get('transactions') or 0):,}",
+            )
+        console.print(bt)
+
+
 def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
-    """Get coupon analytics from MCP database."""
+    """Get coupon analytics from MCP database.
+
+    When roi=True, also computes:
+    - Total face value issued / redeemed (par_value / 100 = CNY)
+    - Breakdown by coupon_rule_code
+    """
     # Validate and compute safe date range
     start_date, _ = _compute_date_range(period)
     date_filter = _safe_date_filter("create_time", start_date)
@@ -608,13 +833,15 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Query coupon statistics with safe date filter
+        # --- Base summary (always) ---
         result = client.query(f"""
             SELECT
-                COUNT(*) as total_issued,
-                SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as total_used,
-                SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as total_expired,
-                COUNT(DISTINCT customer_code) as unique_customers
+                COUNT(*)                                                     AS total_issued,
+                SUM(CASE WHEN status = 'used'    THEN 1 ELSE 0 END)         AS total_used,
+                SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END)         AS total_expired,
+                COUNT(DISTINCT customer_code)                                AS unique_customers,
+                SUM(par_value) / 100.0                                       AS total_face_value_cny,
+                SUM(CASE WHEN status = 'used' THEN par_value ELSE 0 END) / 100.0 AS redeemed_face_value_cny
             FROM dwd_coupon_instance
             {date_filter}
         """, database=database)
@@ -626,18 +853,111 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
             "total_expired": 0,
             "unique_customers": 0,
             "usage_rate": 0.0,
+            "total_face_value_cny": 0.0,
+            "redeemed_face_value_cny": 0.0,
         }
 
-        if isinstance(result, list) and len(result) > 0:
+        if isinstance(result, list) and result:
             row = result[0]
-            data["total_issued"] = row.get("total_issued") or 0
-            data["total_used"] = row.get("total_used") or 0
-            data["total_expired"] = row.get("total_expired") or 0
-            data["unique_customers"] = row.get("unique_customers") or 0
+            data["total_issued"]          = row.get("total_issued") or 0
+            data["total_used"]            = row.get("total_used") or 0
+            data["total_expired"]         = row.get("total_expired") or 0
+            data["unique_customers"]      = row.get("unique_customers") or 0
+            data["total_face_value_cny"]  = float(row.get("total_face_value_cny") or 0)
+            data["redeemed_face_value_cny"] = float(row.get("redeemed_face_value_cny") or 0)
             if data["total_issued"] > 0:
                 data["usage_rate"] = round(data["total_used"] / data["total_issued"] * 100, 2)
 
+        # --- Per-rule breakdown (when --roi) ---
+        if roi:
+            rule_result = client.query(f"""
+                SELECT
+                    coupon_rule_code,
+                    COUNT(*)                                                     AS issued,
+                    SUM(CASE WHEN status = 'used'    THEN 1 ELSE 0 END)         AS used,
+                    SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END)         AS expired,
+                    SUM(par_value) / 100.0                                       AS face_value_cny,
+                    SUM(CASE WHEN status = 'used' THEN par_value ELSE 0 END) / 100.0 AS redeemed_cny
+                FROM dwd_coupon_instance
+                {date_filter}
+                GROUP BY coupon_rule_code
+                ORDER BY issued DESC
+                LIMIT 30
+            """, database=database)
+
+            rule_rows = []
+            if isinstance(rule_result, list):
+                for r in rule_result:
+                    issued = int(r.get("issued") or 0)
+                    used   = int(r.get("used") or 0)
+                    rule_rows.append({
+                        "coupon_rule_code": str(r.get("coupon_rule_code") or "-"),
+                        "issued":           issued,
+                        "used":             used,
+                        "expired":          int(r.get("expired") or 0),
+                        "usage_rate":       round(used / issued * 100, 1) if issued else 0.0,
+                        "face_value_cny":   float(r.get("face_value_cny") or 0),
+                        "redeemed_cny":     float(r.get("redeemed_cny") or 0),
+                    })
+            data["rule_breakdown"] = rule_rows
+
         return data
+
+
+def _print_coupons_mcp(data: dict, show_roi: bool = False) -> None:
+    """Rich output for MCP coupon analytics."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich import box as rich_box
+
+    issued   = int(data.get("total_issued") or 0)
+    used     = int(data.get("total_used") or 0)
+    expired  = int(data.get("total_expired") or 0)
+    pending  = issued - used - expired
+    usage    = data.get("usage_rate") or 0.0
+    face_cny = float(data.get("total_face_value_cny") or 0)
+    red_cny  = float(data.get("redeemed_face_value_cny") or 0)
+    value_rate = f"{red_cny/face_cny*100:.1f}%" if face_cny else "-"
+
+    t = Table(show_header=False, box=rich_box.SIMPLE, padding=(0, 2))
+    t.add_column("Metric", style="dim", min_width=24)
+    t.add_column("Value", style="bold", justify="right", min_width=14)
+    t.add_column("Note", style="dim")
+
+    t.add_row("Total Issued",      f"{issued:,}",   f"Period: {data.get('period')}")
+    t.add_row("Used",              f"{used:,}",     f"Usage rate: {usage:.1f}%")
+    t.add_row("Expired",           f"{expired:,}",  "")
+    t.add_row("Pending",           f"{pending:,}",  "Still active")
+    t.add_row("Unique Customers",  f"{int(data.get('unique_customers') or 0):,}", "")
+    t.add_row("", "", "")
+    t.add_row("Total Face Value",  f"CNY {face_cny:,.2f}", "All issued coupons")
+    t.add_row("Redeemed Value",    f"CNY {red_cny:,.2f}",  f"Value redemption rate: {value_rate}")
+
+    console.print()
+    console.print(Panel(t, title="[bold cyan]Coupon Analytics[/bold cyan]", border_style="cyan"))
+
+    # Per-rule breakdown
+    if show_roi and "rule_breakdown" in data and data["rule_breakdown"]:
+        rt = Table(title="Breakdown by Coupon Rule", box=rich_box.ROUNDED, header_style="bold cyan")
+        rt.add_column("Rule Code", style="dim")
+        rt.add_column("Issued",    justify="right")
+        rt.add_column("Used",      justify="right")
+        rt.add_column("Usage %",   justify="right")
+        rt.add_column("Expired",   justify="right", style="dim")
+        rt.add_column("Face Value (CNY)", justify="right")
+        rt.add_column("Redeemed (CNY)",   justify="right", style="bold")
+
+        for r in data["rule_breakdown"]:
+            rt.add_row(
+                str(r.get("coupon_rule_code") or "-"),
+                f"{int(r.get('issued') or 0):,}",
+                f"{int(r.get('used') or 0):,}",
+                f"{r.get('usage_rate') or 0:.1f}%",
+                f"{int(r.get('expired') or 0):,}",
+                f"{float(r.get('face_value_cny') or 0):,.2f}",
+                f"{float(r.get('redeemed_cny') or 0):,.2f}",
+            )
+        console.print(rt)
 
 
 def _get_mcp_report_data(config) -> dict:
@@ -1034,13 +1354,14 @@ def analytics_campaigns(
         print_error("Campaign analytics requires API or MCP mode")
         raise typer.Exit(1)
 
-    if funnel and isinstance(data, dict):
-        # Show funnel data as table
+    if config.mode == "mcp" and isinstance(data, list):
+        _print_campaigns_mcp(data, output)
+    elif funnel and isinstance(data, dict):
         funnel_data = {
-            "Target": f"{data.get('target_count', 0):,}",
-            "Reached": f"{data.get('reached_count', 0):,}",
-            "Opened": f"{data.get('opened_count', 0):,}",
-            "Clicked": f"{data.get('clicked_count', 0):,}",
+            "Target":    f"{data.get('target_count', 0):,}",
+            "Reached":   f"{data.get('reached_count', 0):,}",
+            "Opened":    f"{data.get('opened_count', 0):,}",
+            "Clicked":   f"{data.get('clicked_count', 0):,}",
             "Converted": f"{data.get('converted_count', 0):,}",
         }
         print_dict(funnel_data, title=f"Campaign Funnel: {data.get('campaign_name', 'Unknown')}")
@@ -1050,51 +1371,67 @@ def analytics_campaigns(
 
 @app.command("points")
 def analytics_points(
-    period: str = typer.Option("30d", "--period", "-p", help="Time period"),
+    period: str = typer.Option("30d", "--period", "-p", help="Time period: 7d/30d/90d/365d"),
+    expiring_days: int = typer.Option(0, "--expiring-days", help="Show points expiring within N days (0=off)"),
+    breakdown: bool = typer.Option(False, "--breakdown", help="Break down by operation type"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
-    """Analyze points program metrics."""
+    """Analyze points program metrics.
+
+    Examples:
+        sh analytics points --period=30d
+        sh analytics points --expiring-days=30
+        sh analytics points --breakdown
+    """
     config = load_config()
 
     if config.mode == "mcp":
-        # MCP mode - query real database
         try:
-            data = _get_mcp_points(config, period)
+            data = _get_mcp_points(config, period, expiring_days, breakdown)
         except MCPError as e:
             print_error(f"MCP Error: {e}")
             raise typer.Exit(1)
         except Exception as e:
             print_error(f"MCP Error: {e}")
             raise typer.Exit(1)
+
+        if format == "json" or output:
+            format_output(data, format, output)
+            return
+
+        _print_points_mcp(data)
+
     elif config.mode == "api":
         try:
             with SocialHubClient() as client:
-                # Get points statistics
                 result = client.get("/api/v1/analytics/points", params={"period": period})
                 data = result.get("data", result)
         except APIError as e:
             print_error(f"API Error: {e.message}")
             raise typer.Exit(1)
+        format_output(data, format, output)
     else:
         print_error("Points analytics requires API or MCP mode")
         raise typer.Exit(1)
 
-    format_output(data, format, output)
-
 
 @app.command("coupons")
 def analytics_coupons(
-    period: str = typer.Option("30d", "--period", "-p", help="Time period"),
-    roi: bool = typer.Option(False, "--roi", help="Calculate ROI"),
+    period: str = typer.Option("30d", "--period", "-p", help="Time period: 7d/30d/90d/365d"),
+    roi: bool = typer.Option(False, "--roi", help="Show face-value ROI and per-rule breakdown"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
-    """Analyze coupon usage metrics."""
+    """Analyze coupon usage and redemption value.
+
+    Examples:
+        sh analytics coupons --period=30d
+        sh analytics coupons --roi
+    """
     config = load_config()
 
     if config.mode == "mcp":
-        # MCP mode - query real database
         try:
             data = _get_mcp_coupons(config, period, roi)
         except MCPError as e:
@@ -1103,6 +1440,13 @@ def analytics_coupons(
         except Exception as e:
             print_error(f"MCP Error: {e}")
             raise typer.Exit(1)
+
+        if format == "json" or output:
+            format_output(data, format, output)
+            return
+
+        _print_coupons_mcp(data, roi)
+
     elif config.mode == "api":
         try:
             with SocialHubClient() as client:
@@ -1114,11 +1458,10 @@ def analytics_coupons(
         except APIError as e:
             print_error(f"API Error: {e.message}")
             raise typer.Exit(1)
+        format_output(data, format, output)
     else:
         print_error("Coupon analytics requires API or MCP mode")
         raise typer.Exit(1)
-
-    format_output(data, format, output)
 
 
 @app.command("report")
