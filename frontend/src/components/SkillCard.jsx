@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { CATEGORY_META } from "../lib/categoryMeta";
 
-export default function SkillCard({ skill, installed, isSignedIn }) {
+export default function SkillCard({ skill, installed, isSignedIn, onInstallAction }) {
   const categoryMeta = CATEGORY_META[skill.category] || CATEGORY_META.all;
 
   return (
@@ -35,9 +35,19 @@ export default function SkillCard({ skill, installed, isSignedIn }) {
         <Link className="secondary-link" to={`/skill/${encodeURIComponent(skill.name)}`}>
           View detail
         </Link>
-        <Link className="outline-button button-link" to={isSignedIn ? `/skill/${encodeURIComponent(skill.name)}` : "/user-login"}>
-          {!isSignedIn ? "Login to Install" : installed ? "Installed" : "Install"}
-        </Link>
+        {isSignedIn ? (
+          <button
+            className="outline-button"
+            type="button"
+            onClick={() => onInstallAction?.(skill)}
+          >
+            {installed ? "Uninstall" : "Install"}
+          </button>
+        ) : (
+          <Link className="outline-button button-link" to="/user-login">
+            Login to Install
+          </Link>
+        )}
       </div>
     </article>
   );

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Layout from "../components/Layout";
 import SkillCard from "../components/SkillCard";
-import { apiFetch, loadCurrentStorefrontUser, loadMyUserSkills } from "../lib/api";
+import { apiFetch, installUserSkill, loadCurrentStorefrontUser, loadMyUserSkills, removeUserSkill } from "../lib/api";
 import { CATEGORY_META } from "../lib/categoryMeta";
+import { useToast } from "../components/ToastProvider";
 
 export default function CatalogPage() {
   const [skills, setSkills] = useState([]);
@@ -13,6 +14,7 @@ export default function CatalogPage() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const toast = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +52,23 @@ export default function CatalogPage() {
       return matchesCategory && matchesQuery;
     });
   }, [skills, activeCategory, query]);
+
+  async function handleInstallAction(skill) {
+    try {
+      const existing = installedSkills.find((item) => item.skill_name === skill.name);
+      if (existing) {
+        await removeUserSkill(skill.name);
+        setInstalledSkills((current) => current.filter((item) => item.skill_name !== skill.name));
+        toast.show("Removed from your library.");
+      } else {
+        const item = await installUserSkill(skill.name);
+        setInstalledSkills((current) => [...current.filter((entry) => entry.skill_name !== skill.name), item]);
+        toast.show("Added to your library.");
+      }
+    } catch (actionError) {
+      toast.show(actionError.message || "Failed to update library.");
+    }
+  }
 
   return (
     <Layout
@@ -124,6 +143,7 @@ export default function CatalogPage() {
               skill={skill}
               installed={installedSkills.some((item) => item.skill_name === skill.name)}
               isSignedIn={Boolean(storefrontUser)}
+              onInstallAction={handleInstallAction}
             />
           ))}
         </section>
