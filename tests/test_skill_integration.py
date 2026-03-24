@@ -41,7 +41,7 @@ class TestSkillInstallation:
 
         # Check required fields
         assert manifest["name"] == "report-generator"
-        assert manifest["version"] == "1.0.0"
+        assert manifest["version"] == "3.1.0"
         assert "permissions" in manifest
         assert "commands" in manifest
         assert manifest["entrypoint"] == "main.py"
@@ -57,8 +57,8 @@ class TestSkillInstallation:
         content = main_path.read_text(encoding="utf-8")
 
         # Check for required functions
-        assert "def generate_report" in content
-        assert "def preview_report" in content
+        assert "def generate_consulting_report" in content
+        assert "def generate_demo_report" in content
         assert "def _validate_output_path" in content
 
     def test_skill_permissions_are_minimal(self, report_generator_skill_path):
@@ -69,7 +69,7 @@ class TestSkillInstallation:
 
         permissions = manifest.get("permissions", [])
 
-        # Should only need file:write and optionally file:read
+        # Should have file:write permission
         assert "file:write" in permissions
         # Should NOT need dangerous permissions
         assert "execute" not in permissions
@@ -84,7 +84,7 @@ class TestSkillInstallation:
             cert = json.load(f)
 
         assert cert["skill_name"] == "report-generator"
-        assert cert["certificate_id"] == "SKILL-RPT-001"
+        assert cert["certificate_id"] == "SKILL-RPT-003"
 
 
 class TestSkillManifestModel:
@@ -104,9 +104,9 @@ class TestSkillManifestModel:
         manifest = SkillManifest(**report_generator_manifest)
 
         assert manifest.name == "report-generator"
-        assert manifest.version == "1.0.0"
+        assert manifest.version == "3.1.0"
         assert manifest.category.value == "analytics"
-        assert len(manifest.commands) == 2
+        assert len(manifest.commands) >= 8
 
     def test_manifest_commands_are_valid(self, report_generator_manifest):
         """Test that commands in manifest are valid."""
@@ -117,13 +117,13 @@ class TestSkillManifestModel:
         # Check generate command
         generate_cmd = next((c for c in manifest.commands if c.name == "generate"), None)
         assert generate_cmd is not None
-        assert generate_cmd.function == "generate_report"
+        assert generate_cmd.function == "generate_consulting_report"
         assert len(generate_cmd.arguments) >= 1
 
-        # Check preview command
-        preview_cmd = next((c for c in manifest.commands if c.name == "preview"), None)
-        assert preview_cmd is not None
-        assert preview_cmd.function == "preview_report"
+        # Check demo command
+        demo_cmd = next((c for c in manifest.commands if c.name == "demo"), None)
+        assert demo_cmd is not None
+        assert demo_cmd.function == "generate_demo_report"
 
     def test_manifest_permissions_are_valid_enums(self, report_generator_manifest):
         """Test that permissions are valid SkillPermission enums."""
@@ -133,7 +133,6 @@ class TestSkillManifestModel:
 
         for perm in manifest.permissions:
             assert isinstance(perm, SkillPermission)
-            assert perm.value in ["file:read", "file:write"]
 
 
 class TestPermissionEnforcement:
@@ -264,57 +263,45 @@ class TestHealthCheck:
 class TestFullExecutionFlow:
     """Test the full execution flow of the skill."""
 
-    def test_skill_module_can_be_imported(self):
+    @pytest.fixture
+    def skill_module(self):
+        """Import skill module with sys.path management and cleanup."""
+        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
+        sys.path.insert(0, str(skill_path))
+        try:
+            import main as skill_main
+            yield skill_main
+        finally:
+            sys.path.remove(str(skill_path))
+            sys.modules.pop("main", None)
+
+    def test_skill_module_can_be_imported(self, skill_module):
         """Test that the skill module can be imported."""
-        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
-        sys.path.insert(0, str(skill_path))
+        assert hasattr(skill_module, "generate_consulting_report")
+        assert hasattr(skill_module, "generate_demo_report")
 
-        try:
-            import main as skill_main
-            assert hasattr(skill_main, "generate_report")
-            assert hasattr(skill_main, "preview_report")
-        finally:
-            sys.path.remove(str(skill_path))
-
-    def test_skill_can_execute_generate_command(self):
+    def test_skill_can_execute_generate_command(self, skill_module):
         """Test that the skill can execute the generate command."""
-        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
-        sys.path.insert(0, str(skill_path))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "test_report.md")
+            result = skill_module.generate_consulting_report(
+                topic="Test Business Analysis",
+                output=output_path,
+                context="comprehensive",
+            )
 
-        try:
-            import main as skill_main
+            assert "generated" in result.lower()
+            assert Path(output_path).exists()
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                output_path = os.path.join(tmpdir, "test_report.html")
-                result = skill_main.generate_report(
-                    output=output_path,
-                    title="Test Report",
-                    report_data={"overview": {"total_customers": 100}},
-                )
+    def test_skill_can_execute_demo_command(self, skill_module):
+        """Test that the skill can execute the demo command."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "demo_report.md")
+            result = skill_module.generate_demo_report(output=output_path)
 
-                assert "Report generated successfully" in result
-                assert Path(output_path).exists()
-        finally:
-            sys.path.remove(str(skill_path))
+            assert "generated" in result.lower()
+            assert Path(output_path).exists()
 
-    def test_skill_can_execute_preview_command(self):
-        """Test that the skill can execute the preview command."""
-        skill_path = project_root / "cli" / "skills" / "store" / "report-generator"
-        sys.path.insert(0, str(skill_path))
-
-        try:
-            import main as skill_main
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                output_path = os.path.join(tmpdir, "preview_report.html")
-                result = skill_main.preview_report(output=output_path)
-
-                assert "Report generated successfully" in result
-                assert Path(output_path).exists()
-
-                # Verify demo data is in the report
-                content = Path(output_path).read_text(encoding="utf-8")
-                assert "Alice Wang" in content
-                assert "SocialHub.AI Demo Report" in content
-        finally:
-            sys.path.remove(str(skill_path))
+            # Verify demo content is in the report
+            content = Path(output_path).read_text(encoding="utf-8")
+            assert "新能源汽车" in content

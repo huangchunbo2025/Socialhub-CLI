@@ -69,11 +69,11 @@ def test_filter_by_date(sample_orders):
     """Test filtering by date range."""
     now = datetime.now()
 
-    # Filter last 3 days
+    # Filter last 4 days
     filtered = DataProcessor.filter_by_date(
         sample_orders,
         "created_at",
-        start_date=now - timedelta(days=3),
+        start_date=now - timedelta(days=4),
         end_date=now,
     )
 

@@ -32,7 +32,7 @@ def test_default_config():
     """Test default configuration values."""
     config = Config()
 
-    assert config.mode == "api"
+    assert config.mode == "mcp"
     assert config.api.url == "https://api.socialhub.ai"
     assert config.api.key == ""
     assert config.api.timeout == 30
@@ -46,7 +46,7 @@ def test_load_config_missing_file(temp_config_dir):
     config_dir, config_file = temp_config_dir
 
     config = load_config()
-    assert config.mode == "api"
+    assert config.mode == "mcp"
 
 
 def test_save_and_load_config(temp_config_dir):
@@ -78,7 +78,7 @@ def test_get_config_value(temp_config_dir):
     config.api.url = "https://custom.api.com"
     save_config(config)
 
-    assert get_config_value("mode") == "api"
+    assert get_config_value("mode") == "mcp"
     assert get_config_value("api.url") == "https://custom.api.com"
     assert get_config_value("api.timeout") == 30
     assert get_config_value("nonexistent") is None

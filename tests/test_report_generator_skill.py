@@ -36,7 +36,7 @@ class TestInputValidation:
 
     def test_path_traversal_blocked(self):
         """Test that path traversal attacks are blocked."""
-        with pytest.raises(ValueError, match="path traversal not allowed"):
+        with pytest.raises(ValueError, match="disallowed pattern"):
             _validate_output_path("../../../etc/passwd.md")
 
     def test_invalid_extension_blocked(self):
