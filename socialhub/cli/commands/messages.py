@@ -9,7 +9,6 @@ from rich.panel import Panel
 
 from ..api.client import APIError, SocialHubClient
 from ..config import load_config
-from ..output.chart import create_bar_chart
 from ..output.export import format_output
 from ..output.table import create_table, print_dict, print_error, print_list, print_success
 
@@ -221,17 +220,9 @@ def get_message_stats(
         # By channel
         if "by_channel" in data and isinstance(data["by_channel"], dict):
             console.print()
-            create_bar_chart(
-                data["by_channel"],
-                title="Messages by Channel",
-                color="cyan",
-            )
+            print_dict(data["by_channel"], title="Messages by Channel")
 
         # By day
         if "by_day" in data and isinstance(data["by_day"], dict):
             console.print()
-            create_bar_chart(
-                data["by_day"],
-                title="Messages by Day",
-                color="green",
-            )
+            print_dict(data["by_day"], title="Messages by Day")

@@ -371,10 +371,10 @@ def extract_scheduled_task(response: str) -> dict:
 
 def save_scheduled_task(task: dict) -> bool:
     """Save scheduled task to Heartbeat.md."""
-    from pathlib import Path
     from datetime import datetime
+    from .heartbeat import HEARTBEAT_FILE
 
-    heartbeat_path = Path(__file__).parent.parent.parent.parent / "Heartbeat.md"
+    heartbeat_path = HEARTBEAT_FILE
 
     if not heartbeat_path.exists():
         return False

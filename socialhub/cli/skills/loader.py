@@ -9,7 +9,13 @@ import yaml
 
 from .models import InstalledSkill, SkillCommand, SkillManifest
 from .registry import SkillRegistry
-from .security import PermissionChecker, SecurityError
+from .sandbox import SandboxManager
+from .security import (
+    PermissionChecker,
+    PermissionContext,
+    PermissionStore,
+    SecurityError,
+)
 
 
 class SkillLoadError(Exception):
@@ -24,7 +30,9 @@ class SkillLoader:
     def __init__(self):
         self.registry = SkillRegistry()
         self.permission_checker = PermissionChecker()
+        self.permission_store = PermissionStore()
         self._loaded_skills: dict[str, dict[str, Any]] = {}
+        self._permission_contexts: dict[str, PermissionContext] = {}
 
     def load_skill(self, name: str) -> dict[str, Any]:
         """Load a skill module.
@@ -61,16 +69,28 @@ class SkillLoader:
         except Exception as e:
             raise SkillLoadError(f"Failed to load skill manifest: {e}")
 
-        # Check permissions
+        # Check permissions - load from persistent store first
+        stored_permissions = self.permission_store.get_permissions(name)
+        for perm in stored_permissions:
+            self.permission_checker.grant_permission(name, perm)
+
         if manifest.permissions:
+            required_perms = [p.value for p in manifest.permissions]
             granted, missing = self.permission_checker.check_permissions(
-                name, [p.value for p in manifest.permissions]
+                name, required_perms
             )
             if not granted:
-                raise SecurityError(
-                    f"Skill '{name}' requires permissions that have not been granted: "
-                    f"{', '.join(missing)}"
-                )
+                # Filter out safe permissions from missing list
+                truly_missing = [
+                    p for p in missing
+                    if p not in self.permission_checker.SAFE_PERMISSIONS
+                ]
+                if truly_missing:
+                    raise SecurityError(
+                        f"Skill '{name}' requires permissions that have not been granted: "
+                        f"{', '.join(truly_missing)}. "
+                        "Please reinstall the skill to grant permissions."
+                    )
 
         # Load Python module
         entrypoint_path = skill_path / manifest.entrypoint
@@ -131,6 +151,7 @@ class SkillLoader:
         skill_name: str,
         command_name: str,
         *args,
+        use_sandbox: bool = True,
         **kwargs,
     ) -> Any:
         """Execute a skill command.
@@ -139,6 +160,7 @@ class SkillLoader:
             skill_name: Skill name
             command_name: Command name
             *args: Positional arguments
+            use_sandbox: Whether to enable sandbox isolation (default: True)
             **kwargs: Keyword arguments
 
         Returns:
@@ -151,7 +173,43 @@ class SkillLoader:
                 f"Command '{command_name}' not found in skill '{skill_name}'"
             )
 
-        return func(*args, **kwargs)
+        # Get granted permissions from persistent store
+        granted_permissions = self.permission_store.get_permissions(skill_name)
+
+        # Create permission context for runtime enforcement
+        perm_context = PermissionContext(
+            skill_name=skill_name,
+            granted_permissions=granted_permissions,
+            permission_store=self.permission_store,
+        )
+
+        # Store context for potential runtime checks
+        self._permission_contexts[skill_name] = perm_context
+
+        # Create sandbox manager for isolation
+        sandbox = SandboxManager(
+            skill_name=skill_name,
+            permissions=granted_permissions,
+        ) if use_sandbox else None
+
+        # Execute command within permission context and sandbox
+        with perm_context:
+            if sandbox:
+                with sandbox:
+                    return func(*args, **kwargs)
+            else:
+                return func(*args, **kwargs)
+
+    def get_permission_context(self, skill_name: str) -> Optional[PermissionContext]:
+        """Get the permission context for a skill.
+
+        Args:
+            skill_name: Skill name
+
+        Returns:
+            PermissionContext if skill is loaded, None otherwise
+        """
+        return self._permission_contexts.get(skill_name)
 
     def list_commands(self, skill_name: str) -> list[SkillCommand]:
         """List all commands provided by a skill.

@@ -47,17 +47,17 @@
 | **Data Analysts** | Data queries, report generation, customer analysis, retention analysis |
 | **Marketing Managers** | Campaign management, customer segmentation, coupon management, messaging |
 | **Operations Staff** | Customer management, tag management, points management |
-| **Developers** | API integration, automation scripts, data export |
+| **Developers** | API integration, automation scripts, data export, custom skills |
 
 ### Product Features
 
 - **Smart Interaction** - Natural language input with AI-powered command parsing
-- **MCP Database** - Direct connection to StarRocks analytics database for real-time queries
+- **MCP Database** - Direct SSE connection to StarRocks analytics database for real-time queries
 - **Multi-step Execution** - AI generates execution plans, auto-executes after confirmation
 - **AI Insights** - Automatic data insights and business recommendations after execution
-- **Scheduled Tasks** - Heartbeat scheduler for automated task execution
+- **Scheduled Tasks** - Heartbeat scheduler with compound command support (`&&`-chaining)
 - **Visual Output** - Terminal tables, chart generation, HTML reports
-- **Skills Extension** - Install official certified plugins via Skills Store
+- **Skills Extension** - Install official certified plugins via Skills Store with Ed25519 signature verification, sandbox isolation, and declarative permissions
 
 ---
 
@@ -102,6 +102,7 @@
 - Scheduled report generation
 - Daily data overview
 - Automatic Memory archiving
+- Compound command support: multi-line bash blocks execute as sequential `&&`-chained steps
 - Windows Task Scheduler integration
 
 ### 6. AI Assistant
@@ -463,20 +464,42 @@ socialhub analytics report --no-customers
 
 ## Skills Store
 
-Skills Store provides official certified skill plugins to extend CLI functionality.
+Skills Store provides official certified skill plugins to extend CLI functionality. Each skill is verified with Ed25519 digital signatures, SHA-256 hash integrity checks, and executed in an isolated sandbox.
 
 ### Browse and Install
 
 ```bash
 # Browse all skills
 socialhub skills browse
+socialhub skills browse --category=analytics
 
-# Install a skill
-socialhub skills install data-export-plus
+# Install a skill (triggers 10-step verification pipeline)
+socialhub skills install report-generator
 
 # View installed skills
 socialhub skills list
+
+# Run a skill command
+socialhub skills run report-generator generate-report --output=Doc/report.md
+
+# Update / uninstall
+socialhub skills update report-generator
+socialhub skills uninstall report-generator
 ```
+
+### Skill Permissions
+
+When installing a skill, the CLI displays its declared permissions and asks for your consent:
+
+```
+Skill requires the following permissions:
+  [file:write]   Write files to Doc/ folder
+  [data:read]    Read customer analytics data
+
+Allow these permissions? [y/N]
+```
+
+Permissions are sandboxed at runtime — skills cannot access filesystem paths, network endpoints, or execute subprocesses beyond what they declared and you approved.
 
 ### Online Store
 
@@ -544,6 +567,8 @@ socialhub heartbeat setup  # View setup guide
 
 - **GitHub Issues**: https://github.com/huangchunbo2025/Socialhub-CLI/issues
 - **Skills Store**: https://huangchunbo2025.github.io/Socialhub-CLI/
+- **Technical Design**: [docs/DESIGN.md](DESIGN.md)
+- **Skills Technical Spec**: [docs/skills-technical-spec.md](skills-technical-spec.md)
 
 ---
 

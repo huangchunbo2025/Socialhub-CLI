@@ -1,6 +1,7 @@
 """MCP (Model Context Protocol) client for SocialHub analytics database."""
 
 import json
+import time
 import uuid
 import threading
 import queue
@@ -39,6 +40,7 @@ class MCPClient:
         self._tools: list[dict] = []
         self._connected = False
         self._initialized = False
+        self._session_ready = threading.Event()
 
     def _validate_config(self) -> None:
         """Validate that required configuration is provided.
@@ -68,15 +70,12 @@ class MCPClient:
         self._validate_config()
 
         self._running = True
+        self._session_ready.clear()
         self._sse_thread = threading.Thread(target=self._sse_listener, daemon=True)
         self._sse_thread.start()
 
-        # Wait for session ID
-        for _ in range(100):  # 10 seconds max
-            if self._session_id:
-                break
-            import time
-            time.sleep(0.1)
+        # Wait for session ID via event (no busy-wait)
+        self._session_ready.wait(timeout=10.0)
 
         if self._session_id:
             self._connected = True
@@ -127,6 +126,7 @@ class MCPClient:
             if event_type == "endpoint":
                 if "sessionId=" in data:
                     self._session_id = data.split("sessionId=")[1].split("&")[0].split()[0]
+                    self._session_ready.set()
             elif event_type == "message":
                 message = json.loads(data)
                 msg_id = message.get("id")
@@ -312,6 +312,7 @@ class MCPClient:
         self._running = False
         self._connected = False
         self._initialized = False
+        self._session_ready.clear()
 
     def __enter__(self):
         self.connect()
