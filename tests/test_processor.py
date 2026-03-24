@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from socialhub.cli.local.processor import DataProcessor
+from cli.local.processor import DataProcessor
 
 
 @pytest.fixture

@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from typer.testing import CliRunner
 
-from socialhub.cli.main import app
+from cli.main import app
 
 
 runner = CliRunner()

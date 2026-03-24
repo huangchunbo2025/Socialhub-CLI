@@ -9,6 +9,7 @@ If any older docs conflict with the current implementation state, use this file 
 
 - Active source branch: `render-clean`
 - Storefront Pages: `https://huangchunbo2025.github.io/Socialhub-CLI/`
+- React storefront preview: `https://huangchunbo2025.github.io/Socialhub-CLI/react-preview/`
 - Backend API: `https://skills-store-backend.onrender.com`
 - Backend service on Render: `SHCLI`
 
@@ -73,19 +74,7 @@ These are already returned by:
 
 - `GET /api/v1/skills/{name}`
 
-### 4. Storefront User Cases
-
-The current storefront user cases were documented here:
-
-- [storefront-user-cases.md](C:\Users\86185\Socialhub-CLI\docs\storefront-user-cases.md)
-
-This is the reference for the three storefront pages:
-
-- `index.html`
-- `skill.html`
-- `user.html`
-
-### 5. New React Storefront App
+### 4. New React Storefront App
 
 A new formal frontend app has now been created and verified.
 
@@ -103,6 +92,7 @@ Current React routes:
 
 - `/` catalog
 - `/login`
+- `/user-login`
 - `/skill/:name`
 - `/user`
 
@@ -110,11 +100,14 @@ Implemented in React:
 
 - Catalog page
 - Skill detail page
-- Store user login page
+- Storefront user login page
 - Store user workspace page
 - Shared layout
 - Session helpers
 - Toast feedback
+- Catalog card install / uninstall flow
+- Skill detail install / uninstall flow
+- My Skills page backed by storefront user library APIs
 
 Verification already done:
 
@@ -123,46 +116,40 @@ Verification already done:
 
 ## Latest Completed Functional Change
 
-The newest end-to-end change completed before this handoff is:
+The newest end-to-end change completed before this handoff is the shared storefront user library flow between backend, React storefront, and CLI contract.
 
-- React storefront added
-- `saved_skills` persistence added to backend
+Backend additions:
 
-Backend changes:
-
-- [developer.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\models\developer.py)
-- [auth.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\routers\auth.py)
-- [auth.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\schemas\auth.py)
+- [user.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\models\user.py)
+- [user_skill.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\models\user_skill.py)
+- [users.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\routers\users.py)
+- [user_skills.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\routers\user_skills.py)
+- [user.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\schemas\user.py)
+- [dependencies.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\auth\dependencies.py)
+- [jwt.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\auth\jwt.py)
+- [skills.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\services\skills.py)
 - [auth.py](C:\Users\86185\Socialhub-CLI\skills-store\backend\app\services\auth.py)
-- [0003_developer_saved_skills.py](C:\Users\86185\Socialhub-CLI\skills-store\alembic\versions\0003_developer_saved_skills.py)
+- [0004_users_and_user_skills.py](C:\Users\86185\Socialhub-CLI\skills-store\alembic\versions\0004_users_and_user_skills.py)
 
-React frontend changes:
+React storefront additions:
 
 - [frontend](C:\Users\86185\Socialhub-CLI\frontend)
+- [UserLoginPage.jsx](C:\Users\86185\Socialhub-CLI\frontend\src\pages\UserLoginPage.jsx)
+- [UserPage.jsx](C:\Users\86185\Socialhub-CLI\frontend\src\pages\UserPage.jsx)
+- [SkillDetailPage.jsx](C:\Users\86185\Socialhub-CLI\frontend\src\pages\SkillDetailPage.jsx)
+- [CatalogPage.jsx](C:\Users\86185\Socialhub-CLI\frontend\src\pages\CatalogPage.jsx)
+- [SkillCard.jsx](C:\Users\86185\Socialhub-CLI\frontend\src\components\SkillCard.jsx)
+- [api.js](C:\Users\86185\Socialhub-CLI\frontend\src\lib\api.js)
+- [session.js](C:\Users\86185\Socialhub-CLI\frontend\src\lib\session.js)
 
 Git commit:
 
-- `40cdf9a` `Add React storefront app and saved skills persistence`
+- `03400c0` `Add storefront users and shared user skills library`
+- `b2143a1` `Fix React storefront install actions and refresh preview`
 
 ## What Is Still Pending
 
-### 1. Render Deployment For `saved_skills`
-
-The new migration has been committed but still needs to be applied in Render:
-
-- `0003_developer_saved_skills.py`
-
-Required next steps:
-
-1. `git push origin render-clean`
-2. Render `Manual Sync`
-3. Verify migration runs
-4. Verify:
-   - `GET /api/v1/auth/me`
-   - `GET /api/v1/auth/me/skills`
-   - `PUT /api/v1/auth/me/skills`
-
-### 2. Decide Frontend Cutover Strategy
+### 1. Decide Frontend Cutover Strategy
 
 The React storefront exists, but it has not yet replaced the current static `docs/` site.
 
@@ -171,17 +158,7 @@ Decision still needed:
 - keep `docs/` as current production temporarily
 - or deploy `frontend/` and replace Pages storefront
 
-### 3. Move `My skills` Fully To Backend Runtime
-
-Current status:
-
-- backend persistence now exists
-- React app uses it
-- old static `docs/` storefront still uses local behavior
-
-If the React app becomes the primary storefront, this inconsistency goes away.
-
-### 4. Finish React Storefront Productization
+### 2. Finish React Storefront Productization
 
 Still to do in React app:
 
@@ -191,7 +168,7 @@ Still to do in React app:
 - add stronger loading states
 - decide deployment target
 
-### 5. Developer/Admin React Migration
+### 3. Developer/Admin React Migration
 
 Not started.
 
@@ -233,17 +210,46 @@ Current demo accounts:
 
 ## Immediate Next Recommended Actions
 
-1. Push latest `render-clean`
-2. Sync Render
-3. Verify `saved_skills` API
-4. Choose whether to deploy `frontend/`
-5. If yes, migrate storefront traffic from `docs/` to React app
+1. Keep validating the React storefront preview at `react-preview`
+2. Decide whether to replace the current static storefront with `frontend/`
+3. Add minimal automated tests for storefront users and `user_skills`
+4. Verify CLI end-to-end sync against the new `/api/v1/users/*` endpoints
+5. Start developer/admin React migration only after storefront cutover decision
 
 ---
 
+## Implementation Update
+
+The user library task is no longer just planned. The following are already implemented and manually verified:
+
+- Separate storefront `users` table and `user_skills` table
+- `POST /api/v1/users/register`
+- `POST /api/v1/users/login`
+- `GET /api/v1/users/me`
+- `GET /api/v1/users/me/skills`
+- `POST /api/v1/users/me/skills/{skill_name}`
+- `DELETE /api/v1/users/me/skills/{skill_name}`
+- `PATCH /api/v1/users/me/skills/{skill_name}/toggle`
+- React `/user-login`
+- React catalog card `Install / Uninstall`
+- React skill detail `Install / Uninstall`
+- React `/user` page reading `My Skills` from `/api/v1/users/me/skills`
+
+Manual verification already completed:
+
+- Storefront user registration works
+- Storefront user login works
+- Empty library query works
+- Add to library works
+- Toggle enabled/disabled works
+- Remove from library works
+- React catalog/detail/user flow works against the deployed backend
+
+`developers.saved_skills` remains in place but is now treated as frozen legacy behavior. The new shared library flow is `users` + `user_skills`.
+
 ## Task: User Skills Library (Web + CLI Sync)
 
-> **Status**: Backend and CLI already implemented. Codex must complete backend deployment + frontend update.
+> **Status**: Backend, React storefront, and CLI contract are aligned. Remaining work is tests, CLI end-to-end verification, and storefront cutover decisions.
 
 ---
 

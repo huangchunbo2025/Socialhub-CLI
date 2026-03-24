@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from socialhub.cli.config import (
+from cli.config import (
     Config,
     get_config_value,
     load_config,
@@ -23,8 +23,8 @@ def temp_config_dir(tmp_path):
     config_dir.mkdir()
     config_file = config_dir / "config.json"
 
-    with patch("socialhub.cli.config.CONFIG_DIR", config_dir):
-        with patch("socialhub.cli.config.CONFIG_FILE", config_file):
+    with patch("cli.config.CONFIG_DIR", config_dir):
+        with patch("cli.config.CONFIG_FILE", config_file):
             yield config_dir, config_file
 
 

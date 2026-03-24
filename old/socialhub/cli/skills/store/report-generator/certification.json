@@ -1,0 +1,55 @@
+{
+  "skill_name": "report-generator",
+  "version": "3.0.0",
+  "certified_at": "2024-03-20T00:00:00Z",
+  "certified_by": "SocialHub.AI",
+  "certificate_id": "SKILL-RPT-003",
+  "expires_at": "2025-03-20T00:00:00Z",
+  "signature": "TEST_SIGNATURE_FOR_DEVELOPMENT",
+  "hash": {
+    "algorithm": "sha256",
+    "manifest": "",
+    "files": {}
+  },
+  "permissions_approved": [
+    "file:write",
+    "file:read",
+    "config:read"
+  ],
+  "security_review": {
+    "passed": true,
+    "reviewed_at": "2024-03-20T00:00:00Z",
+    "reviewer": "security@socialhub.ai",
+    "notes": "Version 3.0 - Consulting-grade reports. Path traversal protection."
+  },
+  "version_history": [
+    {
+      "version": "3.0.0",
+      "release_date": "2024-03-20",
+      "changes": [
+        "Complete redesign as consulting-grade report generator",
+        "Added MECE and Pyramid Principle compliance",
+        "Added PESTEL, Porter's Five Forces frameworks",
+        "Added Value Chain, BCG Matrix analysis",
+        "Added 5W2H and Golden Circle frameworks",
+        "Added adaptive styling based on analysis context",
+        "Added Executive Insight callouts",
+        "Enhanced Mermaid diagrams (mindmap, quadrant, gantt, flowchart)"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "release_date": "2024-03-20",
+      "changes": [
+        "Business analysis reports with SWOT framework"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "release_date": "2024-03-20",
+      "changes": [
+        "Initial HTML report generation"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,254 @@
+# Consulting-Grade Report Generator Skill
+# McKinsey/BCG/Bain style professional business reports
+# With automatic HTML and PDF generation
+
+name: "report-generator"
+version: "3.1.0"
+display_name: "Consulting Report Generator"
+description: |
+  Generate McKinsey/BCG/Bain-style professional consulting reports.
+
+  Features:
+  - MECE Principle & Pyramid Principle compliance
+  - Strategic Frameworks: PESTEL, Porter's Five Forces, SWOT
+  - Business Frameworks: Value Chain, BCG Matrix, 4P/4C
+  - Execution Frameworks: 5W2H, Golden Circle (Why-How-What)
+  - Insight-driven headlines and Executive Insights
+  - Professional Mermaid diagrams and visual hierarchy
+  - Adaptive styling based on analysis type
+  - **NEW: Auto-generate HTML and PDF from Markdown**
+
+author: "SocialHub.AI"
+license: "MIT"
+homepage: "https://github.com/huangchunbo2025/Socialhub-CLI"
+
+category: "analytics"
+tags:
+  - consulting
+  - mckinsey
+  - bcg
+  - strategy
+  - pestel
+  - swot
+  - porter
+  - mece
+  - pyramid-principle
+  - pdf
+  - html
+
+compatibility:
+  cli_version: ">=0.1.0"
+  python_version: ">=3.10"
+
+permissions:
+  - file:write
+  - file:read
+  - config:read
+  - network:local
+
+dependencies:
+  python:
+    - pyyaml>=6.0
+    - markdown>=3.4.0
+    - pygments>=2.15.0
+
+entrypoint: "main.py"
+
+commands:
+  - name: "generate"
+    description: "Generate a consulting-grade analysis report (MD + HTML + PDF)"
+    function: "generate_consulting_report"
+    arguments:
+      - name: "topic"
+        type: "string"
+        required: true
+        description: "Business topic or problem to analyze"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path (.md) - HTML and PDF auto-generated"
+      - name: "context"
+        type: "string"
+        required: false
+        description: "Analysis context: 'external', 'competitive', 'process', 'action'"
+      - name: "industry"
+        type: "string"
+        required: false
+        description: "Industry context for tailored analysis"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "pestel"
+    description: "Generate PESTEL macro-environment analysis"
+    function: "generate_pestel_report"
+    arguments:
+      - name: "topic"
+        type: "string"
+        required: true
+        description: "Subject for macro-environment analysis"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "porter"
+    description: "Generate Porter's Five Forces industry analysis"
+    function: "generate_porter_report"
+    arguments:
+      - name: "industry"
+        type: "string"
+        required: true
+        description: "Industry to analyze"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "swot"
+    description: "Generate SWOT competitive analysis with visual indicators"
+    function: "generate_swot_report"
+    arguments:
+      - name: "subject"
+        type: "string"
+        required: true
+        description: "Company/product/strategy to analyze"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "valuechain"
+    description: "Generate Value Chain analysis"
+    function: "generate_valuechain_report"
+    arguments:
+      - name: "company"
+        type: "string"
+        required: true
+        description: "Company to analyze"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "action"
+    description: "Generate action plan with 5W2H matrix and Gantt chart"
+    function: "generate_action_report"
+    arguments:
+      - name: "initiative"
+        type: "string"
+        required: true
+        description: "Strategic initiative or project"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "data"
+    description: "Generate data-driven analysis report (use 'sh analytics report' instead for automatic data fetching)"
+    function: "generate_data_report"
+    arguments:
+      - name: "topic"
+        type: "string"
+        required: true
+        description: "Report topic (e.g., '客户分布分析', '市场拓展策略')"
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "period"
+        type: "string"
+        required: false
+        description: "Data period: '7d', '30d', '90d', '365d' (default: 365d)"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+      - name: "data_json"
+        type: "string"
+        required: false
+        description: "Pre-fetched analytics data as JSON string"
+
+  - name: "demo"
+    description: "Generate a demo consulting report showcasing all frameworks"
+    function: "generate_demo_report"
+    arguments:
+      - name: "output"
+        type: "string"
+        required: true
+        description: "Output file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'md', 'html', 'pdf', 'all' (default: all)"
+
+  - name: "convert"
+    description: "Convert existing Markdown file to HTML and/or PDF"
+    function: "convert_report"
+    arguments:
+      - name: "input"
+        type: "string"
+        required: true
+        description: "Input Markdown file path"
+      - name: "formats"
+        type: "string"
+        required: false
+        description: "Output formats: 'html', 'pdf', 'all' (default: all)"
+
+changelog:
+  - version: "3.1.0"
+    date: "2024-03-20"
+    changes:
+      - "Added automatic HTML generation from Markdown"
+      - "Added automatic PDF generation from HTML"
+      - "Added convert command for existing Markdown files"
+      - "Added formats parameter to control output types"
+      - "Professional CSS styling for HTML/PDF output"
+      - "Mermaid diagrams rendered as SVG in HTML/PDF"
+  - version: "3.0.0"
+    date: "2024-03-20"
+    changes:
+      - "Complete redesign as consulting-grade report generator"
+      - "Added MECE and Pyramid Principle compliance"
+      - "Added PESTEL, Porter's Five Forces frameworks"
+      - "Added Value Chain, BCG Matrix analysis"
+      - "Added 5W2H and Golden Circle frameworks"
+      - "Added adaptive styling based on analysis context"
+      - "Added Executive Insight callouts"
+      - "Enhanced Mermaid diagram support"
+  - version: "2.0.0"
+    date: "2024-03-20"
+    changes:
+      - "Business analysis reports with SWOT"
+  - version: "1.0.0"
+    date: "2024-03-20"
+    changes:
+      - "Initial HTML report generation"
+
+certification:
+  certified_at: "2024-03-20T00:00:00"
+  certified_by: "SocialHub.AI"
+  signature: ""
+  certificate_id: "SKILL-RPT-003"
+  expires_at: "2025-03-20T00:00:00"
