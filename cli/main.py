@@ -10,7 +10,7 @@ from rich.text import Text
 from rich.table import Table
 
 from . import __version__
-from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, heartbeat, mcp, messages, points, segments, skills, tags
+from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, heartbeat, mcp, members, messages, points, segments, skills, tags
 
 # History file for storing last command
 HISTORY_FILE = Path.home() / ".socialhub" / "history.json"
@@ -27,13 +27,14 @@ console = Console()
 
 # Valid CLI commands
 VALID_COMMANDS = {
-    "analytics", "customers", "segments", "tags", "campaigns",
+    "analytics", "customers", "members", "segments", "tags", "campaigns",
     "coupons", "points", "messages", "config", "ai", "skills", "skill", "mcp", "heartbeat",
     "--help", "-h", "--version", "-v"
 }
 
 # Register command groups
 app.add_typer(analytics.app, name="analytics", help="Data analytics commands")
+app.add_typer(members.app, name="members", help="Member analytics commands")
 app.add_typer(customers.app, name="customers", help="Customer management commands")
 app.add_typer(segments.app, name="segments", help="Customer segment commands")
 app.add_typer(tags.app, name="tags", help="Tag management commands")
