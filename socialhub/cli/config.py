@@ -95,7 +95,7 @@ def load_config() -> Config:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         return Config(**data)
-    except (json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         console.print(f"[yellow]Warning: Failed to load config: {e}[/yellow]")
         return Config()
 

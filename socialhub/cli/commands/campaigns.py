@@ -11,7 +11,6 @@ from rich.table import Table
 
 from ..api.client import APIError, SocialHubClient
 from ..config import load_config
-from ..output.chart import print_funnel_chart
 from ..output.export import format_output
 from ..output.table import create_table, print_dict, print_error, print_list, print_success
 
@@ -122,14 +121,15 @@ def analyze_campaign(
         raise typer.Exit(1)
 
     if funnel and isinstance(data, dict):
-        stages = [
-            ("Target", data.get("target_count", 0)),
-            ("Reached", data.get("reached_count", 0)),
-            ("Opened", data.get("opened_count", 0)),
-            ("Clicked", data.get("clicked_count", 0)),
-            ("Converted", data.get("converted_count", 0)),
-        ]
-        print_funnel_chart(stages, title=f"Campaign: {data.get('campaign_name', campaign_id)}")
+        # Display funnel data as table
+        funnel_data = {
+            "Target": f"{data.get('target_count', 0):,}",
+            "Reached": f"{data.get('reached_count', 0):,}",
+            "Opened": f"{data.get('opened_count', 0):,}",
+            "Clicked": f"{data.get('clicked_count', 0):,}",
+            "Converted": f"{data.get('converted_count', 0):,}",
+        }
+        print_dict(funnel_data, title=f"Campaign Funnel: {data.get('campaign_name', campaign_id)}")
 
         # Also show ROI metrics
         console.print()

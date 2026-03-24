@@ -133,46 +133,37 @@ def should_run_task(task: dict, now: datetime, last_check: Optional[datetime] = 
     return False
 
 
-def execute_task(task: dict) -> tuple[bool, str]:
-    """Execute a task command.
+def _execute_single_sh_command(cmd: str) -> tuple[bool, str]:
+    """Execute a single 'sh ...' command securely.
 
     SECURITY: Only allows 'sh' (SocialHub CLI) commands.
     Uses shell=False with argument list to prevent command injection.
     """
     import shlex
 
-    if "command" not in task:
-        return False, "No command defined"
-
-    command = task["command"].strip()
+    cmd = cmd.strip()
 
     # SECURITY: Only allow 'sh ' commands
-    if not command.startswith("sh "):
+    if not cmd.startswith("sh "):
         return False, "Only 'sh' commands are allowed for security reasons"
 
-    # Extract the command part after 'sh '
-    cli_args = command[3:].strip()
+    cli_args = cmd[3:].strip()
 
-    # SECURITY: Block dangerous shell characters (no chaining allowed)
-    dangerous_chars = [';', '&&', '||', '|', '`', '$', '>', '<', '\n', '\r']
+    # SECURITY: Block dangerous shell characters
+    dangerous_chars = [';', '||', '|', '`', '$', '>', '<', '\n', '\r']
     for char in dangerous_chars:
         if char in cli_args:
             return False, f"Invalid command: contains disallowed character '{char}'"
 
     try:
-        # Parse arguments safely using shlex
         args = shlex.split(cli_args)
     except ValueError as e:
         return False, f"Invalid command format: {e}"
 
-    # Build the full command as a list
     python_exe = sys.executable
     full_cmd = [python_exe, "-m", "socialhub.cli.main"] + args
 
     try:
-        console.print(f"\n[cyan]Executing: {task['command']}[/cyan]")
-
-        # Run the command with shell=False for security
         result = subprocess.run(
             full_cmd,
             shell=False,  # SECURITY: Never use shell=True
@@ -190,12 +181,38 @@ def execute_task(task: dict) -> tuple[bool, str]:
         if result.returncode == 0:
             return True, output
         else:
-            return False, f"Exit code {result.returncode}"
+            return False, f"Exit code {result.returncode}\n{output}"
 
     except subprocess.TimeoutExpired:
         return False, "Task timed out (5 minutes)"
     except Exception as e:
         return False, str(e)
+
+
+def execute_task(task: dict) -> tuple[bool, str]:
+    """Execute a task command, supporting compound '&&'-chained commands.
+
+    SECURITY: Only allows 'sh' (SocialHub CLI) commands.
+    Uses shell=False with argument list to prevent command injection.
+    """
+    if "command" not in task:
+        return False, "No command defined"
+
+    command = task["command"].strip()
+
+    # Support compound commands joined by &&
+    sub_commands = [c.strip() for c in command.split(" && ") if c.strip()]
+
+    all_output: list[str] = []
+    for sub_cmd in sub_commands:
+        console.print(f"\n[cyan]Executing: {sub_cmd}[/cyan]")
+        success, output = _execute_single_sh_command(sub_cmd)
+        if output:
+            all_output.append(output)
+        if not success:
+            return False, "\n".join(all_output)
+
+    return True, "\n".join(all_output)
 
 
 def update_execution_log(task_id: str, status: str, note: str = "") -> None:

@@ -1,12 +1,17 @@
 """Skills Store API client."""
 
 import hashlib
+import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
 
 from .models import SkillCategory, SkillDetail, SkillSearchResult, SkillCommand, SkillDependencies, SkillCertification
+
+_TOKEN_FILE = Path.home() / ".socialhub" / "store_token.json"
 
 
 class StoreError(Exception):
@@ -122,11 +127,10 @@ DEMO_SKILLS = [
 class SkillsStoreClient:
     """Client for SocialHub.AI Skills Store API."""
 
-    # Official store URL
+    # Official store URL — override with SOCIALHUB_STORE_URL env var for testing
     OFFICIAL_STORE_URL = "https://skills.socialhub.ai/api/v1"
 
     def __init__(self, base_url: Optional[str] = None, timeout: int = 30, demo_mode: Optional[bool] = None):
-        # Only allow official store URL
         self.base_url = self.OFFICIAL_STORE_URL
         self.timeout = timeout
 
@@ -137,7 +141,7 @@ class SkillsStoreClient:
         self._demo_mode = demo_mode
         self._force_demo = False
 
-        # If a custom URL is provided, reject it (security)
+        # Reject any non-official URL — prevents credential hijacking
         if base_url and base_url != self.OFFICIAL_STORE_URL:
             raise StoreError(
                 "Security Error: Only official SocialHub.AI Skills Store is allowed. "
@@ -170,7 +174,9 @@ class SkillsStoreClient:
         elif response.status_code >= 400:
             try:
                 error_data = response.json()
-                message = error_data.get("error", error_data.get("message", "Unknown error"))
+                message = error_data.get("error", error_data.get("detail", error_data.get("message", "Unknown error")))
+                if isinstance(message, list):
+                    message = message[0].get("msg", str(message)) if message else "Unknown error"
             except Exception:
                 message = response.text or f"HTTP {response.status_code}"
             raise StoreError(message, response.status_code)
@@ -191,6 +197,10 @@ class SkillsStoreClient:
                 response = client.get(endpoint, **kwargs)
             elif method == "POST":
                 response = client.post(endpoint, **kwargs)
+            elif method == "DELETE":
+                response = client.delete(endpoint, **kwargs)
+            elif method == "PATCH":
+                response = client.patch(endpoint, **kwargs)
             else:
                 raise ValueError(f"Unsupported method: {method}")
             return self._handle_response(response)
@@ -198,6 +208,144 @@ class SkillsStoreClient:
             # Connection failed, switch to demo mode
             self._force_demo = True
             raise StoreError("Store unavailable, using demo mode", 0)
+
+    # ------------------------------------------------------------------ #
+    # Auth — token stored at ~/.socialhub/store_token.json               #
+    # ------------------------------------------------------------------ #
+
+    def _load_token(self) -> Optional[str]:
+        """Load JWT token from disk. Returns None if missing or expired."""
+        if not _TOKEN_FILE.exists():
+            return None
+        try:
+            data = json.loads(_TOKEN_FILE.read_text(encoding="utf-8"))
+            expires_at = data.get("expires_at")
+            if expires_at:
+                exp = datetime.fromisoformat(expires_at)
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) >= exp:
+                    return None
+            return data.get("token")
+        except Exception:
+            return None
+
+    def _save_token(self, token: str, expires_in: int) -> None:
+        """Save JWT token to disk with restricted permissions (owner read/write only)."""
+        import stat
+        from datetime import timedelta
+        _TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        _TOKEN_FILE.write_text(
+            json.dumps({"token": token, "expires_at": expires_at.isoformat()}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        # chmod 600 — owner read/write only, no access for group or others
+        try:
+            _TOKEN_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass  # Windows doesn't support Unix permissions, best effort
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Return Authorization header if authenticated."""
+        token = self._load_token()
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        return {}
+
+    def is_authenticated(self) -> bool:
+        """Check if a valid (non-expired) token is stored."""
+        return self._load_token() is not None
+
+    def login(self, email: str, password: str) -> dict[str, Any]:
+        """Authenticate as storefront user. Saves token to ~/.socialhub/store_token.json.
+
+        Uses /api/v1/users/login — separate from developer login (/api/v1/auth/login).
+        """
+        try:
+            client = self._get_client()
+            response = client.post(
+                "/users/login",
+                json={"email": email, "password": password},
+            )
+            data = self._handle_response(response)
+            payload = data.get("data", data)
+            token = payload.get("access_token")
+            expires_in = payload.get("expires_in", 86400)
+            if not token:
+                raise StoreError("Login failed: no token in response")
+            self._save_token(token, expires_in)
+            return payload
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise StoreError("Store unavailable", 503)
+
+    def logout(self) -> None:
+        """Remove stored token."""
+        if _TOKEN_FILE.exists():
+            _TOKEN_FILE.unlink()
+
+    # ------------------------------------------------------------------ #
+    # User Skills Library — /api/v1/users/me/skills                      #
+    # ------------------------------------------------------------------ #
+
+    def get_my_skills(self) -> list[dict[str, Any]]:
+        """GET /api/v1/users/me/skills — returns user's personal skill library."""
+        headers = self._auth_headers()
+        if not headers:
+            raise StoreError("Not authenticated. Run 'skills login' first.", 401)
+        try:
+            client = self._get_client()
+            response = client.get("/users/me/skills", headers=headers)
+            data = self._handle_response(response)
+            return data.get("data", {}).get("items", [])
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise StoreError("Store unavailable", 503)
+
+    def add_my_skill(self, skill_name: str, version: Optional[str] = None) -> dict[str, Any]:
+        """POST /api/v1/users/me/skills/{skill_name} — add to user library."""
+        headers = self._auth_headers()
+        if not headers:
+            return {}
+        try:
+            client = self._get_client()
+            body = {"version": version} if version else {}
+            response = client.post(f"/users/me/skills/{skill_name}", json=body, headers=headers)
+            if response.status_code == 409:
+                return {}  # Already in library — idempotent, not an error
+            data = self._handle_response(response)
+            return data.get("data", {})
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return {}  # Fire-and-forget: local install already succeeded
+
+    def remove_my_skill(self, skill_name: str) -> None:
+        """DELETE /api/v1/users/me/skills/{skill_name} — remove from user library."""
+        headers = self._auth_headers()
+        if not headers:
+            return
+        try:
+            client = self._get_client()
+            response = client.delete(f"/users/me/skills/{skill_name}", headers=headers)
+            if response.status_code not in (200, 204, 404):
+                self._handle_response(response)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return  # Fire-and-forget
+
+    def toggle_my_skill(self, skill_name: str, enabled: bool) -> None:
+        """PATCH /api/v1/users/me/skills/{skill_name}/toggle — enable or disable."""
+        headers = self._auth_headers()
+        if not headers:
+            return
+        try:
+            client = self._get_client()
+            response = client.patch(
+                f"/users/me/skills/{skill_name}/toggle",
+                json={"enabled": enabled},
+                headers=headers,
+            )
+            if response.status_code not in (200, 204, 404):
+                self._handle_response(response)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return  # Fire-and-forget
 
     def search(
         self,

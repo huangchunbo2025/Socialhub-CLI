@@ -13,22 +13,23 @@
   <a href="#features">Features</a> •
   <a href="#quick-install">Quick Install</a> •
   <a href="#usage-examples">Usage Examples</a> •
-  <a href="docs/README.md">Full Documentation</a>
+  <a href="docs/README.md">Full Documentation</a> •
+  <a href="docs/DESIGN.md">Design Document</a>
 </p>
 
 ---
 
 ## Features
 
-- **Smart Interaction** - Natural language input with AI-powered command parsing
-- **MCP Database** - Direct connection to StarRocks analytics database for real-time queries
+- **Smart Interaction** - Natural language input with AI-powered command parsing and multi-step plan execution
+- **MCP Database** - Direct SSE connection to StarRocks analytics database for real-time queries
 - **Data Analytics** - Overview, customer analysis, order analysis, retention analysis, channel analysis
 - **Customer Management** - Query, search, profiles, segments, tags
 - **Marketing Tools** - Campaign management, coupons, points, messages
-- **Visualization** - Chart generation (bar, pie, line, dashboard)
+- **Visualization** - Chart generation (bar, pie, line, funnel, dashboard)
 - **Report Generation** - HTML analytics reports, exportable to PDF
-- **Scheduled Tasks** - Heartbeat scheduler for automated task execution
-- **Skills Extension** - Official certified plugins via Skills Store
+- **Scheduled Tasks** - Heartbeat scheduler for automated task execution with compound command support
+- **Skills Extension** - Official certified plugins via Skills Store with Ed25519 signature verification, sandbox isolation, and declarative permission model
 - **AI Insights** - Automatic data insights after multi-step execution
 
 ## Quick Install
@@ -132,8 +133,9 @@ socialhub ai chat "analyze order trends" --auto  # Auto-execute multi-step plan
 
 ```bash
 socialhub skills browse
-socialhub skills install wechat-analytics
+socialhub skills install report-generator
 socialhub skills list
+socialhub skills run report-generator generate-report --output=Doc/report.md
 ```
 
 ## Configuration
@@ -153,8 +155,14 @@ socialhub config set mode local
 socialhub config set local.data_dir ./data
 
 # Configure AI (Azure OpenAI)
+socialhub config set ai.provider azure
 socialhub config set ai.azure_endpoint https://your-resource.openai.azure.com
 socialhub config set ai.azure_api_key YOUR_API_KEY
+socialhub config set ai.azure_deployment gpt-4o
+
+# Configure MCP
+socialhub config set mcp.sse_url https://your-mcp-server/sse
+socialhub config set mcp.tenant_id your-tenant-id
 ```
 
 ## Project Structure
@@ -163,31 +171,69 @@ socialhub config set ai.azure_api_key YOUR_API_KEY
 socialhub/
 ├── cli/
 │   ├── main.py              # Entry point + smart routing + welcome screen
-│   ├── config.py            # Configuration management
+│   ├── config.py            # Configuration management (Pydantic v2)
 │   ├── commands/
 │   │   ├── analytics.py     # Data analytics commands (MCP)
-│   │   ├── ai.py            # AI assistant + multi-step execution
-│   │   ├── heartbeat.py     # Scheduled task scheduler
+│   │   ├── ai.py            # AI assistant + multi-step execution + insights
+│   │   ├── heartbeat.py     # Scheduled task scheduler (&&-chained commands)
 │   │   ├── mcp.py           # MCP database commands
-│   │   └── ...
+│   │   ├── customers.py     # Customer management
+│   │   ├── segments.py      # Segment management
+│   │   ├── tags.py          # Tag management
+│   │   ├── campaigns.py     # Marketing campaigns
+│   │   ├── coupons.py       # Coupon management
+│   │   ├── points.py        # Points management
+│   │   ├── messages.py      # Message management
+│   │   ├── skills.py        # Skills management commands
+│   │   └── config_cmd.py    # Configuration commands
 │   ├── api/
-│   │   ├── client.py        # API client
-│   │   └── mcp_client.py    # MCP client (SSE)
-│   └── output/
-│       ├── table.py         # Table output
-│       ├── chart.py         # Chart generation
-│       ├── export.py        # Export functions
-│       └── report.py        # HTML reports
+│   │   ├── client.py        # HTTP API client (retry logic)
+│   │   ├── mcp_client.py    # MCP SSE client (threading.Event sync)
+│   │   └── models.py        # API data models
+│   ├── local/
+│   │   ├── reader.py        # Local data file reader
+│   │   └── processor.py     # Data processor
+│   ├── output/
+│   │   ├── table.py         # Rich table output
+│   │   ├── chart.py         # Matplotlib chart generation
+│   │   ├── export.py        # CSV/JSON export
+│   │   └── report.py        # HTML report generation
+│   └── skills/              # Skills subsystem
+│       ├── models.py        # SkillManifest, InstalledSkill (Pydantic v2)
+│       ├── registry.py      # Local skill registry (registry.json)
+│       ├── store_client.py  # Skills Store API client
+│       ├── security.py      # Ed25519 verification, CRL, permissions, audit
+│       ├── manager.py       # 10-step install pipeline
+│       ├── loader.py        # importlib dynamic loading + sandboxed execution
+│       ├── version_manager.py  # SemVer parsing and update checking
+│       ├── sandbox/
+│       │   ├── manager.py   # Sandbox coordinator
+│       │   ├── filesystem.py  # builtins.open intercept
+│       │   ├── network.py   # socket.socket intercept
+│       │   └── execute.py   # subprocess.* / os.system intercept
+│       └── store/
+│           └── report-generator/  # Built-in skill
+│               └── skill.yaml
 ├── Doc/                      # Generated reports and charts
 ├── Memory.md                 # Project memory
 ├── Heartbeat.md              # Scheduled task configuration
+├── User.md                   # User profile
 └── docs/                     # Documentation
+    ├── README.md             # Full product documentation
+    ├── DESIGN.md             # Architecture and design document
+    ├── skills-technical-spec.md  # Skills subsystem technical spec
+    ├── skills-store-design.md    # Skills Store platform design
+    ├── SKILLS-DEVELOPMENT-PLAN.md
+    ├── SECURITY-GUIDE-DEVELOPERS.md
+    └── SECURITY-GUIDE-USERS.md
 ```
 
 ## Documentation
 
 - [Full Product Documentation](docs/README.md) - Detailed command reference and usage guide
 - [Technical Design Document](docs/DESIGN.md) - Architecture design and implementation details
+- [Skills Technical Specification](docs/skills-technical-spec.md) - Complete skills subsystem technical spec
+- [Skills Store Design](docs/skills-store-design.md) - Skills Store platform design
 - [Skills Store](https://huangchunbo2025.github.io/Socialhub-CLI/) - Online skills store
 
 ## Tech Stack
@@ -199,8 +245,11 @@ socialhub/
 | Data Processing | Pandas |
 | Chart Generation | Matplotlib |
 | HTTP Client | httpx |
-| AI Assistant | Azure OpenAI |
-| Database | StarRocks (MCP) |
+| Data Validation | Pydantic v2 |
+| AI Assistant | Azure OpenAI / OpenAI |
+| Database | StarRocks (via MCP/SSE) |
+| Skill Signing | Ed25519 (cryptography) |
+| Skill Sandboxing | Python monkey-patching |
 
 ## License
 

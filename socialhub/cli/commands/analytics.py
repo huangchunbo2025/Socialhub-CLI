@@ -1140,6 +1140,7 @@ def generate_analytics_report(
     import json
     import re
     import sys
+    from datetime import timedelta
 
     config = load_config()
 
@@ -1165,7 +1166,7 @@ def generate_analytics_report(
         database = config.mcp.database
 
         # Use safe date computation
-        start_date, _ = _compute_date_range(period)
+        start_date, today = _compute_date_range(period)
 
         # Build safe date filter
         date_filter = _safe_date_filter("order_date", start_date)

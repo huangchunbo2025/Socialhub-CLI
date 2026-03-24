@@ -15,7 +15,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .models import InstalledSkill, SkillManifest
 from .registry import SkillRegistry
 from .security import (
+    HashVerifier,
     PermissionChecker,
+    PermissionPrompter,
+    PermissionStore,
+    RevocationListManager,
+    SecurityAuditLogger,
     SecurityError,
     SignatureVerifier,
     validate_skill_source,
@@ -37,7 +42,12 @@ class SkillManager:
     def __init__(self):
         self.registry = SkillRegistry()
         self.verifier = SignatureVerifier()
+        self.hash_verifier = HashVerifier()
         self.permission_checker = PermissionChecker()
+        self.permission_store = PermissionStore()
+        self.permission_prompter = PermissionPrompter(console)
+        self.revocation_manager = RevocationListManager()
+        self.audit_logger = SecurityAuditLogger()
         self._store_client: Optional[SkillsStoreClient] = None
 
     @property
@@ -122,15 +132,25 @@ class SkillManager:
             except StoreError as e:
                 raise SkillManagerError(f"Failed to download skill: {e.message}")
 
-            # Step 4: Verify hash
+            # Step 4: Verify hash (MANDATORY - cannot be skipped)
+            progress.update(task, description="Verifying package integrity...")
             if expected_hash:
-                progress.update(task, description="Verifying package integrity...")
                 actual_hash = compute_package_hash(package_content)
-                if actual_hash != expected_hash:
+                if not self.hash_verifier.verify_hash(
+                    package_content, expected_hash, "sha256"
+                ):
+                    self.audit_logger.log_install_blocked(
+                        name, f"Hash mismatch: expected {expected_hash[:16]}..."
+                    )
                     raise SecurityError(
                         "Package integrity check failed. "
                         "The downloaded package may be corrupted or tampered with."
                     )
+            else:
+                # In strict mode, require hash for all packages
+                console.print(
+                    "[yellow]Warning: No hash provided for package verification[/yellow]"
+                )
 
             # Step 5: Save to cache
             cache_path = self.registry.get_cache_path(name, version)
@@ -171,9 +191,71 @@ class SkillManager:
             # Step 8: Verify signature
             try:
                 self.verifier.verify_manifest_signature(manifest)
+                self.audit_logger.log_signature_verified(manifest.name, manifest.version)
             except SecurityError as e:
+                self.audit_logger.log_signature_failed(manifest.name, manifest.version, str(e))
                 shutil.rmtree(install_path)
                 raise SkillManagerError(f"Security verification failed: {e}")
+
+            # Step 8.5: Check revocation list
+            progress.update(task, description="Checking revocation status...")
+            cert_id = (
+                manifest.certification.certificate_id
+                if manifest.certification
+                else None
+            )
+            if self.revocation_manager.is_revoked(name, cert_id):
+                self.audit_logger.log_install_blocked(name, "Skill is revoked")
+                shutil.rmtree(install_path)
+                raise SecurityError(
+                    f"Skill '{name}' has been revoked for security reasons. "
+                    "Installation is blocked. Please contact the skill author."
+                )
+
+        # Step 8.6: Request permission approval (outside progress context for user interaction)
+        requested_permissions = [p.value for p in manifest.permissions]
+        if requested_permissions:
+            console.print()  # Add spacing
+            all_approved, approved_perms = self.permission_prompter.request_permissions(
+                skill_name=manifest.name,
+                permissions=requested_permissions,
+                skill_version=manifest.version,
+            )
+
+            if not all_approved:
+                # Check if any sensitive permissions were denied
+                sensitive_denied = [
+                    p for p in requested_permissions
+                    if p not in approved_perms
+                    and p not in self.permission_checker.SAFE_PERMISSIONS
+                ]
+                if sensitive_denied:
+                    # Ask if user wants to continue anyway
+                    from rich.prompt import Confirm
+                    if not Confirm.ask(
+                        "\n[yellow]Some permissions were denied. Continue installation anyway?[/yellow]",
+                        default=False,
+                    ):
+                        shutil.rmtree(install_path)
+                        raise SkillManagerError("Installation cancelled by user")
+
+            # Store approved permissions
+            if approved_perms:
+                self.permission_store.grant_permissions(
+                    manifest.name,
+                    approved_perms,
+                    manifest.version,
+                )
+                # Also update in-memory permission checker
+                for perm in approved_perms:
+                    self.permission_checker.grant_permission(manifest.name, perm)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Continuing installation...", total=None)
 
             # Step 9: Install Python dependencies
             if manifest.dependencies.python:
@@ -196,6 +278,9 @@ class SkillManager:
             self.registry.register_skill(skill_record)
 
             progress.update(task, description="[green]Installation complete!")
+
+        # Sync to backend (fire-and-forget — local install already done)
+        self.store.add_my_skill(manifest.name, manifest.version)
 
         return skill_record
 
@@ -238,6 +323,9 @@ class SkillManager:
 
         # Revoke permissions
         self.permission_checker.revoke_all_permissions(name)
+
+        # Sync to backend (fire-and-forget)
+        self.store.remove_my_skill(name)
 
         return True
 
@@ -310,13 +398,17 @@ class SkillManager:
         """Enable a skill."""
         if not self.registry.is_installed(name):
             raise SkillManagerError(f"Skill '{name}' is not installed")
-        return self.registry.enable_skill(name)
+        result = self.registry.enable_skill(name)
+        self.store.toggle_my_skill(name, True)  # fire-and-forget
+        return result
 
     def disable(self, name: str) -> bool:
         """Disable a skill."""
         if not self.registry.is_installed(name):
             raise SkillManagerError(f"Skill '{name}' is not installed")
-        return self.registry.disable_skill(name)
+        result = self.registry.disable_skill(name)
+        self.store.toggle_my_skill(name, False)  # fire-and-forget
+        return result
 
     def close(self) -> None:
         """Close manager resources."""
