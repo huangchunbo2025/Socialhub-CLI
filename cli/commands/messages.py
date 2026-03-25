@@ -750,7 +750,11 @@ def message_health(
 # =============================================================================
 
 def _mcp_template_stats(config, period: str, limit: int) -> list:
-    """Rank message templates by open and click rate."""
+    """Rank message templates by open and click rate.
+
+    Tries ads_das_v_message_analysis_d (ADS) first; falls back to
+    vdm_t_message_record (source) on exception.
+    """
     _period_map = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
     days = _period_map.get(period, 30)
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -764,6 +768,31 @@ def _mcp_template_stats(config, period: str, limit: int) -> list:
     )
     with MCPClient(mcp_config) as client:
         client.initialize()
+
+        # Try ADS pre-aggregated view first
+        try:
+            rows = client.query(f"""
+                SELECT
+                    template_id,
+                    channel_type,
+                    SUM(send_cnt)    AS total_sent,
+                    SUM(success_cnt) AS delivered,
+                    SUM(open_cnt)    AS opened,
+                    SUM(click_cnt)   AS clicked,
+                    SUM(fail_cnt)    AS failed
+                FROM ads_das_v_message_analysis_d
+                WHERE biz_date >= '{start_date}'
+                  AND template_id IS NOT NULL
+                GROUP BY template_id, channel_type
+                ORDER BY total_sent DESC
+                LIMIT {limit}
+            """, database="das_demoen")
+            if isinstance(rows, list) and rows:
+                return rows
+        except Exception:
+            pass
+
+        # Fallback: vdm_t_message_record (source)
         rows = client.query(f"""
             SELECT
                 template_id,

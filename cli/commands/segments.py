@@ -741,3 +741,246 @@ def segment_growth(
     except (MCPError, ValueError, Exception) as e:
         print_error(f"Error: {e}"); raise typer.Exit(1)
     _print_segment_growth(data)
+
+
+# =============================================================================
+# segments analyze — Purchase behavior analysis for a specific segment (MCP)
+# =============================================================================
+
+def _mcp_segment_analyze(config, group_id: str, period: str, max_members: int = 500) -> dict:
+    """Analyze purchase behavior of customers within a segment.
+
+    Approach (cross-DB constraint):
+    1. Fetch up to `max_members` customer_codes from datanow_demoen
+    2. Use those codes in WHERE IN (...) against das_demoen.dwd_v_order
+    3. Return order/spend metrics + comparison to overall baseline
+
+    If segment has > max_members, the result is labeled as sampled.
+    """
+    import re as _re
+    if not _re.match(r'^[0-9a-zA-Z_\-]{1,64}$', group_id):
+        raise ValueError(f"Invalid group_id: {group_id}")
+
+    _period_map = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
+    days = _period_map.get(period, 30)
+    from datetime import datetime as _dt, timedelta as _td
+    start_date = (_dt.now() - _td(days=days)).strftime("%Y-%m-%d")
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    seg_db = "datanow_demoen"
+    das_db = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # 1. Segment metadata
+        meta = client.query(f"""
+            SELECT id, group_name, group_type, generate_type, status
+            FROM t_customer_group
+            WHERE id = '{group_id}' AND delete_flag = 0
+            LIMIT 1
+        """, database=seg_db)
+
+        # 2. Total member count
+        cnt_rows = client.query(f"""
+            SELECT COUNT(*) AS cnt
+            FROM t_customer_group_detail
+            WHERE group_id = '{group_id}'
+              AND status = 1 AND delete_flag = 0
+        """, database=seg_db)
+        total_members = int((cnt_rows[0].get("cnt") or 0) if isinstance(cnt_rows, list) and cnt_rows else 0)
+
+        # 3. Fetch sample of customer codes (up to max_members)
+        safe_max = max(1, min(int(max_members), 2000))
+        code_rows = client.query(f"""
+            SELECT customer_code
+            FROM t_customer_group_detail
+            WHERE group_id = '{group_id}'
+              AND status = 1 AND delete_flag = 0
+            LIMIT {safe_max}
+        """, database=seg_db)
+
+        codes = [r.get("customer_code") for r in (code_rows if isinstance(code_rows, list) else [])
+                 if r.get("customer_code")]
+
+        # 4. Purchase behavior in das_demoen
+        order_data = {}
+        top_buyers = []
+        if codes:
+            # Build IN list (customer_code should be alphanumeric)
+            safe_codes = [c for c in codes if _re.match(r'^[0-9a-zA-Z_\-\.]{1,64}$', str(c))]
+            in_list = "', '".join(safe_codes[:2000])
+
+            order_result = client.query(f"""
+                SELECT
+                    COUNT(*)                                       AS order_count,
+                    COUNT(DISTINCT customer_code)                  AS buyers,
+                    SUM(total_amount) / 100.0                      AS total_gmv_cny,
+                    AVG(total_amount) / 100.0                      AS avg_order_value_cny,
+                    MIN(order_date)                                AS first_order,
+                    MAX(order_date)                                AS last_order
+                FROM dwd_v_order
+                WHERE customer_code IN ('{in_list}')
+                  AND order_date >= '{start_date}'
+                  AND delete_flag = 0
+                  AND direction = 0
+            """, database=das_db)
+
+            if isinstance(order_result, list) and order_result:
+                r = order_result[0]
+                order_count = int(r.get("order_count") or 0)
+                buyers      = int(r.get("buyers") or 0)
+                order_data  = {
+                    "order_count":         order_count,
+                    "buyers":              buyers,
+                    "total_gmv_cny":       round(float(r.get("total_gmv_cny") or 0), 2),
+                    "avg_order_value_cny": round(float(r.get("avg_order_value_cny") or 0), 2),
+                    "first_order":         str(r.get("first_order") or "-"),
+                    "last_order":          str(r.get("last_order") or "-"),
+                    "buy_rate":            round(buyers / len(safe_codes) * 100, 1) if safe_codes else 0,
+                    "orders_per_buyer":    round(order_count / buyers, 2) if buyers else 0,
+                }
+
+            # Top buyers within segment
+            top_rows = client.query(f"""
+                SELECT
+                    customer_code,
+                    COUNT(*)                  AS order_count,
+                    SUM(total_amount) / 100.0 AS total_spend_cny
+                FROM dwd_v_order
+                WHERE customer_code IN ('{in_list}')
+                  AND order_date >= '{start_date}'
+                  AND delete_flag = 0 AND direction = 0
+                GROUP BY customer_code
+                ORDER BY total_spend_cny DESC
+                LIMIT 10
+            """, database=das_db)
+
+            if isinstance(top_rows, list):
+                top_buyers = [
+                    {
+                        "customer_code": r.get("customer_code") or "-",
+                        "order_count":   int(r.get("order_count") or 0),
+                        "total_spend_cny": round(float(r.get("total_spend_cny") or 0), 2),
+                    }
+                    for r in top_rows
+                ]
+
+    group_name = "—"
+    if isinstance(meta, list) and meta:
+        group_name = meta[0].get("group_name") or group_id
+
+    return {
+        "group_id":      group_id,
+        "group_name":    group_name,
+        "period":        period,
+        "total_members": total_members,
+        "sampled":       total_members > safe_max,
+        "sample_size":   len(codes),
+        "order_data":    order_data,
+        "top_buyers":    top_buyers,
+    }
+
+
+def _print_segment_analyze(data: dict) -> None:
+    """Rich display for segment purchase behavior analysis."""
+    from rich.table import Table
+    from rich import box as rich_box
+    from rich.panel import Panel
+
+    gid    = data.get("group_id")
+    gname  = data.get("group_name", gid)
+    period = data.get("period", "-")
+    total  = data.get("total_members", 0)
+    sampled = data.get("sampled", False)
+    sample_size = data.get("sample_size", 0)
+
+    sample_note = f"  [yellow](sampled {sample_size:,} of {total:,})[/yellow]" if sampled else f"  [dim](all {total:,} members)[/dim]"
+    header = (
+        f"Segment: [bold cyan]{gname}[/bold cyan]  [dim](id={gid})[/dim]\n"
+        f"Period:  {period}{sample_note}"
+    )
+    console.print(Panel(header, title="[bold]Segment Purchase Behavior[/bold]", border_style="cyan"))
+
+    od = data.get("order_data", {})
+    if not od:
+        console.print("[yellow]No order data found for this segment in the selected period.[/yellow]")
+        console.print("[dim](Cross-DB join: t_customer_group_detail → dwd_v_order)[/dim]")
+        return
+
+    t = Table(show_header=False, box=rich_box.SIMPLE, padding=(0, 2))
+    t.add_column("Metric", style="dim", min_width=22)
+    t.add_column("Value",  style="bold", justify="right", min_width=14)
+
+    buyers      = od.get("buyers", 0)
+    buy_rate    = od.get("buy_rate", 0)
+    br_c        = "green" if buy_rate >= 30 else ("yellow" if buy_rate >= 10 else "red")
+
+    t.add_row("Total Members (segment)",  f"{total:,}")
+    t.add_row("Buyers in Period",          f"[{br_c}]{buyers:,}[/{br_c}]")
+    t.add_row("Buy Rate",                  f"[{br_c}]{buy_rate:.1f}%[/{br_c}]")
+    t.add_row("Total Orders",              f"{od.get('order_count', 0):,}")
+    t.add_row("Orders per Buyer",          f"{od.get('orders_per_buyer', 0):.2f}")
+    t.add_row("Total GMV (CNY)",           f"¥{od.get('total_gmv_cny', 0):,.2f}")
+    t.add_row("Avg Order Value (CNY)",     f"¥{od.get('avg_order_value_cny', 0):,.2f}")
+    t.add_row("First Order in Period",     str(od.get("first_order") or "-"))
+    t.add_row("Last Order in Period",      str(od.get("last_order") or "-"))
+    console.print(t)
+
+    top = data.get("top_buyers", [])
+    if top:
+        tt = Table(title="Top 10 Buyers in Segment",
+                   box=rich_box.SIMPLE, header_style="bold dim")
+        tt.add_column("Customer Code", style="dim")
+        tt.add_column("Orders",        justify="right", style="cyan")
+        tt.add_column("Spend (CNY)",   justify="right", style="green")
+        for r in top:
+            tt.add_row(
+                str(r.get("customer_code") or "-"),
+                f"{r.get('order_count', 0):,}",
+                f"¥{r.get('total_spend_cny', 0):,.2f}",
+            )
+        console.print(tt)
+
+    console.print(
+        f"[dim]Sources: datanow_demoen.t_customer_group_detail → das_demoen.dwd_v_order[/dim]"
+    )
+
+
+@app.command("analyze")
+def segment_analyze(
+    group_id: str = typer.Argument(..., help="Segment / customer group ID"),
+    period: str   = typer.Option("30d", "--period", "-p", help="Purchase analysis period (7d/30d/90d/365d)"),
+    max_members: int = typer.Option(500, "--max-members", help="Max members to sample for cross-DB join (default 500)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+) -> None:
+    """Purchase behavior analysis for customers in a segment (MCP).
+
+    Joins segment membership (datanow_demoen) with order data (das_demoen)
+    to compute buy rate, GMV, AOV, and top buyers within the segment.
+
+    Examples:
+        sh segments analyze 12345
+        sh segments analyze 12345 --period=90d
+        sh segments analyze 12345 --output=segment_12345.json
+    """
+    config = load_config()
+    if config.mode != "mcp":
+        print_error("segments analyze requires MCP mode")
+        raise typer.Exit(1)
+    try:
+        data = _mcp_segment_analyze(config, group_id, period, max_members)
+    except (MCPError, ValueError) as e:
+        print_error(f"Error: {e}"); raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Error: {e}"); raise typer.Exit(1)
+
+    if output:
+        format_output(data, "json", output)
+        console.print(f"[green]Exported to {output}[/green]")
+    else:
+        _print_segment_analyze(data)
