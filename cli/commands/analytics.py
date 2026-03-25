@@ -270,8 +270,11 @@ def _get_mcp_overview(config, period: str) -> dict:
 
 
 def _get_mcp_customers(config, period: str, channel: str) -> dict:
-    """Get customer analytics from MCP database."""
-    # Validate and compute safe date range
+    """Get customer analytics from MCP database.
+
+    Tries dws_customer_base_metrics (DWS pre-aggregated) first;
+    falls back to dim_customer_info + dwd_v_order on exception.
+    """
     start_date, _ = _compute_date_range(period)
 
     mcp_config = MCPClientConfig(
@@ -284,16 +287,57 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Total customers
-        total_result = client.query(
-            "SELECT COUNT(*) as total FROM dim_customer_info",
-            database=database
-        )
+        # --- DWS-first: dws_customer_base_metrics ---
+        dws_ok = False
         total_customers = 0
-        if isinstance(total_result, list) and len(total_result) > 0:
-            total_customers = total_result[0].get("total", 0)
+        new_customers = 0
+        active_customers = 0
+        try:
+            dws_result = client.query(f"""
+                SELECT
+                    COUNT(*)                                                              AS total_customers,
+                    SUM(CASE WHEN first_order_date >= '{start_date}' THEN 1 ELSE 0 END) AS new_customers,
+                    SUM(CASE WHEN last_order_date  >= '{start_date}' THEN 1 ELSE 0 END) AS active_customers
+                FROM dws_customer_base_metrics
+                WHERE identity_type = 1
+            """, database=database)
+            if isinstance(dws_result, list) and dws_result and dws_result[0].get("total_customers") is not None:
+                row = dws_result[0]
+                total_customers  = int(row.get("total_customers") or 0)
+                new_customers    = int(row.get("new_customers") or 0)
+                active_customers = int(row.get("active_customers") or 0)
+                dws_ok = True
+        except Exception:
+            pass
 
-        # Customer by type
+        if not dws_ok:
+            # Fallback: dim_customer_info for totals
+            total_result = client.query(
+                "SELECT COUNT(*) as total FROM dim_customer_info",
+                database=database
+            )
+            if isinstance(total_result, list) and total_result:
+                total_customers = total_result[0].get("total", 0)
+
+            new_date_filter = _safe_date_filter("create_date", start_date)
+            new_result = client.query(f"""
+                SELECT COUNT(*) as new_count
+                FROM dim_customer_info
+                {new_date_filter}
+            """, database=database)
+            if isinstance(new_result, list) and new_result:
+                new_customers = new_result[0].get("new_count", 0)
+
+            active_date_filter = _safe_date_filter("order_date", start_date)
+            active_result = client.query(f"""
+                SELECT COUNT(DISTINCT customer_code) as active
+                FROM dwd_v_order
+                {active_date_filter}
+            """, database=database)
+            if isinstance(active_result, list) and active_result:
+                active_customers = active_result[0].get("active", 0)
+
+        # Customer by type (dim_customer_info, small query)
         type_result = client.query("""
             SELECT
                 CASE
@@ -310,34 +354,13 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
             for row in type_result:
                 by_type[row.get("customer_type", "unknown")] = row.get("count", 0)
 
-        # New customers in period (safe date filter)
-        new_date_filter = _safe_date_filter("create_date", start_date)
-        new_result = client.query(f"""
-            SELECT COUNT(*) as new_count
-            FROM dim_customer_info
-            {new_date_filter}
-        """, database=database)
-        new_customers = 0
-        if isinstance(new_result, list) and len(new_result) > 0:
-            new_customers = new_result[0].get("new_count", 0)
-
-        # Active customers in period (safe date filter)
-        active_date_filter = _safe_date_filter("order_date", start_date)
-        active_result = client.query(f"""
-            SELECT COUNT(DISTINCT customer_code) as active
-            FROM dwd_v_order
-            {active_date_filter}
-        """, database=database)
-        active_customers = 0
-        if isinstance(active_result, list) and len(active_result) > 0:
-            active_customers = active_result[0].get("active", 0)
-
         return {
             "period": period,
             "total_customers": total_customers,
             "new_customers": new_customers,
             "active_customers": active_customers,
             "by_type": by_type,
+            "dws_used": dws_ok,
         }
 
 
@@ -1191,31 +1214,53 @@ def _get_mcp_points(config, period: str, expiring_days: int = 0, breakdown: bool
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # --- Base summary ---
-        result = client.query(f"""
-            SELECT
-                SUM(CASE WHEN change_type = 'earn'   THEN points ELSE 0 END) AS total_earned,
-                SUM(CASE WHEN change_type = 'redeem' THEN points ELSE 0 END) AS total_redeemed,
-                COUNT(DISTINCT member_id) AS active_members,
-                COUNT(*) AS total_transactions
-            FROM dwd_member_points_log
-            {date_filter}
-        """, database=database)
-
+        # --- Base summary: try dws_points_base_metrics_d first ---
         data = {
             "period": period,
             "total_earned": 0,
             "total_redeemed": 0,
             "active_members": 0,
             "total_transactions": 0,
+            "dws_used": False,
         }
 
-        if isinstance(result, list) and result:
-            row = result[0]
-            data["total_earned"]       = row.get("total_earned") or 0
-            data["total_redeemed"]     = row.get("total_redeemed") or 0
-            data["active_members"]     = row.get("active_members") or 0
-            data["total_transactions"] = row.get("total_transactions") or 0
+        dws_ok = False
+        try:
+            dws_result = client.query(f"""
+                SELECT
+                    SUM(earn_points)     AS total_earned,
+                    SUM(consume_points)  AS total_redeemed,
+                    SUM(earn_cnt)        AS total_transactions
+                FROM dws_points_base_metrics_d
+                WHERE biz_date >= '{start_date}'
+            """, database=database)
+            if isinstance(dws_result, list) and dws_result and dws_result[0].get("total_earned") is not None:
+                row = dws_result[0]
+                data["total_earned"]       = row.get("total_earned") or 0
+                data["total_redeemed"]     = row.get("total_redeemed") or 0
+                data["total_transactions"] = row.get("total_transactions") or 0
+                data["dws_used"] = True
+                dws_ok = True
+        except Exception:
+            pass
+
+        if not dws_ok:
+            result = client.query(f"""
+                SELECT
+                    SUM(CASE WHEN change_type = 'earn'   THEN points ELSE 0 END) AS total_earned,
+                    SUM(CASE WHEN change_type = 'redeem' THEN points ELSE 0 END) AS total_redeemed,
+                    COUNT(DISTINCT member_id) AS active_members,
+                    COUNT(*) AS total_transactions
+                FROM dwd_member_points_log
+                {date_filter}
+            """, database=database)
+
+            if isinstance(result, list) and result:
+                row = result[0]
+                data["total_earned"]       = row.get("total_earned") or 0
+                data["total_redeemed"]     = row.get("total_redeemed") or 0
+                data["active_members"]     = row.get("active_members") or 0
+                data["total_transactions"] = row.get("total_transactions") or 0
 
         # --- Expiration risk ---
         if expiring_days > 0:
@@ -1452,19 +1497,7 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # --- Base summary (always) ---
-        result = client.query(f"""
-            SELECT
-                COUNT(*)                                                     AS total_issued,
-                SUM(CASE WHEN status = 'used'    THEN 1 ELSE 0 END)         AS total_used,
-                SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END)         AS total_expired,
-                COUNT(DISTINCT customer_code)                                AS unique_customers,
-                SUM(par_value) / 100.0                                       AS total_face_value_cny,
-                SUM(CASE WHEN status = 'used' THEN par_value ELSE 0 END) / 100.0 AS redeemed_face_value_cny
-            FROM dwd_coupon_instance
-            {date_filter}
-        """, database=database)
-
+        # --- Base summary: try ads_das_v_coupon_analysis_d (ADS) first ---
         data = {
             "period": period,
             "total_issued": 0,
@@ -1474,18 +1507,54 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
             "usage_rate": 0.0,
             "total_face_value_cny": 0.0,
             "redeemed_face_value_cny": 0.0,
+            "ads_used": False,
         }
 
-        if isinstance(result, list) and result:
-            row = result[0]
-            data["total_issued"]          = row.get("total_issued") or 0
-            data["total_used"]            = row.get("total_used") or 0
-            data["total_expired"]         = row.get("total_expired") or 0
-            data["unique_customers"]      = row.get("unique_customers") or 0
-            data["total_face_value_cny"]  = float(row.get("total_face_value_cny") or 0)
-            data["redeemed_face_value_cny"] = float(row.get("redeemed_face_value_cny") or 0)
-            if data["total_issued"] > 0:
-                data["usage_rate"] = round(data["total_used"] / data["total_issued"] * 100, 2)
+        ads_ok = False
+        try:
+            ads_result = client.query(f"""
+                SELECT
+                    SUM(issue_cnt)    AS total_issued,
+                    SUM(redeem_cnt)   AS total_used,
+                    SUM(redeem_value) / 100.0 AS redeemed_face_value_cny
+                FROM ads_das_v_coupon_analysis_d
+                WHERE biz_date >= '{start_date}'
+            """, database=database)
+            if isinstance(ads_result, list) and ads_result and ads_result[0].get("total_issued") is not None:
+                row = ads_result[0]
+                data["total_issued"]          = int(row.get("total_issued") or 0)
+                data["total_used"]            = int(row.get("total_used") or 0)
+                data["redeemed_face_value_cny"] = float(row.get("redeemed_face_value_cny") or 0)
+                if data["total_issued"] > 0:
+                    data["usage_rate"] = round(data["total_used"] / data["total_issued"] * 100, 2)
+                data["ads_used"] = True
+                ads_ok = True
+        except Exception:
+            pass
+
+        if not ads_ok:
+            result = client.query(f"""
+                SELECT
+                    COUNT(*)                                                     AS total_issued,
+                    SUM(CASE WHEN status = 'used'    THEN 1 ELSE 0 END)         AS total_used,
+                    SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END)         AS total_expired,
+                    COUNT(DISTINCT customer_code)                                AS unique_customers,
+                    SUM(par_value) / 100.0                                       AS total_face_value_cny,
+                    SUM(CASE WHEN status = 'used' THEN par_value ELSE 0 END) / 100.0 AS redeemed_face_value_cny
+                FROM dwd_coupon_instance
+                {date_filter}
+            """, database=database)
+
+            if isinstance(result, list) and result:
+                row = result[0]
+                data["total_issued"]          = row.get("total_issued") or 0
+                data["total_used"]            = row.get("total_used") or 0
+                data["total_expired"]         = row.get("total_expired") or 0
+                data["unique_customers"]      = row.get("unique_customers") or 0
+                data["total_face_value_cny"]  = float(row.get("total_face_value_cny") or 0)
+                data["redeemed_face_value_cny"] = float(row.get("redeemed_face_value_cny") or 0)
+                if data["total_issued"] > 0:
+                    data["usage_rate"] = round(data["total_used"] / data["total_issued"] * 100, 2)
 
         # --- Per-rule breakdown (when --roi) ---
         if roi:
@@ -2025,15 +2094,187 @@ def analytics_overview(
         print_overview(data, title=f"Analytics Overview ({period})")
 
 
+def _get_mcp_customer_source(config, period: str) -> list:
+    """Query ads_das_custs_source_analysis_d for acquisition channel breakdown."""
+    start_date, end_date = _compute_date_range(period)
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+        rows = client.query(f"""
+            SELECT
+                source_channel,
+                SUM(new_custs_cnt)                              AS new_customers,
+                BITMAP_COUNT(BITMAP_UNION(custs_bitnum))        AS total_customers
+            FROM ads_das_custs_source_analysis_d
+            WHERE biz_date BETWEEN '{start_date}' AND '{end_date}'
+            GROUP BY source_channel
+            ORDER BY new_customers DESC
+        """, database=database)
+    result = []
+    if isinstance(rows, list):
+        total_new = sum(int(r.get("new_customers") or 0) for r in rows)
+        for r in rows:
+            nc = int(r.get("new_customers") or 0)
+            tc = int(r.get("total_customers") or 0)
+            result.append({
+                "source_channel": r.get("source_channel") or "Unknown",
+                "new_customers": nc,
+                "total_customers": tc,
+                "share_pct": round(nc / total_new * 100, 1) if total_new else 0,
+            })
+    return result
+
+
+def _print_customer_source(rows: list, period: str) -> None:
+    """Rich table for customer acquisition source breakdown."""
+    from rich.table import Table
+    from rich import box as rich_box
+    from rich.panel import Panel
+
+    if not rows:
+        console.print("[yellow]No source data found in ads_das_custs_source_analysis_d[/yellow]")
+        return
+
+    t = Table(
+        title=f"Customer Acquisition by Source  ({period})",
+        box=rich_box.ROUNDED, header_style="bold cyan",
+    )
+    t.add_column("Source Channel", style="bold")
+    t.add_column("New Customers",  justify="right", style="green")
+    t.add_column("Share %",        justify="right")
+    t.add_column("Total (Bitmap)", justify="right", style="cyan")
+    t.add_column("Bar", no_wrap=True)
+
+    max_new = max((r.get("new_customers", 0) for r in rows), default=1) or 1
+    for r in rows:
+        nc    = int(r.get("new_customers") or 0)
+        pct   = r.get("share_pct", 0)
+        bar   = "█" * int(nc / max_new * 20)
+        pct_c = "green" if pct >= 20 else ("yellow" if pct >= 5 else "dim")
+        t.add_row(
+            str(r.get("source_channel") or "Unknown"),
+            f"{nc:,}",
+            f"[{pct_c}]{pct:.1f}%[/{pct_c}]",
+            f"{int(r.get('total_customers') or 0):,}",
+            f"[cyan]{bar}[/cyan]",
+        )
+    console.print(t)
+    total = sum(int(r.get("new_customers") or 0) for r in rows)
+    console.print(
+        f"[dim]Total new customers across all sources: {total:,}  |  "
+        f"Source: ads_das_custs_source_analysis_d[/dim]"
+    )
+
+
+def _get_mcp_customer_gender(config) -> list:
+    """Query ads_das_custs_gender_distribution_d for gender distribution."""
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+        rows = client.query("""
+            SELECT
+                gender,
+                BITMAP_COUNT(BITMAP_UNION(custs_bitnum)) AS customer_count
+            FROM ads_das_custs_gender_distribution_d
+            WHERE biz_date = (SELECT MAX(biz_date) FROM ads_das_custs_gender_distribution_d)
+            GROUP BY gender
+            ORDER BY gender
+        """, database=database)
+    _GENDER = {0: "Unknown", 1: "Male", 2: "Female"}
+    result = []
+    if isinstance(rows, list):
+        total = sum(int(r.get("customer_count") or 0) for r in rows)
+        for r in rows:
+            g   = int(r.get("gender") or 0)
+            cnt = int(r.get("customer_count") or 0)
+            result.append({
+                "gender_code": g,
+                "gender_label": _GENDER.get(g, f"Code {g}"),
+                "customer_count": cnt,
+                "share_pct": round(cnt / total * 100, 1) if total else 0,
+            })
+    return result
+
+
+def _print_customer_gender(rows: list) -> None:
+    """Rich table for gender distribution."""
+    from rich.table import Table
+    from rich import box as rich_box
+
+    if not rows:
+        console.print("[yellow]No gender data found in ads_das_custs_gender_distribution_d[/yellow]")
+        return
+
+    t = Table(title="Customer Gender Distribution", box=rich_box.ROUNDED, header_style="bold cyan")
+    t.add_column("Gender",   style="bold")
+    t.add_column("Count",    justify="right", style="cyan")
+    t.add_column("Share %",  justify="right")
+    t.add_column("Bar", no_wrap=True)
+
+    total = sum(r.get("customer_count", 0) for r in rows)
+    for r in rows:
+        cnt  = int(r.get("customer_count") or 0)
+        pct  = r.get("share_pct", 0)
+        bar  = "█" * int(cnt / (total or 1) * 30)
+        t.add_row(
+            str(r.get("gender_label") or "-"),
+            f"{cnt:,}",
+            f"{pct:.1f}%",
+            f"[cyan]{bar}[/cyan]",
+        )
+    console.print(t)
+    console.print(
+        f"[dim]Total: {total:,}  |  Source: ads_das_custs_gender_distribution_d (latest snapshot)[/dim]"
+    )
+
+
 @app.command("customers")
 def analytics_customers(
     period: str = typer.Option("30d", "--period", "-p", help="Time period"),
     channel: str = typer.Option("all", "--channel", "-c", help="Channel filter (all, wechat, app, web, tmall)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    source: bool = typer.Option(False, "--source", "-s", help="Show customer acquisition source breakdown (MCP)"),
+    gender: bool = typer.Option(False, "--gender", "-g", help="Show gender distribution (MCP)"),
 ) -> None:
     """Analyze customer metrics."""
     config = load_config()
+
+    if source or gender:
+        if config.mode != "mcp":
+            print_error("--source and --gender require MCP mode")
+            raise typer.Exit(1)
+        if source:
+            try:
+                rows = _get_mcp_customer_source(config, period)
+            except Exception as e:
+                print_error(f"Error: {e}")
+                raise typer.Exit(1)
+            if output:
+                format_output(rows, "json", output)
+            else:
+                _print_customer_source(rows, period)
+        if gender:
+            try:
+                rows = _get_mcp_customer_gender(config)
+            except Exception as e:
+                print_error(f"Error: {e}")
+                raise typer.Exit(1)
+            if output:
+                format_output(rows, "json", output)
+            else:
+                _print_customer_gender(rows)
+        return
 
     if config.mode == "mcp":
         # MCP mode - query real database
@@ -6262,3 +6503,213 @@ def analytics_recommend(
 
     if show_sql:
         _print_sql_trace(_sql_log)
+
+
+# =============================================================================
+# analytics rfm — RFM customer value segmentation
+# =============================================================================
+
+def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
+    """Query ads_v_rfm for RFM segment distribution and optionally top customers.
+
+    Args:
+        limit: when > 0, also return top `limit` customers by rfm_score
+        segment_filter: if set, filter to rfm_segment = this value
+    """
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+    safe_limit = max(1, min(int(limit), 500)) if limit > 0 else 0
+    safe_seg   = _sanitize_string_input(segment_filter, 50) if segment_filter else ""
+
+    seg_where  = f"WHERE rfm_segment = '{safe_seg}'" if safe_seg else ""
+    seg_and    = f"AND rfm_segment = '{safe_seg}'" if safe_seg else ""
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Segment distribution
+        dist_rows = client.query(f"""
+            SELECT
+                rfm_segment,
+                rfm_label,
+                COUNT(*)                       AS customer_count,
+                AVG(monetary)  / 100.0         AS avg_monetary_cny,
+                AVG(frequency)                 AS avg_frequency,
+                AVG(recency_score)             AS avg_recency_days
+            FROM ads_v_rfm
+            {seg_where}
+            GROUP BY rfm_segment, rfm_label
+            ORDER BY customer_count DESC
+        """, database=database)
+
+        # Total for share %
+        total_rows = client.query(f"""
+            SELECT COUNT(*) AS total FROM ads_v_rfm {seg_where}
+        """, database=database)
+
+        total = int((total_rows[0].get("total") or 0) if isinstance(total_rows, list) and total_rows else 0)
+
+        distribution = []
+        if isinstance(dist_rows, list):
+            for r in dist_rows:
+                cnt = int(r.get("customer_count") or 0)
+                distribution.append({
+                    "rfm_segment":      str(r.get("rfm_segment") or "-"),
+                    "rfm_label":        str(r.get("rfm_label") or "-"),
+                    "customer_count":   cnt,
+                    "share_pct":        round(cnt / total * 100, 1) if total else 0,
+                    "avg_monetary_cny": round(float(r.get("avg_monetary_cny") or 0), 2),
+                    "avg_frequency":    round(float(r.get("avg_frequency") or 0), 1),
+                    "avg_recency_days": round(float(r.get("avg_recency_days") or 0), 1),
+                })
+
+        # Top customers (optional)
+        top_customers = []
+        if safe_limit > 0:
+            top_rows = client.query(f"""
+                SELECT
+                    customer_code,
+                    rfm_segment,
+                    rfm_label,
+                    recency_score,
+                    frequency,
+                    monetary / 100.0 AS monetary_cny,
+                    rfm_score
+                FROM ads_v_rfm
+                WHERE 1=1 {seg_and}
+                ORDER BY rfm_score DESC
+                LIMIT {safe_limit}
+            """, database=database)
+            if isinstance(top_rows, list):
+                top_customers = [
+                    {
+                        "customer_code":  r.get("customer_code") or "-",
+                        "rfm_segment":    r.get("rfm_segment") or "-",
+                        "rfm_label":      r.get("rfm_label") or "-",
+                        "recency_days":   int(r.get("recency_score") or 0),
+                        "frequency":      int(r.get("frequency") or 0),
+                        "monetary_cny":   round(float(r.get("monetary_cny") or 0), 2),
+                        "rfm_score":      round(float(r.get("rfm_score") or 0), 3),
+                    }
+                    for r in top_rows
+                ]
+
+    return {
+        "total_customers": total,
+        "segment_filter": segment_filter or "all",
+        "distribution": distribution,
+        "top_customers": top_customers,
+    }
+
+
+def _print_rfm(data: dict, show_top: bool = False) -> None:
+    """Rich display for RFM analysis."""
+    from rich.table import Table
+    from rich import box as rich_box
+    from rich.panel import Panel
+
+    total = data.get("total_customers", 0)
+    seg_f = data.get("segment_filter", "all")
+    console.print(Panel(
+        f"Total customers in RFM view: [bold]{total:,}[/bold]  |  "
+        f"Filter: [cyan]{seg_f}[/cyan]",
+        title="[bold cyan]RFM Customer Segmentation[/bold cyan]",
+        border_style="cyan",
+    ))
+
+    dist = data.get("distribution", [])
+    if dist:
+        t = Table(title="Segment Distribution", box=rich_box.ROUNDED, header_style="bold cyan")
+        t.add_column("Segment",      style="bold")
+        t.add_column("Label",        style="dim")
+        t.add_column("Customers",    justify="right", style="cyan")
+        t.add_column("Share %",      justify="right")
+        t.add_column("Avg Spend ¥",  justify="right", style="green")
+        t.add_column("Avg Orders",   justify="right")
+        t.add_column("Avg Recency",  justify="right", style="dim")
+        t.add_column("Bar", no_wrap=True)
+
+        max_cnt = max((r.get("customer_count", 0) for r in dist), default=1) or 1
+        for r in dist:
+            cnt  = r.get("customer_count", 0)
+            pct  = r.get("share_pct", 0)
+            bar  = "█" * int(cnt / max_cnt * 18)
+            pc   = "green" if pct >= 20 else ("yellow" if pct >= 5 else "dim")
+            t.add_row(
+                str(r.get("rfm_segment") or "-"),
+                str(r.get("rfm_label") or "-"),
+                f"{cnt:,}",
+                f"[{pc}]{pct:.1f}%[/{pc}]",
+                f"{r.get('avg_monetary_cny', 0):,.0f}",
+                f"{r.get('avg_frequency', 0):.1f}",
+                f"{r.get('avg_recency_days', 0):.0f}d",
+                f"[cyan]{bar}[/cyan]",
+            )
+        console.print(t)
+
+    top = data.get("top_customers", [])
+    if show_top and top:
+        tt = Table(title=f"Top {len(top)} Customers by RFM Score",
+                   box=rich_box.SIMPLE, header_style="bold dim")
+        tt.add_column("Customer",     style="dim",   max_width=20)
+        tt.add_column("Segment",      style="bold")
+        tt.add_column("Label",        style="dim")
+        tt.add_column("Recency (d)",  justify="right")
+        tt.add_column("Orders",       justify="right", style="cyan")
+        tt.add_column("Spend ¥",      justify="right", style="green")
+        tt.add_column("RFM Score",    justify="right")
+        for r in top:
+            tt.add_row(
+                str(r.get("customer_code") or "-"),
+                str(r.get("rfm_segment") or "-"),
+                str(r.get("rfm_label") or "-"),
+                str(r.get("recency_days") or "-"),
+                f"{int(r.get('frequency') or 0):,}",
+                f"{float(r.get('monetary_cny') or 0):,.0f}",
+                f"{float(r.get('rfm_score') or 0):.3f}",
+            )
+        console.print(tt)
+
+    console.print("[dim]Source: ads_v_rfm (das_demoen)  |  monetary in CNY (÷100 from fen)[/dim]")
+
+
+@app.command("rfm")
+def analytics_rfm(
+    segment: str = typer.Option("", "--segment", "-s",
+                                help="Filter to specific RFM segment code (e.g. high_value, at_risk)"),
+    top: int = typer.Option(0, "--top", "-t",
+                            help="Also show top N customers by RFM score (0=off, max 500)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+) -> None:
+    """RFM customer segmentation — segment distribution, avg spend, avg orders (MCP).
+
+    Queries ads_v_rfm in das_demoen. Shows segment distribution with average
+    spend, order frequency, and recency. Use --top N to list highest-scoring customers.
+
+    Examples:
+        sh analytics rfm
+        sh analytics rfm --segment=high_value
+        sh analytics rfm --top=20
+        sh analytics rfm --output=rfm.json
+    """
+    config = load_config()
+    if config.mode != "mcp":
+        console.print("[red]analytics rfm requires MCP mode[/red]")
+        raise typer.Exit(1)
+
+    try:
+        with _sql_trace_ctx() as _sql_log:
+            data = _get_mcp_rfm(config, limit=top, segment_filter=segment)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    if output:
+        format_output(data, "json", output, title="RFM Analysis")
+        console.print(f"[green]Exported to {output}[/green]")
+    else:
+        _print_rfm(data, show_top=(top > 0))

@@ -187,7 +187,7 @@ SCHEMA: dict[str, dict] = {
             "Segment-specific marketing lists",
             "Churn prevention targeting",
         ],
-        "cli_cmd": "members rfm",
+        "cli_cmd": "analytics rfm  |  members rfm",
     },
 
     "ads_das_custs_source_analysis_d": {
@@ -205,7 +205,7 @@ SCHEMA: dict[str, dict] = {
         "bitmap_cols": ["custs_bitnum"],
         "caveats": ["Channel definitions vary by tenant configuration"],
         "use_cases": ["Acquisition channel effectiveness", "Source contribution trend"],
-        "cli_cmd": "(not yet implemented — use mcp sql)",
+        "cli_cmd": "analytics customers --source",
     },
 
     "ads_das_custs_gender_distribution_d": {
@@ -220,7 +220,7 @@ SCHEMA: dict[str, dict] = {
         "bitmap_cols": ["custs_bitnum"],
         "caveats": ["Gender values: 1=Male, 2=Female, 0=Unknown"],
         "use_cases": ["Demographics breakdown"],
-        "cli_cmd": "(not yet implemented)",
+        "cli_cmd": "analytics customers --gender",
     },
 
     "dws_customer_base_metrics": {
@@ -391,6 +391,29 @@ SCHEMA: dict[str, dict] = {
         "cli_cmd": "analytics points --daily-trend",
     },
 
+    "dws_points_base_metrics_d": {
+        "domain": "points",
+        "db": "das_demoen",
+        "layer": "dws",
+        "purpose": "Pre-aggregated daily points metrics — earn, consume, expire totals per day",
+        "grain": "One row per biz_date",
+        "date_col": "biz_date",
+        "key_dims": ["biz_date"],
+        "key_metrics": [
+            "earn_points    BIGINT — points earned today",
+            "consume_points BIGINT — points consumed today",
+            "expire_points  BIGINT — points expired today",
+            "earn_cnt       INT    — earn transaction count",
+        ],
+        "bitmap_cols": [],
+        "caveats": [
+            "Preferred over dwd_member_points_log for period summaries",
+            "analytics points tries this table first (DWS-first pattern)",
+        ],
+        "use_cases": ["Points earn/consume trend", "Period summary dashboard"],
+        "cli_cmd": "analytics points",
+    },
+
     "ads_das_v_points_summary_analysis_d": {
         "domain": "points",
         "db": "das_demoen",
@@ -457,9 +480,12 @@ SCHEMA: dict[str, dict] = {
             "click_cnt     INT — links clicked",
         ],
         "bitmap_cols": [],
-        "caveats": ["Preferred for trend queries; vdm_t_message_record for template-level detail"],
+        "caveats": [
+            "Grain is channel × day — no template_id dimension; use vdm_t_message_record for template-level detail",
+            "messages template-stats tries this view first and falls back to vdm_t_message_record",
+        ],
         "use_cases": ["Cross-channel delivery trend", "Failure spike detection"],
-        "cli_cmd": "messages health",
+        "cli_cmd": "messages health  |  messages template-stats (ADS-first fallback)",
     },
 
     # ── Recommendation ────────────────────────────────────────────────────────
