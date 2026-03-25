@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 
 from ..api.client import APIError, SocialHubClient
+from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
 from ..config import load_config
 from ..output.export import format_output
 from ..output.table import print_dict, print_error, print_list, print_success
@@ -211,3 +212,144 @@ def disable_tag(
     except APIError as e:
         print_error(f"API Error: {e.message}")
         raise typer.Exit(1)
+
+
+# =============================================================================
+# tags coverage — Tag distribution & coverage audit (P3)
+# =============================================================================
+
+def _mcp_tags_coverage(config, limit: int) -> list:
+    """Coverage and value distribution for all tags from t_customer_tag_result."""
+    from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+    if not isinstance(limit, int) or limit < 1 or limit > 200:
+        limit = 30
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Total customers for coverage %
+        total_res = client.query(
+            "SELECT COUNT(*) AS total FROM dim_customer_info",
+            database=config.mcp.database,
+        )
+        total_custs = total_res[0].get("total", 0) if isinstance(total_res, list) and total_res else 0
+
+        # Per-tag: customer count + distinct values
+        rows = client.query(f"""
+            SELECT
+                tag_id,
+                COUNT(DISTINCT customer_code)   AS covered_customers,
+                COUNT(DISTINCT tag_value)        AS distinct_values,
+                COUNT(*)                         AS total_assignments
+            FROM t_customer_tag_result
+            GROUP BY tag_id
+            ORDER BY covered_customers DESC
+            LIMIT {limit}
+        """, database="datanow_demoen")
+
+        # Top values per tag (top 3)
+        top_values = client.query(f"""
+            SELECT
+                tag_id,
+                tag_value,
+                COUNT(DISTINCT customer_code) AS cnt
+            FROM t_customer_tag_result
+            GROUP BY tag_id, tag_value
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY tag_id ORDER BY cnt DESC) <= 3
+            ORDER BY tag_id, cnt DESC
+            LIMIT 10000
+        """, database="datanow_demoen")
+
+    # Build top-values map
+    tv_map: dict = {}
+    if isinstance(top_values, list):
+        for r in top_values:
+            tid = r.get("tag_id")
+            if tid not in tv_map:
+                tv_map[tid] = []
+            tv_map[tid].append(f"{r.get('tag_value')}({r.get('cnt'):,})")
+
+    result = []
+    if isinstance(rows, list):
+        for r in rows:
+            tid = r.get("tag_id")
+            covered = int(r.get("covered_customers") or 0)
+            result.append({
+                "tag_id": tid,
+                "covered_customers": covered,
+                "coverage_pct": f"{covered/total_custs*100:.1f}%" if total_custs else "—",
+                "distinct_values": int(r.get("distinct_values") or 0),
+                "total_assignments": int(r.get("total_assignments") or 0),
+                "top_values": " / ".join(tv_map.get(tid, [])),
+            })
+    return result
+
+
+def _print_tags_coverage(rows: list) -> None:
+    from rich.table import Table
+    from rich import box as rich_box
+
+    if not rows:
+        console.print("[yellow]No tag data found in t_customer_tag_result[/yellow]")
+        return
+
+    tbl = Table(title="Tag Coverage Audit", box=rich_box.SIMPLE_HEAVY, header_style="bold cyan")
+    tbl.add_column("Tag ID",      style="dim", max_width=20)
+    tbl.add_column("Covered",     justify="right", style="cyan")
+    tbl.add_column("Coverage %",  justify="right")
+    tbl.add_column("# Values",    justify="right")
+    tbl.add_column("Assignments", justify="right")
+    tbl.add_column("Top Values",  max_width=40, style="dim")
+
+    for r in rows:
+        pct = r["coverage_pct"]
+        try:
+            pct_f = float(pct.rstrip("%"))
+            color = "green" if pct_f >= 80 else ("yellow" if pct_f >= 40 else "red")
+        except Exception:
+            color = "white"
+        tbl.add_row(
+            str(r["tag_id"]),
+            f"{r['covered_customers']:,}",
+            f"[{color}]{pct}[/{color}]",
+            f"{r['distinct_values']:,}",
+            f"{r['total_assignments']:,}",
+            r["top_values"] or "—",
+        )
+    console.print(tbl)
+    console.print("[dim]Coverage % = covered customers / total dim_customer_info. Green ≥80% Yellow ≥40% Red <40%[/dim]")
+
+
+@app.command("coverage")
+def tags_coverage(
+    limit: int = typer.Option(30, "--limit", "-n", help="Max tags to show (1-200)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+) -> None:
+    """Tag coverage and top-value distribution from t_customer_tag_result (MCP).
+
+    Shows for each tag: how many customers are tagged (and as % of total),
+    number of distinct values, and the top 3 most common values.
+
+    Examples:
+        sh tags coverage
+        sh tags coverage --limit=50
+    """
+    config = load_config()
+    if config.mode != "mcp":
+        print_error("tags coverage requires MCP mode")
+        raise typer.Exit(1)
+    try:
+        rows = _mcp_tags_coverage(config, limit)
+    except (MCPError, Exception) as e:
+        print_error(f"Error: {e}")
+        raise typer.Exit(1)
+    if output:
+        format_output(rows, "json", output)
+    else:
+        _print_tags_coverage(rows)
