@@ -10,7 +10,7 @@ from rich.text import Text
 from rich.table import Table
 
 from . import __version__
-from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, heartbeat, mcp, members, messages, points, segments, skills, tags
+from .commands import ai, analytics, campaigns, config_cmd, coupons, customers, heartbeat, history, mcp, members, messages, points, schema, segments, skills, tags
 
 # History file for storing last command
 HISTORY_FILE = Path.home() / ".socialhub" / "history.json"
@@ -28,7 +28,8 @@ console = Console()
 # Valid CLI commands
 VALID_COMMANDS = {
     "analytics", "customers", "members", "segments", "tags", "campaigns",
-    "coupons", "points", "messages", "config", "ai", "skills", "skill", "mcp", "heartbeat",
+    "coupons", "points", "messages", "config", "ai", "skills", "skill",
+    "mcp", "schema", "heartbeat", "history",
     "--help", "-h", "--version", "-v"
 }
 
@@ -47,7 +48,9 @@ app.add_typer(ai.app, name="ai", help="AI assistant (natural language interface)
 app.add_typer(skills.app, name="skills", help="Skills Store - Install official skills")
 app.add_typer(skills.app, name="skill", help="Skills Store (alias)", hidden=True)  # Alias for 'skills'
 app.add_typer(mcp.app, name="mcp", help="MCP analytics database (connect to SocialHub.AI)")
+app.add_typer(schema.app, name="schema", help="Warehouse schema explorer — discover tables and fields")
 app.add_typer(heartbeat.app, name="heartbeat", help="Scheduled task management")
+app.add_typer(history.app, name="history", help="Run history: list, inspect, and replay past commands")
 
 
 def version_callback(value: bool) -> None:

@@ -632,3 +632,384 @@ def members_top(
         title=f"[bold cyan]Top {limit} Members[/bold cyan]  [dim]by {by} | {label}[/dim]",
         border_style="cyan",
     ))
+
+
+
+# ---------------------------------------------------------------------------
+# upgrade-candidates: members near tier upgrade
+# ---------------------------------------------------------------------------
+
+def _mcp_upgrade_candidates(
+    config,
+    period: str,
+    from_date,
+    to_date,
+    limit: int,
+    tier: str = None,
+) -> list:
+    """Find top spenders within each tier — candidates closest to upgrading.
+
+    Cross-table: dim_customer_info (current tier) × dwd_v_order (period spend).
+    Optionally filter to a single tier with --tier.
+
+    The 'threshold' for upgrade is not auto-computed (requires loyalty rules),
+    but analysts can supply --gap-cny to filter members within X CNY of it.
+    """
+    start, end = _resolve_date_range(period, from_date, to_date)
+    date_filter = _date_filter("o.order_date", start, end)
+
+    safe_limit = max(1, min(int(limit), 500))
+    database = config.mcp.database
+
+    tier_filter = ""
+    if tier:
+        safe_tier = re.sub(r"[^a-zA-Z0-9_\-]", "", str(tier))[:30]
+        if safe_tier:
+            tier_filter = f"AND c.member_level = '{safe_tier}'"
+
+    try:
+        with _mcp_client(config) as client:
+            client.initialize()
+
+            rows = client.query(f"""
+                SELECT
+                    o.customer_code,
+                    c.customer_name,
+                    c.member_level                         AS tier,
+                    COUNT(*)                               AS order_count,
+                    SUM(o.total_amount) / 100.0            AS period_spend_cny,
+                    MAX(o.order_date)                      AS last_order_date
+                FROM dwd_v_order o
+                JOIN dim_customer_info c
+                  ON c.customer_code = o.customer_code
+                WHERE c.member_level IS NOT NULL
+                  AND c.member_level != ''
+                  AND c.identity_type = 1
+                  AND o.direction = 0
+                  {tier_filter}
+                  {date_filter}
+                GROUP BY o.customer_code, c.customer_name, c.member_level
+                ORDER BY tier ASC, period_spend_cny DESC
+                LIMIT {safe_limit}
+            """, database=database)
+
+    except MCPError as e:
+        raise MCPError(str(e)) from e
+
+    return rows if isinstance(rows, list) else []
+
+
+def _print_upgrade_candidates(
+    rows: list, period: str, gap_cny: float = None, output: str = None
+) -> None:
+    """Rich display for tier upgrade candidates, grouped by current tier."""
+    if not rows:
+        console.print("[yellow]No data found[/yellow]")
+        return
+
+    if output:
+        from ..output.export import format_output
+        format_output(rows, "json", output)
+        return
+
+    # Group by tier
+    from collections import defaultdict
+    by_tier = defaultdict(list)
+    for r in rows:
+        by_tier[str(r.get("tier") or "-")].append(r)
+
+    for tier_code, members in sorted(by_tier.items()):
+        t = Table(
+            box=box.SIMPLE, header_style="bold",
+            title=f"Tier: [yellow]{tier_code}[/yellow]  ({len(members)} members)",
+        )
+        t.add_column("#",            justify="right", style="dim", width=4)
+        t.add_column("Customer",                      max_width=20)
+        t.add_column("Name",         style="dim",     max_width=16)
+        t.add_column("Spend (CNY)",  justify="right", style="bold green")
+        if gap_cny:
+            t.add_column("Gap to Threshold", justify="right", style="yellow")
+        t.add_column("Orders",       justify="right")
+        t.add_column("Last Order",   style="dim",     max_width=12)
+
+        for i, r in enumerate(members, 1):
+            spend = float(r.get("period_spend_cny") or 0)
+            row_data = [
+                str(i),
+                str(r.get("customer_code") or "-"),
+                str(r.get("customer_name") or "-"),
+                f"{spend:,.2f}",
+            ]
+            if gap_cny:
+                gap = gap_cny - spend
+                gap_str = (
+                    f"[green]QUALIFIED[/green]" if gap <= 0
+                    else f"[yellow]{gap:,.2f}[/yellow]"
+                )
+                row_data.append(gap_str)
+            row_data += [
+                _fmt(r.get("order_count")),
+                str(r.get("last_order_date") or "-")[:10],
+            ]
+            t.add_row(*row_data)
+
+        console.print()
+        console.print(Panel(
+            t,
+            title=f"[bold cyan]Upgrade Candidates[/bold cyan]  "
+                  f"[dim]{period}[/dim]",
+            border_style="yellow",
+        ))
+
+    note = "[dim]Sorted by period spend DESC within each tier."
+    if gap_cny:
+        note += f"  Gap = threshold ({gap_cny:,.0f} CNY) - period_spend"
+    note += "[/dim]"
+    console.print(note)
+
+
+@app.command("upgrade-candidates")
+def members_upgrade_candidates(
+    period: str = typer.Option("365d", "--period", "-p", help="Spend window: 7d/30d/90d/365d"),
+    from_date: Optional[str] = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
+    to_date: Optional[str] = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
+    tier: Optional[str] = typer.Option(None, "--tier", help="Filter to specific tier code"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Total rows to return (across all tiers)"),
+    gap_cny: Optional[float] = typer.Option(None, "--gap-cny", help="Show gap to this CNY threshold"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON"),
+) -> None:
+    """Members closest to tier upgrade — ranked by period spend within each tier.
+
+    Joins dim_customer_info (current tier) × dwd_v_order (spend) in das_demoen.
+    Results are grouped by tier, sorted by spend descending — the top entries
+    in each tier are the most likely upgrade candidates.
+
+    Supply --gap-cny with the upgrade spend threshold to see how much each
+    member still needs to spend to qualify.
+
+    Examples:
+        sh members upgrade-candidates
+        sh members upgrade-candidates --tier=SILVER --gap-cny=5000
+        sh members upgrade-candidates --period=365d --limit=100
+    """
+    config = load_config()
+
+    if config.mode != "mcp":
+        print_error("members upgrade-candidates requires MCP mode")
+        raise typer.Exit(1)
+
+    try:
+        start, end = _resolve_date_range(period, from_date, to_date)
+    except ValueError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+    try:
+        rows = _mcp_upgrade_candidates(config, period, from_date, to_date, limit, tier)
+    except MCPError as e:
+        print_error(f"MCP Error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Error: {e}")
+        raise typer.Exit(1)
+
+    _print_upgrade_candidates(rows, period, gap_cny, output)
+
+
+# =============================================================================
+# members tier-transitions — Tier mobility snapshot
+# =============================================================================
+
+def _mcp_tier_transitions(config, period: str, from_date: str = None, to_date: str = None) -> dict:
+    """Compare tier distribution snapshots at start vs end of period.
+
+    Uses ads_das_custs_tier_distribution_d (biz_date snapshots) to estimate
+    net membership changes per tier over the selected window.
+    """
+    start, end = _resolve_date_range(period, from_date, to_date)
+    if start is None:
+        from datetime import datetime, timedelta
+        start = datetime.now().date() - timedelta(days=90)
+    start_str = start.isoformat()
+    end_str = end.isoformat()
+
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+
+        # Snapshot at period start (closest biz_date >= start_str)
+        snap_start = client.query(f"""
+            SELECT tier_code, tier_name,
+                   BITMAP_COUNT(BITMAP_UNION(custs_bitnum)) AS members
+            FROM ads_das_custs_tier_distribution_d
+            WHERE biz_date = (
+                SELECT MIN(biz_date) FROM ads_das_custs_tier_distribution_d
+                WHERE biz_date >= '{start_str}'
+            )
+              AND identity_type = 1
+            GROUP BY tier_code, tier_name
+            ORDER BY tier_code
+        """, database=database)
+
+        # Snapshot at period end (closest biz_date <= end_str)
+        snap_end = client.query(f"""
+            SELECT tier_code, tier_name,
+                   BITMAP_COUNT(BITMAP_UNION(custs_bitnum)) AS members
+            FROM ads_das_custs_tier_distribution_d
+            WHERE biz_date = (
+                SELECT MAX(biz_date) FROM ads_das_custs_tier_distribution_d
+                WHERE biz_date <= '{end_str}'
+            )
+              AND identity_type = 1
+            GROUP BY tier_code, tier_name
+            ORDER BY tier_code
+        """, database=database)
+
+        # Actual dates used (from first row if available)
+        actual_start = start_str
+        actual_end = end_str
+
+    # Build lookup: tier_code -> members
+    start_map = {}
+    if isinstance(snap_start, list):
+        for r in snap_start:
+            tc = r.get("tier_code") or r.get("tier_name", "?")
+            start_map[tc] = {"name": r.get("tier_name", tc), "members": int(r.get("members") or 0)}
+
+    end_map = {}
+    if isinstance(snap_end, list):
+        for r in snap_end:
+            tc = r.get("tier_code") or r.get("tier_name", "?")
+            end_map[tc] = {"name": r.get("tier_name", tc), "members": int(r.get("members") or 0)}
+
+    all_tiers = sorted(set(list(start_map.keys()) + list(end_map.keys())))
+
+    rows = []
+    for tc in all_tiers:
+        s_info = start_map.get(tc, {"name": tc, "members": 0})
+        e_info = end_map.get(tc, {"name": tc, "members": 0})
+        s_cnt = s_info["members"]
+        e_cnt = e_info["members"]
+        delta = e_cnt - s_cnt
+        pct = f"{delta / s_cnt * 100:+.1f}%" if s_cnt else ("新层级" if e_cnt > 0 else "—")
+        rows.append({
+            "tier_code": tc,
+            "tier_name": s_info["name"] or e_info["name"],
+            "start_members": s_cnt,
+            "end_members": e_cnt,
+            "delta": delta,
+            "delta_pct": pct,
+        })
+
+    return {
+        "period": period,
+        "start_date": actual_start,
+        "end_date": actual_end,
+        "rows": rows,
+    }
+
+
+def _print_tier_transitions(data: dict) -> None:
+    """Rich display of tier mobility."""
+    tbl = Table(
+        title=f"Tier Membership Change  ({data['start_date']} → {data['end_date']})",
+        box=box.SIMPLE_HEAVY, header_style="bold cyan",
+    )
+    tbl.add_column("Tier",         style="bold")
+    tbl.add_column("Start",        justify="right")
+    tbl.add_column("End",          justify="right")
+    tbl.add_column("Net Change",   justify="right")
+    tbl.add_column("Change %",     justify="right")
+    tbl.add_column("Trend",        no_wrap=True)
+
+    for r in data["rows"]:
+        delta = r["delta"]
+        pct   = r["delta_pct"]
+        if isinstance(pct, str) and pct.startswith("+"):
+            color, arrow = "green", "▲"
+        elif isinstance(pct, str) and pct.startswith("-"):
+            color, arrow = "red", "▼"
+        else:
+            color, arrow = "dim", "—"
+
+        bar_len = min(abs(delta) // max(1, max(abs(rr["delta"]) for rr in data["rows"]) // 10 + 1), 10)
+        bar = f"[{color}]{arrow * bar_len}[/{color}]" if bar_len else ""
+
+        tbl.add_row(
+            r["tier_name"],
+            f"{r['start_members']:,}",
+            f"{r['end_members']:,}",
+            f"[{color}]{delta:+,}[/{color}]",
+            f"[{color}]{pct}[/{color}]",
+            bar,
+        )
+
+    console.print(tbl)
+
+    total_start = sum(r["start_members"] for r in data["rows"])
+    total_end   = sum(r["end_members"]   for r in data["rows"])
+    net = total_end - total_start
+    net_color = "green" if net >= 0 else "red"
+    console.print(
+        Panel(
+            f"Total members — Start: [bold]{total_start:,}[/bold]  "
+            f"End: [bold]{total_end:,}[/bold]  "
+            f"Net: [{net_color}]{net:+,}[/{net_color}]",
+            title="Period Summary",
+            border_style="dim",
+        )
+    )
+    console.print(
+        "[dim]Note: counts are bitmap snapshots from ads_das_custs_tier_distribution_d. "
+        "Net change includes new enrollments, upgrades, downgrades, and churn.[/dim]"
+    )
+
+
+@app.command("tier-transitions")
+def members_tier_transitions(
+    period: str = typer.Option("30d", "--period", "-p", help="Time period: 7d/30d/90d/365d"),
+    from_date: str = typer.Option(None, "--from", help="Start date YYYY-MM-DD (overrides --period)"),
+    to_date: str   = typer.Option(None, "--to",   help="End date YYYY-MM-DD (overrides --period)"),
+    output: str    = typer.Option(None, "--output", "-o", help="Export to JSON file"),
+) -> None:
+    """Show net membership change per tier over a period (MCP only).
+
+    Compares two bitmap snapshots from ads_das_custs_tier_distribution_d
+    (one at period start, one at end) to show which tiers gained or lost members.
+    Net change = new enrollments + upgrades into tier - downgrades - churn.
+
+    Examples:
+        sh members tier-transitions
+        sh members tier-transitions --period=90d
+        sh members tier-transitions --from=2026-01-01 --to=2026-03-31
+    """
+    config = load_config()
+
+    if config.mode != "mcp":
+        print_error("members tier-transitions requires MCP mode")
+        raise typer.Exit(1)
+
+    try:
+        data = _mcp_tier_transitions(config, period, from_date, to_date)
+    except MCPError as e:
+        print_error(f"MCP Error: {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        print_error(f"Error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        print_error(f"Error: {e}")
+        raise typer.Exit(1)
+
+    if output:
+        from ..output.export import export_data, print_export_success
+        path = export_data(data["rows"], output)
+        print_export_success(path)
+    else:
+        _print_tier_transitions(data)
