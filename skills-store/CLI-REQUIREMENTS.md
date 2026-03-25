@@ -1,776 +1,490 @@
-# SocialHub.AI CLI — Product Requirements
+# SocialHub.AI CLI — Data Analyst Requirements
 
-**Audience:** Data analysts working on customer, campaign, loyalty, and revenue data
-**Scope:** CLI as the analyst's primary workbench within the SocialHub.AI CIP
-**Version:** 2.0
-**Date:** 2026-03-25
+## Purpose
 
----
+This document defines the product requirements for the SocialHub.AI CLI as a data analyst workbench.
 
-## The Core Idea
-
-A data analyst in a modern CRM/loyalty business is not a report generator. Their real job is to move a business through a five-stage chain:
+The goal is to support the complete analyst workflow from raw data to business decision:
 
 ```
 Data  →  Semantics  →  Analysis  →  Decision  →  Execution Feedback
 ```
 
-At each stage they are providing a different form of value:
+At each stage the analyst needs a different form of support:
 
-| Stage | What the analyst produces | Without the CLI |
-|---|---|---|
-| **Data** | Verified numbers from the right source | Manual SQL on unfamiliar tables |
-| **Semantics** | Shared definitions everyone agrees on | Tribal knowledge; metric inconsistency |
-| **Analysis** | Explanation of what happened and why | One-off charts; no trace |
-| **Decision** | Evidence-backed recommendation | Verbal opinion; no supporting structure |
-| **Execution Feedback** | Did the action work? | Post-hoc guess; attribution gap |
+- **Data**: verified, consistently defined numbers from the right source layer
+- **Semantics**: shared metric definitions; no tribal knowledge required
+- **Analysis**: reproducible, explainable outputs with full SQL visibility
+- **Decision**: AI-synthesized findings with supporting evidence, not just charts
+- **Execution Feedback**: post-campaign measurement that closes the loop
 
-The CLI must support all five stages — not just the middle one.
+This document guides product planning, command design, and acceptance criteria.
 
 ---
 
-## Who This Is For
+## Context
 
-### The Analyst Profile
+### Current baseline
 
-This document is written from the perspective of a single user type: the **data analyst** at a retail or e-commerce company running CRM and loyalty programs on SocialHub.AI.
+Already implemented:
+
+- Analytics commands covering customers, orders, coupons, points, messaging, campaigns, loyalty
+- Schema explorer with domain map, table explain, field dictionary, metric definitions
+- AI synthesis via `analytics diagnose` and natural-language smart mode
+- Run history with full SQL trace and rerun capability
+- Report templates: weekly, monthly, campaign post-mortem, loyalty review
+- Statistical anomaly detection on daily business metrics
+- DWS-first query policy with transparent fallback notation
+
+### Key observation
+
+The CLI has solid coverage for individual analytical questions. The gaps are in the higher-order workflow:
+
+- No structured path from "I have a finding" to "here is my recommendation"
+- Campaign effectiveness still requires manual cross-referencing of multiple outputs
+- Churn signal construction requires combining several commands with no guided flow
+- Decision-support synthesis lacks contextual scoping by the analyst
+
+---
+
+## Target user
+
+### Primary user: Data Analyst
+
+This document is written for a single user type: the data analyst at a retail or e-commerce company running CRM and loyalty programs on SocialHub.AI.
 
 This analyst:
 
 - Is comfortable in a terminal and writes SQL at a working level
 - Is the person the business calls when a number looks wrong, a campaign needs validating, or a strategic decision requires evidence
-- Produces outputs consumed by marketing managers, loyalty teams, finance, and the CEO — but is not themselves the decision-maker
+- Produces outputs consumed by marketing managers, loyalty teams, finance, and senior leadership — but is not the decision-maker
 - Works across customer, campaign, coupon, points, and messaging data daily
 - Has no tolerance for clicking through dashboards to answer questions that should take one command
 
-Their real frustration is not that analysis is hard. It is that **the infrastructure around analysis is broken**:
+### Out of scope
 
-- The same metric is computed differently in different reports
-- Running the same query twice produces different numbers with no explanation why
-- Insight dies in a Slack message because there is no way to turn it into a scheduled, reproducible artifact
-- The analyst knows the answer but has no formal way to attach it to the decision it supports
-
----
-
-## Part I — Management Decision Analytics
-
-> **Core goal: Answer one question — is the business healthy, and does something need to change?**
-
-This is the top of the chain. The analyst is producing the signal that tells management whether to act. It must be fast, consistent, and comparable across time.
+- Platform engineers managing the warehouse
+- Campaign managers executing campaigns
+- Admin users reviewing skills in the store
+- Developers publishing skills
 
 ---
 
-### Scenario 1.1 — KPI Health Check: Is the Business on Track?
+## Product goals
 
-**Business question:** "Give me one screen that tells me whether this week is better or worse than last week, across all dimensions."
+1. Let analysts answer any recurring business question in a single command with consistent, governed results.
+2. Let analysts discover the right domain, table, and metric without reading raw schema documentation.
+3. Let analysts compose findings across domains into a structured, evidence-backed recommendation.
+4. Let analysts produce shareable artifacts — reports, CSVs, Markdown — without additional tooling.
+5. Ensure every analytical result is traceable: which tables, which SQL, which assumptions.
+6. Close the execution feedback loop: after a campaign runs, the analyst can measure what changed.
 
-The analyst runs:
+## Non-goals
 
-```sh
-sh analytics overview --period 30d
-```
-
-Output covers: GMV, order count, AOV, active customers, new customers, coupon redemption rate, points issued/consumed, message delivery rate. Each metric shows the current period value, prior period value, absolute delta, and a direction indicator (↑ ↓ →).
-
-If anything has moved more than 10% in either direction, it is highlighted. The analyst does not need to decide which metrics to check — the overview is the contract.
-
-**What the system must do:**
-- All metrics in the overview are computed from consistent definitions (see §Governance)
-- Prior period comparison uses the same-length window (30d vs prior 30d, not month-to-date vs full prior month)
-- Output renders in under 10 seconds
-- `--output weekly_pulse.md` produces a shareable Markdown artifact
+1. Replacing a BI platform or SQL notebook for exploratory modeling.
+2. Turning the CLI into an unrestricted query console without governance.
+3. Supporting arbitrary code execution against production data.
+4. Generating PPTX or PDF reports (out of scope for current phase).
 
 ---
 
-### Scenario 1.2 — Growth Structure: Where Is Growth Coming From?
+## Analyst workflow
 
-**Business question:** "GMV is up 12% but I don't know if that's sustainable. Is it new customers or returning ones? Is one channel carrying everyone else?"
+The CLI must support this seven-stage workflow end-to-end:
 
-The analyst decomposes:
-
-```sh
-sh analytics overview                          # total picture
-sh analytics orders --period 30d              # new vs returning buyer split
-sh analytics customers --source               # acquisition channel contribution
-sh analytics stores --period 30d              # is one store driving the number?
-```
-
-The `orders` output separates new-buyer GMV from returning-buyer GMV, with counts and percentages. If 90% of GMV is returning buyers and new customer acquisition is flat, the growth is a retention effect, not expansion — a very different strategic implication.
-
-**What the system must do:**
-- `orders` output includes: total GMV, order count, new buyer count/GMV, returning buyer count/GMV, new buyer share %
-- `customers --source` shows acquisition channel breakdown: channel name, new customer count, share of total new customers
-- `stores` ranks by GMV with delta vs prior period
-- All three run independently and compose naturally (no shared state or sequencing requirement)
+1. **Frame the question** — the analyst starts with a business question, not a table name
+2. **Discover the domain** — find the right data domain, tables, and metric definitions
+3. **Select the approach** — choose a command, template, or natural-language framing
+4. **Execute with visibility** — run with explainable parameters; see the SQL if needed
+5. **Interpret the result** — understand what happened and why, not just the number
+6. **Form a recommendation** — AI synthesis connects findings to a decision
+7. **Measure the outcome** — after action is taken, measure the delta
 
 ---
 
-### Scenario 1.3 — Risk Identification: Is the Promotions Cost Eroding Margins?
+## Functional requirements
 
-**Business question:** "We ran three campaigns this quarter. Did we actually generate incremental revenue, or did we give discounts to people who would have bought anyway?"
+### A. Schema discovery and semantic navigation
 
-The analyst runs:
+Analysts must be able to navigate the data warehouse without memorizing table names or layer conventions.
 
-```sh
-sh analytics coupons --period 90d --roi        # coupon cost vs attributed GMV
-sh analytics points --period 90d --breakdown   # points cost by operation type
-sh analytics campaigns --period 90d            # campaign participant conversion
-```
+#### A1. Schema search
 
-If coupon redemption rate is high but attributed GMV per redemption is close to AOV — meaning customers who used a coupon spent roughly the same as they would have anyway — that is a flag for margin erosion. The analyst builds the case with numbers, not assertions.
+Analysts search by business keyword, not table name.
 
-**What the system must do:**
-- `coupons --roi` includes: total face value issued, total redeemed, GMV in orders where a coupon was used, estimated incremental GMV (requires control group or time-based baseline)
-- `points --breakdown` shows earn vs. redeem by operation type (purchase earn, promotion earn, redeem gift, redeem coupon, expired)
-- Results are exportable to Markdown for inclusion in a strategy document
+Examples:
+- `schema search activity`
+- `schema search rfm`
+- `schema search coupon redeem`
+- `schema search pre-churn`
 
----
+Requirements:
+- match across table names, field names, and descriptions
+- return domain, layer, and a plain-language explanation of purpose
+- surface the most relevant table for a business question
 
-## Part II — Customer Intelligence
+#### A2. Table explain
 
-> **Core goal: Understand who customers are, how they are changing, and what they will do next.**
+The CLI explains any table in analyst language.
 
----
+Required output:
+- what the table is for
+- row grain
+- key dimensions and metrics
+- important caveats (e.g. bitmap fields, partitioning behavior)
+- typical use cases
+- which CLI command uses this table
 
-### Scenario 2.1 — Customer Structure: What Does the Base Look Like Today?
+#### A3. Field dictionary
 
-**Business question:** "How many real customers do we have, and are they the right kind?"
+The CLI shows field-level business meaning.
 
-```sh
-sh analytics customers --period 30d
-sh analytics customers --gender
-sh analytics customers --source
-sh members tier-distribution
-```
+Required output:
+- field type and nullable status
+- business description
+- category: dimension / metric / identifier / bitmap / control field
 
-"Real customers" is not a single number. The analyst needs to see: total registered, total who have purchased at least once, total active in the last 30 days, member vs. non-member split, tier distribution, gender breakdown. Each number tells a different story about the health of the base.
+#### A4. Domain map
 
-**What the system must do:**
-- `customers` shows: total registered, total buyers (period), active buyers (period), member vs. registered split
-- `customers --gender` shows gender distribution with share % (from `ads_das_custs_gender_distribution_d`)
-- `customers --source` shows acquisition channel breakdown (from `ads_das_custs_source_analysis_d`)
-- `members tier-distribution` shows headcount and share per tier, with period-over-period delta
+The CLI groups warehouse assets by business domain.
 
----
+Required domains:
+- activity (campaign / canvas)
+- customer
+- order / transaction
+- coupon
+- points
+- messaging
+- recommendation
 
-### Scenario 2.2 — Lifecycle Analysis: Where Do Customers Fall Off?
+#### A5. Metric definitions
 
-**Business question:** "We have a lot of new customers every month. Why aren't they becoming loyal?"
+The CLI surfaces standardized definitions for all business metrics.
 
-The analyst maps the lifecycle:
-
-```sh
-sh analytics funnel --period 90d
-sh analytics retention --days 7,14,30,60,90
-sh analytics ltv --period 365d
-```
-
-`funnel` shows the headcount at each stage: New → First Purchase → Repeat → Loyal → At-Risk → Churned. The analyst looks for the largest relative drop — if 40% of new customers never make a first purchase, that is an acquisition quality problem. If 60% of first-time buyers never buy again, that is an onboarding problem. They are different decisions.
-
-`retention` shows the cohort survival curve. If 30-day retention is 45% but 60-day is 43%, retention stabilizes quickly — which means re-engagement campaigns need to fire in the first 30 days, not later.
-
-**What the system must do:**
-- `funnel` shows: headcount and % of prior stage at each lifecycle stage, with period-over-period comparison
-- `retention` shows: cohort size, retained count, and retention % for each day window provided
-- `ltv` shows: average GMV per customer by first-order month cohort, enabling trend comparison across cohorts
-- All three commands support `--output` for Markdown or CSV export
+Requirements:
+- `schema metrics` lists all canonical metric definitions
+- `schema metrics <name>` explains one metric: definition, formula, filters, source table
+- Skills must not silently use different definitions
 
 ---
 
-### Scenario 2.3 — Customer Value: Who Are the High-Value Customers?
+### B. Business performance monitoring
 
-**Business question:** "If I had to protect one group of customers at all costs, who would it be?"
+Analysts need a consistent, fast view of business health across all domains.
 
-```sh
-sh analytics rfm                              # RFM segment distribution
-sh analytics rfm --segment high_value --top 50  # top 50 highest-scoring customers
-sh members top --limit 50                     # top members by lifetime spend
-```
+#### B1. Business overview
 
-`rfm` shows the segment distribution: how many customers are in each RFM bucket, their average spend, average order frequency, and average recency. The analyst immediately sees whether the "high value" segment is growing or shrinking quarter-over-quarter.
+A single command covers all major KPIs for a given period.
 
-`rfm --top 50` lists the actual customers at the top of the scoring distribution — the ones a loyalty team should be calling, not emailing.
+Required output:
+- GMV, order count, AOV
+- active customers, new customers
+- coupon redemption rate
+- points issued and consumed
+- message delivery rate
 
-**What the system must do:**
-- `rfm` segments are based on consistent R/F/M scoring definitions (see §Governance)
-- `rfm --segment <code>` filters to a specific segment bucket
-- `rfm --top N` lists customers ranked by combined RFM score with recency, frequency, and monetary values
-- `members top` ranks members by lifetime spend (`dws_customer_base_metrics`) with tier, last order date, and total orders
+Requirements:
+- current period vs prior same-length period, with delta and direction indicator
+- metrics exceeding 10% delta are highlighted
+- all metrics use canonical definitions (see §Governance)
+- runs in under 10 seconds
 
----
+#### B2. Statistical anomaly detection
 
-### Scenario 2.4 — Churn and Retention: Who Is About to Leave?
+The system detects abnormal movement in daily business metrics.
 
-**Business question:** "Which customers are showing early warning signs of churn, and what does their behavior look like before they leave?"
+Requirements:
+- covers minimum 7 metrics: GMV, order count, new customers, message failure rate, coupon redemption count, points issued, coupon-linked GMV
+- uses mean ± 2σ baseline from the prior 30 days
+- output ranks anomalies by deviation magnitude
+- each anomaly shows: metric name, today's value, baseline range, first deviation date
+- if no anomalies exist: output is one line
 
-```sh
-sh analytics funnel                           # how many are in at-risk stage today
-sh analytics retention --days 30,60,90       # how quickly does active → silent happen?
-sh analytics points --expiring-days 30 --at-risk-members --output churn_risk.csv
-```
+#### B3. AI diagnosis
 
-The `--at-risk-members` output is an action artifact — a list of customer codes that the campaign team can immediately import into a segment for a re-engagement campaign. The analyst is not just explaining churn; they are handing off a target list.
+The system synthesizes findings across all domains into a business health assessment.
 
-**What the system must do:**
-- `funnel` shows pre-churn and churned headcount with % of total active base
-- `points --at-risk-members` exports: customer code, points balance, expiry date, last order date — sorted by urgency
-- The exported CSV is directly importable into the segmentation tool without column remapping
-
----
-
-## Part III — Revenue and Transaction Analytics
-
-> **Core goal: Understand where money comes from and what drives it.**
-
----
-
-### Scenario 3.1 — Sales Structure Decomposition
-
-**Business question:** "We know total GMV. Now break it apart until we find the driver."
-
-```sh
-sh analytics orders --period 30d
-sh analytics orders --period 30d --by store
-sh analytics products --period 30d
-sh analytics repurchase --period 90d
-```
-
-The analyst decomposes revenue layer by layer: total → by store → by product category → by customer type (new vs. returning). At each layer they are looking for concentration risk and growth drivers. If one store accounts for 60% of GMV, that is a strategic risk. If one product category accounts for 80% of repeat purchases, that is a retention lever.
-
-**What the system must do:**
-- `orders` output: GMV, order count, AOV, new buyer GMV %, returning buyer GMV %
-- `orders --by store` ranks stores by GMV, order count, unique customers, repeat rate
-- `products` ranks categories and products by revenue and order count, with delta vs prior period
-- `repurchase` shows: repurchase rate %, average days to second order, GMV contribution by first-time vs. repeat buyers
+Requirements:
+- `analytics diagnose` runs all major analytics commands internally
+- output is structured: Observation → Evidence → Interpretation → Recommended next command
+- identifies top 1–3 actionable findings, not a list of all metrics
+- analyst can scope synthesis: `analytics diagnose --context "<free text>"`
+- the AI cites only numbers produced by commands run in the same session
+- completes in under 45 seconds
 
 ---
 
-### Scenario 3.2 — Purchase Behavior Analysis
+### C. Customer analytics
 
-**Business question:** "How many times do customers buy per year? Is that number going up or down?"
+Analysts need to understand who customers are, how they are changing, and where they fall off.
 
-```sh
-sh analytics repurchase --period 365d
-sh analytics repurchase-path --period 180d
-sh analytics ltv --period 365d
-```
+#### C1. Customer base metrics
 
-`repurchase-path` shows the product category transition from first to second order — the categories that most reliably bring customers back. If "home goods" buyers return to "apparel" at a 40% rate but "apparel" buyers only return at 12%, the cross-sell direction matters for campaign design.
+Required output:
+- total registered, total buyers, active buyers, member vs non-member split
+- period-over-period delta for each
 
-**What the system must do:**
-- `repurchase` shows: % who bought more than once, median days to second order, distribution of days by decile
-- `repurchase-path` shows: first-order category → second-order category transition matrix with frequency counts
-- Results include sample size so the analyst can assess statistical reliability
+#### C2. Acquisition source analysis
 
----
+Required output:
+- acquisition channel breakdown: channel name, new customer count, share of total
+- period filter support
 
-### Scenario 3.3 — Returns and Loss Analysis
+#### C3. Gender distribution
 
-**Business question:** "Our net revenue is lower than gross. How much is returns? Which channels or products are driving it?"
+Required output:
+- gender breakdown with share %
+- snapshot at latest available date
 
-```sh
-sh analytics orders --period 30d --returns
-sh analytics products --period 30d --returns
-```
+#### C4. Tier distribution
 
-The `--returns` flag includes return orders (direction=1) in the analysis. The analyst sees: return rate by channel, return rate by product category, and the net GMV impact. A high return rate in one category against a low return rate in another tells a product quality story that becomes a sourcing decision input.
+Required output:
+- headcount and share per loyalty tier
+- period-over-period delta
 
-**What the system must do:**
-- `orders --returns` shows: gross orders, return orders, return rate %, net GMV, return GMV by channel
-- `products --returns` shows return rate per product/category alongside gross revenue
-- Return rate thresholds can be set per command run for highlighting (default: >10% flagged)
+#### C5. Customer lifecycle funnel
 
----
+Required output:
+- headcount at each stage: New → First Purchase → Repeat → Loyal → At-Risk → Churned
+- conversion rate from each stage to the next
+- period-over-period comparison
 
-## Part IV — Marketing Effectiveness Analytics
+#### C6. Retention analysis
 
-> **Core goal: Answer the honest question — did the marketing spend actually work?**
+Required output:
+- cohort survival at configurable day windows (e.g. 7, 14, 30, 60, 90)
+- cohort size and retained count per window
 
-This is where most analytics teams fail. They measure activity (sends, clicks) instead of outcomes (incremental GMV, retained customers).
+#### C7. RFM segmentation
 
----
+Required output:
+- segment distribution: headcount, average spend, average frequency, average recency per bucket
+- `--segment <code>` to filter to a specific bucket
+- `--top N` to list top-scoring customers with recency, frequency, monetary values
 
-### Scenario 4.1 — Campaign Funnel Analysis
+#### C8. Cohort-based LTV
 
-**Business question:** "We sent 80,000 messages. How many became orders? Where did we lose people?"
-
-```sh
-sh analytics campaigns --roi --campaign-id ACT2024Q4
-sh analytics campaigns --canvas ACT2024CANVAS01
-sh analytics report campaign --campaign-id ACT2024Q4 --output postmortem.md
-```
-
-`campaigns --roi` shows the full conversion funnel: participants entered → messages delivered → messages opened → coupons redeemed → orders placed → GMV. Each step shows the absolute count and the conversion rate from the prior step.
-
-`campaigns --canvas` shows the per-node breakdown for journey campaigns: at each step, how many customers touched that node, how many passed it, and how many received a reward. The analyst identifies the specific node where most customers dropped off.
-
-**What the system must do:**
-- Campaign funnel covers all linked channels (SMS, WeChat, email, push) in a single view
-- Per-node drop-off is calculated as (entered node − passed node) / entered node
-- Attribution window is configurable (`--window 14` for 14-day post-campaign purchase window)
-- Post-mortem Markdown report is structured for direct inclusion in a management review
+Required output:
+- average GMV per customer grouped by first-order month cohort
+- enables trend comparison across cohorts
 
 ---
 
-### Scenario 4.2 — Coupon Effectiveness: Real Lift or Just Discount?
+### D. Revenue and transaction analytics
 
-**Business question:** "We issued 12,000 coupons last month. Did they drive incremental orders, or did we discount existing intent?"
+Analysts need to decompose where revenue comes from and what drives change.
 
-```sh
-sh analytics coupons --period 30d
-sh analytics coupons --period 30d --roi
-sh analytics coupons --period 30d --anomaly
-```
+#### D1. Order metrics
 
-The analyst looks at: redemption rate (were coupons used?), face value vs. GMV in coupon-attributed orders (was the discount worth it?), and whether redemption rate spiked abnormally on certain days (a signal of misuse or reselling).
+Required output:
+- GMV, order count, AOV, item quantity
+- new buyer vs returning buyer split: count, GMV, share %
+- campaign-linked order share vs organic
 
-`coupons --anomaly` runs mean ± 2σ detection on daily redemption counts. A spike that is 3 standard deviations above baseline on a weekend, with no campaign active, is a reselling signal.
+#### D2. Store-level performance
 
-**What the system must do:**
-- `coupons` base output: issued, redeemed, expired, redemption rate %, total face value, attributed GMV
-- `coupons --roi` adds per-rule breakdown: which coupon rules have the best GMV-to-face-value ratio
-- `coupons --anomaly` shows daily redemption counts with SPIKE / OK flags and identifies abnormal dates
+Required output:
+- per-store: GMV, order count, unique customers, repeat purchase rate
+- ranked by GMV with delta vs prior period
 
----
+#### D3. Product and category analysis
 
-### Scenario 4.3 — Points Program Health
+Required output:
+- revenue and order count by product category and product
+- delta vs prior period
 
-**Business question:** "Is our points program healthy, or are we accumulating liability without driving behavior?"
+#### D4. Repurchase analysis
 
-```sh
-sh analytics points --period 30d
-sh analytics points --daily-trend --period 90d
-sh analytics points --breakdown
-sh analytics points --expiring-days 30
-sh analytics loyalty
-```
+Required output:
+- repurchase rate %
+- median days from first to second order
+- distribution of first-to-second order timing by decile
 
-`points --breakdown` shows earn vs. redeem by operation type. If 80% of points are earned through purchases but only 20% are ever redeemed, the program has a low perceived value problem — customers are not motivated by points. If redemption is high but almost all redeems go to discounts (not experiences), that signals a transactional program that does not build loyalty.
+#### D5. Return analysis
 
-**What the system must do:**
-- `points` base: earned, redeemed, expired, net balance, redemption rate, active members
-- `points --daily-trend` shows day-by-day earn vs redeem bars across the period
-- `points --breakdown` shows earn/redeem split by operation type with counts and share %
-- `points --expiring-days N` shows: total expiring, estimated CNY value, affected members
-- `loyalty` shows points liability in CNY equivalent alongside enrollment and tier metrics
+When `--returns` flag is used:
+- return rate by channel and product category
+- gross GMV, return GMV, net GMV impact
+- return rate above threshold (default >10%) is flagged
 
 ---
 
-### Scenario 4.4 — Channel Reach Quality
+### E. Marketing effectiveness analytics
 
-**Business question:** "Which channels are actually reaching customers, and which ones are wasting send budget?"
+Analysts need honest answers to whether marketing spend drove incremental outcomes.
 
-```sh
-sh messages health --period 30d
-sh messages health --trend --period 30d
-sh messages template-stats --period 30d --limit 30
-sh messages attribution --period 30d --window 7
-```
+#### E1. Campaign funnel analysis
 
-`messages health` ranks channels by failure rate, open rate, and click rate. A channel with 98% delivery but 0.3% open rate means messages are arriving but being ignored — a content or audience-fit problem. A channel with 15% failure rate is an infrastructure problem.
+Required output:
+- participants entered → messages delivered → messages opened → coupons redeemed → orders placed → GMV
+- conversion rate at each step
+- attribution window configurable (`--window N` days)
 
-`messages attribution` answers the hardest question: did message recipients actually buy more? It compares the purchase rate of messaged customers vs. a baseline, within the attribution window.
+#### E2. Canvas per-node journey analysis
 
-**What the system must do:**
-- `health` shows channel-level metrics with threshold flags: failure > 5%, bounce > 2%, unsubscribe > 1%
-- `health --trend` outputs daily table with SPIKE / OK per day (mean ± 2σ on failure rate)
-- `template-stats` ranks by volume with open rate, click rate, unsubscribe rate per template and channel
-- `attribution` shows: messages sent, recipients, purchasers in window, conversion rate, attributed GMV
+Required output:
+- per-node: customers entered, customers passed, drop-off rate, rewards issued
+- identifies the node with the highest drop-off
 
----
+#### E3. Coupon effectiveness
 
-### Scenario 4.5 — A/B Test Readout
+Required output:
+- issued, redeemed, expired, redemption rate %
+- total face value, total attributed GMV
+- `--roi`: per-rule breakdown — which coupon rules have the best GMV-to-face-value ratio
+- `--anomaly`: daily redemption counts with SPIKE / OK flags
 
-**Business question:** "We ran two versions of a campaign. Which one won, and by how much?"
+#### E4. Points program health
 
-The analyst compares two campaign IDs or two segments:
+Required output:
+- points earned, redeemed, expired, net balance
+- redemption rate %
+- `--breakdown`: earn and redeem split by operation type with counts and share %
+- `--daily-trend`: day-by-day earn vs redeem chart across the period
+- `--expiring-days N`: total expiring, estimated value, affected member count
 
-```sh
-sh analytics campaigns --roi --campaign-id ACT_A
-sh analytics campaigns --roi --campaign-id ACT_B
-sh segments overlap --id1 <segment_A> --id2 <segment_B>   # confirm groups are distinct
-```
+#### E5. Message delivery quality
 
-They manually compare conversion rates, GMV per participant, and coupon cost per acquired order. The `segments overlap` check confirms the test and control groups were not contaminated (Jaccard similarity should be near 0).
+Required output:
+- per-channel: sent, delivered, failed, opened, clicked counts and rates
+- threshold flags: failure > 5%, bounce > 2%, unsubscribe > 1%
+- `--trend`: daily delivery quality with mean ± 2σ spike detection per channel
 
-**What the system must do:**
-- Campaign metrics are comparable across runs (same metric definitions, same attribution logic)
-- `overlap` output makes contamination visible: a Jaccard > 10% between test and control is flagged as a warning
-- Both campaign outputs support `--output` to produce side-by-side Markdown tables
+#### E6. Template-level messaging performance
 
----
-
-## Part V — Predictive and Intent Analytics
-
-> **Core goal: Shift from explaining the past to anticipating the future.**
-
-This is where the CLI's AI layer becomes a first-class participant, not just a formatting layer.
+Required output:
+- per-template: send volume, open rate, click rate, unsubscribe rate
+- filterable by channel and period
 
 ---
 
-### Scenario 5.1 — Purchase Intent Signals
+### F. Segment analytics
 
-**Business question:** "Which customers are showing intent to buy but haven't converted yet?"
+Analysts need to understand and work with customer segments as analytical units.
 
-```sh
-sh analytics rfm --segment high_recency_low_frequency   # recently active, not yet buying
-sh analytics funnel                                      # how many are stuck at "active not buying"
-sh analytics diagnose                                    # AI synthesis of intent signals
-```
+#### F1. Segment size trend
 
-`diagnose` runs all major analyses, passes the aggregated results to the AI, and returns a synthesized view that identifies: which cohort is most likely to convert with minimal incentive, which cohort needs a stronger trigger, and which is unlikely to convert regardless of campaign intensity.
+Required output:
+- segment headcount over time with period-over-period delta
 
-**What the system must do:**
-- `diagnose` must identify top 1–3 actionable findings, not a list of all metrics
-- Each finding must include the supporting evidence (which metric, which direction, which magnitude)
-- The output ends with a "Recommended actions" section listing specific CLI commands the analyst should run next
-- `diagnose` completes in under 45 seconds
+#### F2. Segment purchase behavior
 
----
+For a given segment, analyze its members as a purchasing cohort.
 
-### Scenario 5.2 — Churn Risk Prediction
+Required output:
+- buy rate, GMV, AOV, orders per buyer within a configurable period
+- top buyers list
+- labeled as "sampled" if segment exceeds safe query size
 
-**Business question:** "Which active customers are most likely to churn in the next 30 days?"
+#### F3. Segment overlap
 
-```sh
-sh analytics funnel                              # current at-risk headcount
-sh analytics retention --days 30,60             # how fast does active → churn happen?
-sh analytics points --expiring-days 30 \
-  --at-risk-members --output churn_candidates.csv
-sh analytics rfm --segment at_risk
-```
-
-The combination of "points expiring soon" + "in at-risk RFM segment" + "no purchase in 45 days" is a strong churn signal composite. The analyst builds the case layer by layer and exports the intersection as a target list.
-
-**What the system must do:**
-- `--at-risk-members` export includes: customer code, tier, points balance, expiry date, last order date, RFM segment
-- The analyst can combine outputs from multiple commands using customer code as the join key in their own tools
-- Export format is CSV by default and JSON with `--output file.json`
+Required output:
+- shared member count between two segments
+- Jaccard similarity coefficient
+- Jaccard > 10% flagged as a warning (relevant for A/B test contamination checks)
 
 ---
 
-### Scenario 5.3 — Promotion Dependency Detection
+### G. Predictive and decision support
 
-**Business question:** "Are we training customers to only buy when there is a discount?"
+Analysts need to move from explaining the past to supporting forward decisions.
 
-```sh
-sh analytics orders --period 180d               # order volume trend
-sh analytics coupons --period 180d --roi        # how much of GMV has a coupon attached?
-sh analytics campaigns --period 180d            # what % of orders are campaign-linked?
-sh analytics diagnose
-```
+#### G1. Churn risk target list
 
-If GMV is flat on non-campaign weeks but spikes sharply during promotions, the business is creating purchase dependency. The analyst quantifies this: "62% of orders in the last quarter were placed by customers who used a coupon or were enrolled in an active campaign."
+Required output:
+- export: customer code, tier, points balance, expiry date, last order date, RFM segment
+- sorted by urgency
+- directly importable into the segmentation tool without column remapping
 
-**What the system must do:**
-- `orders` output includes: campaign-linked order % vs. non-campaign order %
-- `diagnose` specifically checks for promotion dependency pattern (high campaign-linked share + flat non-campaign baseline) and flags it as a risk
-- Output includes a definition of the detection logic so the finding is auditable
+#### G2. Promotion dependency detection
 
----
+The system identifies whether customers are conditioned to buy only during promotions.
 
-### Scenario 5.4 — Customer Upgrade / Downgrade Prediction
+Requirements:
+- `analytics diagnose` checks: campaign-linked order share, non-campaign GMV baseline, coupon attach rate
+- flags promotion dependency when campaign-linked share is high and non-campaign baseline is flat
+- detection logic is stated explicitly in output so findings are auditable
 
-**Business question:** "Which Silver members are close to upgrading to Gold, and which Gold members are at risk of dropping?"
+#### G3. Contextual AI synthesis for decisions
 
-```sh
-sh members tier-distribution
-sh members tier-transitions --period 90d
-sh analytics rfm --segment silver_high_frequency
-```
-
-`tier-transitions` shows the flow between tiers — how many customers moved up, stayed, and fell down last quarter. Combined with the `rfm` filter, the analyst identifies the Silver members whose spend is tracking toward Gold threshold but who have not been incentivized to cross it.
-
-**What the system must do:**
-- `members tier-transitions` shows: upgrade count, downgrade count, stable count per tier, and net flow
-- Transition data is period-filterable to identify whether the trend is improving or worsening
-- Combined with RFM filter, the analyst can produce a "near-threshold" member list for targeted incentive design
+Required capabilities:
+- `analytics diagnose --context "<free text>"` scopes the AI synthesis to a specific decision
+- AI output when given a comparison question is structured: Option A vs Option B, assumptions stated, recommendation with confidence
+- AI identifies when it lacks sufficient data and names what additional analysis is needed
+- recommended output includes specific CLI commands for the analyst to run next
 
 ---
 
-## Part VI — Decision Intelligence
+### H. Report templates and recurring outputs
 
-> **Core goal: Move from analysis to recommendation. The analyst is a decision partner, not a report printer.**
+Analysts produce recurring deliverables that must be consistent across runs.
 
----
+#### H1. Standard report templates
 
-### Scenario 6.1 — Strategy Attribution
+Required templates:
+- `analytics report weekly` — all domains, period-over-period, Markdown output
+- `analytics report monthly` — same coverage as weekly with monthly grain
+- `analytics report campaign --campaign-id <id>` — audience, messages, coupons, GMV, canvas funnel if applicable
+- `analytics report loyalty` — enrollment, tier distribution, points liability, program health
 
-**Business question:** "Last quarter we ran three campaigns, changed the coupon policy, and increased points multipliers. Which of these actually drove the improvement in retention?"
+Requirements:
+- every report includes a metadata footer: run time, period covered, data source, command used
+- `--output <file.md>` produces a shareable artifact
+- `--insights on` appends AI commentary when notable findings exist
 
-```sh
-sh analytics report campaign --campaign-id Q3_REENG
-sh analytics report campaign --campaign-id Q3_NEWMEMBER
-sh analytics report loyalty --period 90d
-sh analytics diagnose
-```
+#### H2. Scheduled execution
 
-The analyst builds a timeline: when each initiative launched, what changed in the metrics, and whether the timing is consistent with the hypothesized cause. `diagnose` runs the synthesis and identifies which initiative correlates most strongly with the metric improvement.
-
-**What the system must do:**
-- All report outputs include exact date ranges so the analyst can align them with initiative timelines
-- `diagnose` output explicitly mentions which metrics changed and in which time window relative to campaign launches
-- The analyst can pass a natural language context string to `diagnose`: `sh analytics diagnose --context "Q3 ran three campaigns and points multiplier change in August"`
-
----
-
-### Scenario 6.2 — Scenario Comparison
-
-**Business question:** "Should we issue more coupons or increase points multipliers to hit the retention target? Which has better ROI?"
-
-```sh
-sh analytics coupons --period 90d --roi
-sh analytics points --period 90d --breakdown
-sh analytics loyalty --period 90d
-sh ai chat "Compare the ROI of coupon campaigns vs points multiplier programs based on the last 90 days of data"
-```
-
-The analyst uses the AI chat interface for the synthesis question — not because the AI knows the answer, but because it can reason over the outputs of the three previous commands and produce a structured comparison. The analyst verifies the inputs and the logic before presenting.
-
-**What the system must do:**
-- `ai chat` is available as an explicit analytical conversation layer, not just a routing tool
-- When given a comparison question, `ai chat` structures the response as: Metric A (coupon path) vs. Metric B (points path), assumptions stated, recommendation with confidence
-- The AI identifies when it does not have enough data to compare and tells the analyst what additional analysis is needed
+Requirements:
+- scheduled tasks persist across sessions and survive terminal restarts
+- failed scheduled runs log the error and are visible in `heartbeat list`
+- `--insights on` on a scheduled run only appends AI commentary when anomalies are present
 
 ---
 
-### Scenario 6.3 — Budget and Investment Prioritization
+### I. Analysis infrastructure
 
-**Business question:** "We have budget for one re-engagement campaign this quarter. Should we target pre-churn customers, lapsing Gold members, or new customers who haven't made a second purchase?"
+#### I1. Run history and reproducibility
 
-```sh
-sh analytics funnel                               # how many in each cohort?
-sh analytics retention --days 30,60,90           # which cohort responds best?
-sh analytics rfm --segment pre_churn
-sh analytics rfm --segment new_buyer_no_repeat
-sh members tier-distribution                     # Gold lapsing count
-sh analytics diagnose --context "Evaluating three re-engagement target cohorts for Q2 budget"
-```
+Every analytics run is logged automatically.
 
-The analyst quantifies each cohort: size, estimated conversion rate based on historical response, revenue per convert, and estimated cost (coupon + message cost per person). `diagnose` synthesizes into a prioritized recommendation with the reasoning visible.
+Required metadata:
+- run ID, timestamp, command, arguments, full SQL trace, execution time, output artifact path
 
-**What the system must do:**
-- `diagnose --context` accepts a free-text string that scopes the AI synthesis
-- Synthesized recommendation includes: recommended cohort, estimated reach, expected conversion rate basis, estimated GMV lift
-- All estimates are flagged as estimates with the methodology stated (e.g., "based on prior campaign conversion rates from analytics campaigns history")
+Required operations:
+- `history list` — show recent runs
+- `history show <run_id>` — full output including SQL trace
+- `history rerun <run_id>` — re-execute identically
 
----
+#### I2. Output formats
 
-### Scenario 6.4 — Risk Assessment Before a Campaign Launch
+All analytics commands support:
+- `--output file.md` — Markdown report
+- `--output file.csv` — CSV export
+- `--output file.json` — JSON structured output
 
-**Business question:** "Before we launch this win-back campaign with heavy discounts, what could go wrong?"
+#### I3. Natural-language routing
 
-```sh
-sh analytics coupons --period 180d --anomaly     # any prior misuse patterns?
-sh analytics customers --source                  # is the target cohort from a low-quality source?
-sh analytics diagnose --context "Assessing risk of a heavy-discount win-back campaign on pre-churn segment"
-```
+Analysts can ask questions in business language.
 
-`diagnose` in risk-assessment mode looks for: prior coupon abuse signals, segments with high return rates (discount seekers), channels with high unsubscribe rates (message fatigue risk), and whether the target cohort has responded well to prior campaigns.
+Examples:
+- `sh which customers haven't bought in 90 days but still have active points`
+- `sh show me the campaigns with the worst ROI last quarter`
 
-**What the system must do:**
-- `diagnose` recognizes risk-assessment context and structures output as: Identified risks, Evidence, Mitigation options
-- Risk output is exportable to Markdown for inclusion in a campaign brief
+Requirements:
+- the CLI shows the commands it plans to run — never executes silently
+- for multi-step questions, proposes a numbered plan and waits for confirmation
+- produces identical output to running the mapped command directly
+- asks for missing parameters when the question is underspecified
 
----
+#### I4. SQL visibility
 
-## Part VII — Real-Time Operations Monitoring
-
-> **Core goal: Catch the problem while there is still time to act.**
-
----
-
-### Scenario 7.1 — Anomaly Detection: Something Just Broke
-
-**Business question:** "We launched a campaign two hours ago. Is anything behaving abnormally?"
-
-```sh
-sh analytics anomaly --period 7d
-sh messages health --trend --period 7d
-sh analytics coupons --period 7d --anomaly
-```
-
-`analytics anomaly` scans all daily metrics and flags those more than 2 standard deviations from baseline. If message failure rate spiked today, or coupon redemptions are 4× normal, the analyst sees it in one command.
-
-**What the system must do:**
-- `anomaly` covers: GMV, order count, new customers, message failure rate, coupon redemption count, points issued — minimum 7 metrics
-- Output ranks anomalies by deviation magnitude (most severe first)
-- Each anomaly includes: metric name, today's value, baseline range (mean ± 2σ), first anomaly date
-- If no anomalies exist: output is one line — no scrolling through empty results
-
----
-
-### Scenario 7.2 — Live Campaign Monitoring
-
-**Business question:** "Our campaign has been live for 3 days. Is it performing as expected at the halfway point?"
-
-```sh
-sh analytics campaigns --roi --campaign-id ACT2024Q4
-sh messages health --period 3d
-sh analytics coupons --period 3d
-```
-
-The analyst compares mid-campaign actuals against the pre-campaign plan. If message delivery is 94% but open rate is 40% below the historical benchmark for this channel, the campaign creative may need adjustment while there is still time.
-
-**What the system must do:**
-- All campaign analytics commands work on partial date ranges (the campaign does not need to be over)
-- `campaigns --roi` shows progress against estimated targets if a target was configured at campaign creation
-- Results can be compared to a prior campaign with `--compare-to <campaign_id>`
-
----
-
-### Scenario 7.3 — Scheduled Anomaly Alerting
-
-**Business question:** "I don't want to run anomaly detection manually every morning. Alert me when something is wrong."
-
-```sh
-sh heartbeat schedule \
-  --name "Daily Anomaly Alert" \
-  --cron "0 8 * * *" \
-  --command "analytics anomaly --period 7d --output ~/alerts/anomaly_$(date +%Y%m%d).md" \
-  --insights on
-```
-
-If the scheduled run detects anomalies, `--insights on` appends an AI-written summary: "Two metrics flagged today: message failure rate is 3.2σ above baseline (first deviation: yesterday at 14:00), and coupon redemptions on WeChat are 2.7σ above baseline. Possible causes: ..."
-
-**What the system must do:**
-- Scheduled tasks persist across sessions and survive terminal restarts
-- `--insights on` only appends AI commentary when anomalies are present (no output on clean days unless `--always-comment` is set)
-- Failed scheduled runs log the error; the analyst sees failure in `sh heartbeat list`
-
----
-
-## Part VIII — Analysis Modes
-
-The scenarios above can be approached in four different ways depending on the analyst's goal and time budget.
-
-### Mode 1 — Structured Command (Primary)
-
-Used when the analyst knows what they want. Direct, fast, scriptable.
-
-```sh
-sh analytics orders --period 30d --output orders.csv
-sh analytics rfm --segment high_value --top 20
-sh segments analyze 12345 --period 90d
-```
-
-Every command has `--period`, `--output`, and `--format` options. Results are reproducible. SQL is inspectable via `--show-sql` or `sh history show`.
-
-### Mode 2 — Natural Language (For Exploration)
-
-Used when the analyst has a business question but does not know which command maps to it.
-
-```sh
-sh which customers haven't bought in 90 days but still have active points
-sh show me the campaigns with the worst ROI last quarter
-sh why did new customer acquisition drop in February
-```
-
-The CLI routes these to AI smart mode. The AI maps the intent to CLI commands, shows the plan, waits for confirmation, and executes. The analyst learns the commands by watching the AI use them.
-
-**Requirements for natural language mode:**
-- Always shows the command it plans to run — never executes silently
-- Produces the same output as if the analyst had typed the command directly
-- For multi-step questions, proposes a numbered plan with one confirmation before starting
-
-### Mode 3 — Report Templates (For Recurring Deliverables)
-
-Used for predictable, scheduled outputs.
-
-```sh
-sh analytics report weekly --output weekly_$(date +%Y%m%d).md
-sh analytics report campaign --campaign-id ACT2024Q4 --output postmortem.md
-sh analytics report loyalty --period 30d --output loyalty_review.md
-```
-
-Report templates have fixed structures agreed upon by the business. The analyst does not design the layout each time — they run the command and get a consistent, shareable artifact.
-
-**Requirements for report mode:**
-- Weekly and monthly reports cover all major domains (customers, orders, coupons, points, messages, campaigns)
-- Campaign post-mortem covers audience, messages, coupons, GMV attribution, canvas funnel (if applicable)
-- All reports include a metadata footer: run time, period covered, database source, command used
-
-### Mode 4 — AI Synthesis (For Decision Support)
-
-Used when the analyst needs to connect findings across multiple domains into a recommendation.
-
-```sh
-sh analytics diagnose
-sh analytics diagnose --context "Evaluating Q2 re-engagement strategy options"
-sh ai chat "What is the most likely explanation for the GMV decline given the analysis I just ran?"
-```
-
-AI synthesis is the top of the chain. It consumes outputs from Modes 1–3 and produces a structured recommendation with explicit evidence. The analyst validates the evidence, not the AI's conclusion.
-
-**Requirements for synthesis mode:**
-- `diagnose` runs all major analytics commands internally and passes aggregates to the AI
-- AI output is structured: Observation → Evidence → Interpretation → Recommended next command
-- The AI never fabricates numbers; all figures it cites come from commands run in the same session
-
----
-
-## Functional Requirements Summary
-
-### Core Analytics
-
-| Ref | Capability | Priority |
-|---|---|---|
-| A-01 | Business overview with period-over-period across all domains | P0 |
-| A-02 | Statistical anomaly detection (mean ± 2σ) on ≥ 7 daily metrics | P0 |
-| A-03 | AI-synthesized diagnosis with evidence + recommendations | P0 |
-| A-04 | Customer lifecycle funnel (6 stages) | P0 |
-| A-05 | Customer retention by configurable cohort windows | P0 |
-| A-06 | RFM segment distribution with spend/frequency/recency | P0 |
-| A-07 | Orders: GMV, AOV, new vs. returning buyer split | P0 |
-| A-08 | Repurchase rate and first-to-second order timing | P1 |
-| A-09 | Product and category revenue ranking with delta | P1 |
-| A-10 | Store-level performance: revenue, ATV, unique customers | P1 |
-| A-11 | Cohort-based LTV by first-order month | P1 |
-| A-12 | Customer acquisition source breakdown | P1 |
-| A-13 | Campaign funnel: participants → messages → redemptions → GMV | P0 |
-| A-14 | Canvas per-node journey funnel with drop-off rates | P0 |
-| A-15 | Coupon: issued/redeemed/expired + ROI breakdown per rule | P0 |
-| A-16 | Coupon anomaly detection (daily redemption spikes) | P1 |
-| A-17 | Points: earned/redeemed/expired + expiry risk + daily trend | P0 |
-| A-18 | Loyalty program overview: enrollment, tier distribution, liability | P0 |
-| A-19 | Message delivery: sent/delivered/failed/opened by channel | P0 |
-| A-20 | Message daily trend with spike detection (mean ± 2σ) | P1 |
-| A-21 | Template-level open/click/unsubscribe rates | P1 |
-| A-22 | Message-to-purchase attribution within configurable window | P1 |
-| A-23 | Segment size trend over time | P1 |
-| A-24 | Segment purchase behavior analysis (cross-DB join) | P1 |
-| A-25 | Segment overlap with Jaccard similarity | P1 |
-| A-26 | Order returns breakdown by channel and category | P1 |
-| A-27 | Recommendation engine analysis | P2 |
-| A-28 | Gender distribution snapshot | P2 |
-
-### Report Templates
-
-| Ref | Capability | Priority |
-|---|---|---|
-| R-01 | Weekly and monthly business reports (all domains, Markdown output) | P0 |
-| R-02 | Campaign post-mortem (audience, messages, coupons, GMV, canvas funnel) | P0 |
-| R-03 | Loyalty program health review | P1 |
-| R-04 | All reports support `--insights on` for AI commentary | P2 |
-
-### Analysis Infrastructure
-
-| Ref | Capability | Priority |
-|---|---|---|
-| I-01 | Auto-log every analytics run (command, args, SQL trace, exec time, artifact) | P0 |
-| I-02 | Inspect any past run including full SQL trace | P0 |
-| I-03 | Re-execute any past run exactly | P0 |
-| I-04 | Natural language routing with plan display before execution | P0 |
-| I-05 | Schema explorer: domains, search, table explain, field dictionary, metrics | P0 |
-| I-06 | Scheduled task creation and management with cron | P1 |
-| I-07 | All commands support --output (CSV, JSON, Markdown) | P0 |
-| I-08 | --show-sql flag on all MCP-mode commands | P0 |
+All analytics commands support `--show-sql` to display the generated query before or alongside output.
 
 ---
 
 ## Governance
 
-### The Metric Contract
+### The metric contract
 
 Every metric computed by the CLI must match this definition. Any deviation is a bug, not a variant.
 
@@ -778,59 +492,125 @@ Every metric computed by the CLI must match this definition. Any deviation is a 
 |---|---|
 | Active customer | Placed ≥ 1 order in the analysis window |
 | Buyer | Placed ≥ 1 order in the analysis period |
+| New customer | First order date falls within the analysis period |
 | Churn | Previously active; 0 orders in last 90 days |
 | Pre-churn | Previously active; 0 orders in last 30–90 days |
-| New customer | First order date falls within the analysis period |
 | ROI | (Campaign-attributed GMV − coupon cost − points cost) / total investment |
 | Redeem rate | Coupons used ÷ coupons issued in the period |
 | Message success rate | Delivered ÷ sent |
 | Points redemption rate | Points consumed ÷ points earned in the period |
 
-`sh schema metrics` surfaces these definitions. They are the authoritative version.
+`schema metrics` is the authoritative source for all definitions.
 
-### DWS-First Query Policy
+### DWS-first query policy
 
-Commands must prefer pre-aggregated DWS/ADS layers over raw source tables. When the DWS table is available and current:
+Commands must prefer pre-aggregated summary layers over raw source tables. When a fallback to a lower layer is used, the output footer states: `"Source: <table> (preferred layer unavailable)"`. The analyst always knows which layer their number came from.
 
-- `analytics points` → `dws_points_base_metrics_d` before `dwd_member_points_log`
-- `analytics customers` → `dws_customer_base_metrics` before `dim_customer_info`
-- `analytics coupons` → `ads_das_v_coupon_analysis_d` before `dwd_coupon_instance`
-- `messages health/trend` → `dws_message_base_metrics_d` before `vdm_t_message_record`
+### SQL safety
 
-When a fallback is used, the output footer says so: "Source: dwd_member_points_log (dws fallback unavailable)". The analyst always knows which layer their number came from.
-
-### SQL Safety
-
-- All user-supplied values (IDs, dates, strings) are sanitized before inclusion in any SQL query
-- Orders queries always filter `delete_flag = 0 AND direction = 0` unless returns are explicitly requested
-- Commands never execute DDL or DML (read-only by definition)
+- All user-supplied values are sanitized before SQL inclusion
+- Order queries always filter `delete_flag = 0 AND direction = 0` unless returns are explicitly requested
+- Commands never execute DDL or DML
 
 ---
 
-## Non-Functional Requirements
+## Acceptance criteria
+
+### Schema and discovery
+
+- Analyst can search `activity`, `rfm`, `churn`, `coupon redeem` and receive a relevant table with explanation
+- Analyst can inspect any table and understand its grain without reading raw schema files
+- `schema metrics` shows canonical definitions for all 9 core business metrics
+
+### Analytics coverage
+
+- Overview command covers all 7 KPIs with period-over-period delta in under 10 seconds
+- Customer funnel shows 6 lifecycle stages with conversion rates
+- Campaign command shows full participant → message → redemption → GMV funnel
+- Anomaly detection scans ≥ 7 metrics and ranks findings by deviation magnitude
+- `analytics diagnose` returns a structured recommendation in under 45 seconds
+
+### Decision support
+
+- `analytics diagnose --context "<text>"` produces a scoped recommendation with named supporting evidence
+- Churn risk export is directly importable into the segment tool
+- A/B test contamination is visible via segment overlap Jaccard score
+
+### Reproducibility and governance
+
+- Every analytics run is logged with full SQL trace
+- Any past run can be re-executed identically via its run ID
+- SQL for any command is inspectable via `--show-sql` or `history show`
+- `schema metrics` definitions match what commands actually compute
+
+---
+
+## Prioritization
+
+### P0
+
+- Business overview with period-over-period across all domains
+- Statistical anomaly detection on daily metrics
+- AI diagnosis with scoped context support
+- Customer lifecycle funnel and retention
+- RFM segmentation
+- Campaign funnel including canvas per-node
+- Order metrics with new vs returning buyer split
+- Coupon and points analytics
+- Message delivery quality
+- Schema explorer (search, explain, field dictionary, domain map, metrics)
+- Run history (log, show, rerun)
+- Markdown and CSV export
+- Natural-language routing with plan display
+
+### P1
+
+- Store-level performance
+- Product and category revenue
+- Cohort-based LTV
+- Repurchase rate and timing
+- Segment purchase behavior analysis
+- Segment overlap with Jaccard similarity
+- Message template performance
+- Points expiry risk with member export
+- Standard report templates (weekly, monthly, campaign, loyalty)
+- Scheduled task execution
+
+### P2
+
+- Return analysis
+- Recommendation engine analysis
+- Campaign comparison (`--compare-to`)
+- Scheduled anomaly alerting with AI commentary
+- Message attribution (message → purchase conversion)
+- Promotion dependency detection in `diagnose`
+
+---
+
+## Non-functional requirements
 
 | Requirement | Target |
 |---|---|
-| `analytics overview` response time | < 10 seconds |
+| `analytics overview` | < 10 seconds |
 | Single-domain query (orders, coupons, points) | < 8 seconds |
-| `analytics anomaly` (multi-metric scan) | < 20 seconds |
-| `analytics diagnose` (full synthesis) | < 45 seconds |
+| `analytics anomaly` | < 20 seconds |
+| `analytics diagnose` | < 45 seconds |
 | Report template generation | < 30 seconds |
 | `schema` commands (local registry) | < 1 second |
-| AI smart mode time-to-first-response | < 5 seconds |
-| Database failure: clear, actionable error message | Mandatory |
-| DWS fallback: silent with footer note | Mandatory |
-| Windows / macOS / Linux compatibility | Mandatory |
-| Terminal output readable at 80 char width (core metrics) | Mandatory |
+| Natural-language time-to-first-response | < 5 seconds |
+| DWS fallback | Silent, with footer note |
+| Database failure | Clear, actionable error message |
+| Terminal output at 80 char width (core metrics) | Mandatory |
+| Windows / macOS / Linux | Mandatory |
 
 ---
 
-## Open Questions
+## Open questions
 
 | # | Question | Owner |
 |---|---|---|
-| 1 | Should `diagnose` be opt-in (due to high DB call count) or always available? | Product |
-| 2 | Can analysts access natural language mode without an external AI API key? | Platform |
-| 3 | Are there domain-level access restrictions by analyst role? | Security |
-| 4 | What is the agreed definition of "attributed GMV" for campaign ROI? | Business |
-| 5 | Should anomaly detection thresholds (2σ) be configurable per metric per tenant? | Product |
+| 1 | Should `diagnose` be opt-in due to high DB call count, or always available? | Product |
+| 2 | What is the agreed definition of "attributed GMV" for campaign ROI? | Business |
+| 3 | Should anomaly detection thresholds (2σ) be configurable per metric or per tenant? | Product |
+| 4 | Are there domain-level access restrictions by analyst role? | Security |
+| 5 | Can natural-language mode run without an external AI API key configured? | Platform |
