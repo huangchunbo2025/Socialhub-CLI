@@ -114,6 +114,26 @@ socialhub heartbeat run daily-overview  # Manually run specific task
 socialhub heartbeat setup               # Windows Task Scheduler setup guide
 ```
 
+### Snowflake Sync
+
+```bash
+socialhub-sync-snowflake --once
+socialhub-sync-snowflake --interval 60
+```
+
+Environment variables used by the sync script:
+
+```bash
+SNOWFLAKE_ACCOUNT=ZUNLHUV-KC42628
+SNOWFLAKE_USER=CHUNBO
+SNOWFLAKE_PASSWORD=your_password
+SNOWFLAKE_WAREHOUSE=COMPUTE_WH
+SNOWFLAKE_DATABASE=MVP_DB
+SNOWFLAKE_SCHEMA=PUBLIC
+SNOWFLAKE_ROLE=ACCOUNTADMIN
+SNOWFLAKE_SYNC_TABLE=MEMBERS_MVP
+```
+
 ### Customer Management
 
 ```bash
