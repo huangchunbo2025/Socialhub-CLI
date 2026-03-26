@@ -57,6 +57,8 @@ Thumbs.db
 customers_export.csv
 *_export.csv
 *_export.xlsx
+data/customers.csv
+data/*.sync_state.json
 
 # Generated reports
 Doc/
