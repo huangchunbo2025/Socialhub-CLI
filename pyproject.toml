@@ -35,6 +35,7 @@ dependencies = [
     "openpyxl>=3.1.0",
     "pyyaml>=6.0.0",
     "cryptography>=41.0.0",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +51,7 @@ dev = [
 [project.scripts]
 sh = "cli.main:cli"
 socialhub = "cli.main:cli"
+socialhub-mcp = "mcp_server.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/socialhub-ai/cli"
@@ -58,7 +60,7 @@ Repository = "https://github.com/socialhub-ai/cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*"]
+include = ["cli*", "mcp_server*"]
 
 [tool.black]
 line-length = 100
