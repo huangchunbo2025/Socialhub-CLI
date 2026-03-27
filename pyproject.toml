@@ -50,7 +50,6 @@ dev = [
 ]
 
 [project.scripts]
-sh = "cli.main:cli"
 socialhub = "cli.main:cli"
 socialhub-mcp = "mcp_server.__main__:main"
 socialhub-sync-snowflake = "cli.snowflake_sync:main"

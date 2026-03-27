@@ -117,6 +117,19 @@ def _compute_date_range(period: str):
     return start_date, today
 
 
+def _mcp_query_timeout(period: str, grouped: bool = False) -> int:
+    """Choose a safer MCP query timeout for larger analytics windows."""
+    period = _validate_period(period)
+
+    if period == "365d":
+        return 180 if grouped else 120
+    if period == "90d":
+        return 120 if grouped else 90
+    if period == "30d":
+        return 90 if grouped else 60
+    return 60
+
+
 def _safe_date_filter(column: str, start_date, operator: str = ">=") -> str:
     """Build a safe SQL date filter clause.
 
@@ -131,9 +144,9 @@ def _safe_date_filter(column: str, start_date, operator: str = ">=") -> str:
     if start_date is None:
         return ""
 
-    # Validate column name (alphanumeric and underscore only)
+    # Validate column name (alphanumeric/underscore, optionally prefixed with table alias)
     import re
-    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$', column):
         raise ValueError(f"Invalid column name: {column}")
 
     # Validate operator
@@ -163,8 +176,8 @@ def _safe_date_between(column: str, start_date, end_date) -> str:
     """
     import re
 
-    # Validate column name
-    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
+    # Validate column name (alphanumeric/underscore, optionally prefixed with table alias)
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$', column):
         raise ValueError(f"Invalid column name: {column}")
 
     # Format dates safely
@@ -210,6 +223,7 @@ def _get_mcp_overview(config, period: str) -> dict:
         tenant_id=config.mcp.tenant_id,
     )
     database = config.mcp.database
+    query_timeout = _mcp_query_timeout(period)
 
     with MCPClient(mcp_config) as client:
         client.initialize()
@@ -283,6 +297,7 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
         tenant_id=config.mcp.tenant_id,
     )
     database = config.mcp.database
+    query_timeout = _mcp_query_timeout(period)
 
     with MCPClient(mcp_config) as client:
         client.initialize()
@@ -300,7 +315,7 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
                     SUM(CASE WHEN last_order_date  >= '{start_date}' THEN 1 ELSE 0 END) AS active_customers
                 FROM dws_customer_base_metrics
                 WHERE identity_type = 1
-            """, database=database)
+            """, database=database, timeout=query_timeout)
             if isinstance(dws_result, list) and dws_result and dws_result[0].get("total_customers") is not None:
                 row = dws_result[0]
                 total_customers  = int(row.get("total_customers") or 0)
@@ -324,7 +339,7 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
                 SELECT COUNT(*) as new_count
                 FROM dim_customer_info
                 {new_date_filter}
-            """, database=database)
+            """, database=database, timeout=query_timeout)
             if isinstance(new_result, list) and new_result:
                 new_customers = new_result[0].get("new_count", 0)
 
@@ -333,7 +348,7 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
                 SELECT COUNT(DISTINCT customer_code) as active
                 FROM dwd_v_order
                 {active_date_filter}
-            """, database=database)
+            """, database=database, timeout=query_timeout)
             if isinstance(active_result, list) and active_result:
                 active_customers = active_result[0].get("active", 0)
 
@@ -378,6 +393,9 @@ def _get_mcp_retention(config, days_list: list) -> list:
         tenant_id=config.mcp.tenant_id,
     )
     database = config.mcp.database
+    longest_window = max(days_list) if days_list else 30
+    retention_period = "365d" if longest_window > 90 else "90d" if longest_window > 30 else "30d"
+    query_timeout = _mcp_query_timeout(retention_period, grouped=True)
 
     today = datetime.now().date()
     results = []
@@ -404,7 +422,7 @@ def _get_mcp_retention(config, days_list: list) -> list:
                 SELECT COUNT(DISTINCT customer_code) as cohort_size
                 FROM dwd_v_order
                 WHERE order_date BETWEEN '{cohort_start_str}' AND '{cohort_end_str}'
-            """, database=database)
+            """, database=database, timeout=query_timeout)
 
             cohort_size = 0
             if isinstance(cohort_result, list) and len(cohort_result) > 0:
@@ -420,7 +438,7 @@ def _get_mcp_retention(config, days_list: list) -> list:
                     WHERE b.customer_code = a.customer_code
                     AND b.order_date > '{cohort_end_str}'
                 )
-            """, database=database)
+            """, database=database, timeout=query_timeout)
 
             retained_count = 0
             if isinstance(retained_result, list) and len(retained_result) > 0:
@@ -454,6 +472,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
         tenant_id=config.mcp.tenant_id,
     )
     database = config.mcp.database
+    query_timeout = _mcp_query_timeout(period, grouped=bool(by))
 
     with MCPClient(mcp_config) as client:
         client.initialize()
@@ -469,7 +488,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                 {date_filter}
                 GROUP BY source_name
                 ORDER BY total_sales DESC
-            """, database=database)
+            """, database=database, timeout=query_timeout)
             # Return list directly for proper table display
             return result if isinstance(result, list) else []
 
@@ -485,39 +504,11 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                 GROUP BY store_name
                 ORDER BY total_sales DESC
                 LIMIT 20
-            """, database=database)
+            """, database=database, timeout=query_timeout)
             return result if isinstance(result, list) else []
 
         elif by == "product":
-            # 3-table JOIN: vdm_t_order → vdm_t_order_detail → vdm_t_product (dts_demoen)
-            # dwd_v_order is a view; for product detail we need the source tables directly
-            src_db = "dts_demoen"
-            date_filter_src = _safe_date_filter("o.order_date", start_date)
-            result = client.query(f"""
-                SELECT
-                    od.product_code,
-                    COALESCE(p.name, od.product_name, od.product_code) AS product_name,
-                    COALESCE(p.category_name, '-')                      AS category,
-                    COUNT(DISTINCT o.code)                              AS order_count,
-                    SUM(od.quantity)                                    AS total_quantity,
-                    SUM(od.amount)  / 100.0                             AS total_revenue_cny,
-                    AVG(od.unit_price) / 100.0                          AS avg_price_cny,
-                    COUNT(DISTINCT o.customer_code)                     AS unique_buyers
-                FROM vdm_t_order o
-                JOIN vdm_t_order_detail od
-                  ON od.order_code = o.code
-                 AND od.delete_flag = 0
-                LEFT JOIN vdm_t_product p
-                  ON p.code = od.product_code
-                 AND p.delete_flag = 0
-                {date_filter_src}
-                  AND o.delete_flag = 0
-                  AND o.direction = 0
-                GROUP BY od.product_code, p.name, od.product_name, p.category_name
-                ORDER BY total_revenue_cny DESC
-                LIMIT 30
-            """, database=src_db)
-            return result if isinstance(result, list) else []
+            return _get_mcp_products(config, period, by_category=False, limit=30)
 
         else:
             # Overall metrics
@@ -529,7 +520,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                     COUNT(DISTINCT customer_code) as unique_customers
                 FROM dwd_v_order
                 {date_filter}
-            """, database=database)
+            """, database=database, timeout=query_timeout)
 
             data = {
                 "period": period,
@@ -557,7 +548,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
                     GROUP BY customer_code
                     HAVING order_cnt > 1
                 ) t
-            """, database=database)
+            """, database=database, timeout=query_timeout)
 
             if isinstance(repurchase_result, list) and len(repurchase_result) > 0:
                 repeat_customers = repurchase_result[0].get("repeat_customers", 0)
@@ -3832,6 +3823,7 @@ def _get_mcp_products(config, period: str, by_category: bool, limit: int) -> lis
     """Query product/category performance from vdm_t_order_detail JOIN vdm_t_product."""
     start_date, _ = _compute_date_range(period)
     date_filter = _safe_date_filter("o.order_date", start_date)
+    query_timeout = _mcp_query_timeout(period, grouped=True)
 
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -3846,50 +3838,51 @@ def _get_mcp_products(config, period: str, by_category: bool, limit: int) -> lis
     with MCPClient(mcp_config) as client:
         client.initialize()
 
+        where_parts = ["o.delete_flag = 0", "o.direction = 0"]
+        if start_date:
+            where_parts.insert(0, f"o.order_date >= '{start_date.isoformat()}'")
+        where_sql = "WHERE " + " AND ".join(where_parts)
+
         if by_category:
             rows = client.query(f"""
                 SELECT
-                    COALESCE(p.category_name, od.product_name, '(未分类)') AS category,
-                    COUNT(DISTINCT od.product_code)                         AS sku_count,
-                    COUNT(DISTINCT o.code)                                  AS order_count,
-                    SUM(od.quantity)                                        AS total_qty,
-                    SUM(od.amount) / 100.0                                  AS revenue_cny,
-                    COUNT(DISTINCT o.customer_code)                         AS unique_buyers
-                FROM vdm_t_order o
-                JOIN vdm_t_order_detail od
-                  ON od.order_code = o.code AND od.delete_flag = 0
-                LEFT JOIN vdm_t_product p
-                  ON p.code = od.product_code AND p.delete_flag = 0
-                {date_filter}
-                  AND o.delete_flag = 0
-                  AND o.direction = 0
-                GROUP BY COALESCE(p.category_name, od.product_name, '(未分类)')
-                ORDER BY revenue_cny DESC
-                LIMIT {limit}
-            """, database="dts_demoen")
-        else:
-            rows = client.query(f"""
-                SELECT
-                    od.product_code,
-                    COALESCE(p.name, od.product_name, od.product_code) AS product_name,
-                    COALESCE(p.category_name, '-')                      AS category,
+                    COALESCE(p.product_category, od.title, '(未分类)') AS category,
+                    COUNT(DISTINCT od.product_code)                     AS sku_count,
                     COUNT(DISTINCT o.code)                              AS order_count,
-                    SUM(od.quantity)                                    AS total_qty,
-                    SUM(od.amount) / 100.0                              AS revenue_cny,
-                    AVG(od.unit_price) / 100.0                         AS avg_price_cny,
+                    SUM(od.qty)                                         AS total_qty,
+                    SUM(od.total_amount) / 100.0                        AS revenue_cny,
                     COUNT(DISTINCT o.customer_code)                     AS unique_buyers
                 FROM vdm_t_order o
                 JOIN vdm_t_order_detail od
                   ON od.order_code = o.code AND od.delete_flag = 0
                 LEFT JOIN vdm_t_product p
                   ON p.code = od.product_code AND p.delete_flag = 0
-                {date_filter}
-                  AND o.delete_flag = 0
-                  AND o.direction = 0
-                GROUP BY od.product_code, p.name, od.product_name, p.category_name
+                {where_sql}
+                GROUP BY COALESCE(p.product_category, od.title, '(未分类)')
                 ORDER BY revenue_cny DESC
                 LIMIT {limit}
-            """, database="dts_demoen")
+            """, database="dts_demoen", timeout=query_timeout)
+        else:
+            rows = client.query(f"""
+                SELECT
+                    od.product_code,
+                    COALESCE(p.name, od.title, od.product_code)    AS product_name,
+                    COALESCE(p.product_category, '-')              AS category,
+                    COUNT(DISTINCT o.code)                         AS order_count,
+                    SUM(od.qty)                                    AS total_qty,
+                    SUM(od.total_amount) / 100.0                   AS revenue_cny,
+                    AVG(od.price) / 100.0                          AS avg_price_cny,
+                    COUNT(DISTINCT o.customer_code)                AS unique_buyers
+                FROM vdm_t_order o
+                JOIN vdm_t_order_detail od
+                  ON od.order_code = o.code AND od.delete_flag = 0
+                LEFT JOIN vdm_t_product p
+                  ON p.code = od.product_code AND p.delete_flag = 0
+                {where_sql}
+                GROUP BY od.product_code, p.name, od.title, p.product_category
+                ORDER BY revenue_cny DESC
+                LIMIT {limit}
+            """, database="dts_demoen", timeout=query_timeout)
 
     return rows if isinstance(rows, list) else []
 

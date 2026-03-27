@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import httpx
 from rich.console import Console
 
-console = Console()
+console = Console(stderr=True)
 
 
 @dataclass
@@ -25,7 +25,7 @@ class MCPConfig:
     sse_url: str = ""  # Required - no hardcoded default
     post_url: str = ""  # Required - no hardcoded default
     tenant_id: str = ""  # Required - no hardcoded default
-    timeout: int = 60
+    timeout: int = 120
 
 
 class MCPClient:
@@ -41,6 +41,7 @@ class MCPClient:
         self._connected = False
         self._initialized = False
         self._session_ready = threading.Event()
+        self._last_error: Optional[str] = None
 
     def _validate_config(self) -> None:
         """Validate that required configuration is provided.
@@ -70,6 +71,7 @@ class MCPClient:
         self._validate_config()
 
         self._running = True
+        self._last_error = None
         self._session_ready.clear()
         self._sse_thread = threading.Thread(target=self._sse_listener, daemon=True)
         self._sse_thread.start()
@@ -83,9 +85,14 @@ class MCPClient:
                 console.print(f"[green]MCP Connected[/green] Session: {self._session_id[:8]}...")
             return True
         else:
+            reason = self._last_error or "no session established"
             if show_status:
-                console.print("[red]MCP Connection failed - no session[/red]")
-            return False
+                console.print(f"[red]MCP Connection failed[/red]: {reason}")
+            raise MCPError(
+                "Unable to reach upstream MCP analytics service. "
+                f"SSE URL: {self.config.sse_url}. "
+                f"Reason: {reason}"
+            )
 
     def _sse_listener(self):
         """Listen for SSE events from MCP server."""
@@ -118,7 +125,9 @@ class MCPClient:
 
         except Exception as e:
             if self._running:
+                self._last_error = f"SSE connect failed: {e}"
                 console.print(f"[red]SSE Error: {e}[/red]")
+                self._session_ready.set()
 
     def _handle_sse_event(self, event_type: Optional[str], data: str):
         """Handle incoming SSE event."""
@@ -167,6 +176,12 @@ class MCPClient:
                 return result
             except queue.Empty:
                 return {"error": {"code": -1, "message": f"Request timed out after {timeout}s"}}
+        except (httpx.HTTPError, httpx.TimeoutException, OSError) as e:
+            raise MCPError(
+                "Unable to reach upstream MCP analytics service. "
+                f"POST URL: {self.config.post_url}. "
+                f"Reason: {e}"
+            ) from e
 
         finally:
             del self._responses[request_id]
