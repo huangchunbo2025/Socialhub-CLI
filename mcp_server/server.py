@@ -12,41 +12,127 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from mcp.server import Server
 from mcp.types import Tool, TextContent, CallToolResult
 
+
 from cli.api.mcp_client import MCPError
 from cli.config import load_config
-from cli.commands.analytics import (
-    _get_mcp_overview,
-    _get_mcp_customers,
-    _get_mcp_customer_source,
-    _get_mcp_customer_gender,
-    _get_mcp_orders,
-    _get_mcp_order_returns,
-    _get_mcp_retention,
-    _get_mcp_funnel,
-    _get_mcp_rfm,
-    _get_mcp_ltv,
-    _get_mcp_campaigns,
-    _get_mcp_campaign_detail,
-    _get_mcp_campaign_roi,
-    _get_mcp_canvas,
-    _get_mcp_points,
-    _get_mcp_points_at_risk,
-    _get_mcp_coupons,
-    _get_mcp_coupon_lift,
-    _get_mcp_coupon_anomaly,
-    _get_mcp_products,
-    _get_mcp_stores,
-    _get_mcp_anomaly,
-    _get_mcp_loyalty,
-    _get_mcp_repurchase,
-    _get_mcp_repurchase_path,
-)
-from cli.commands.segments import _mcp_segment_analyze
+import threading
+
+_config_cache: Any = None
+_config_lock = threading.Lock()
+
+
+def _get_config() -> Any:
+    """Return cached config — reads disk once per server process."""
+    global _config_cache
+    if _config_cache is None:
+        with _config_lock:
+            if _config_cache is None:
+                _config_cache = load_config()
+    return _config_cache
+
+_analytics_loaded = False
+_analytics_ready = threading.Event()
+
+# Results cache: key -> (result, timestamp)
+_cache: dict[str, tuple[list, float]] = {}
+_CACHE_TTL = 300  # seconds (5 minutes)
+
+
+def _cache_key(name: str, args: dict) -> str:
+    return f"{name}:{json.dumps(args, sort_keys=True)}"
+
+
+def _warm_cache() -> None:
+    """Pre-execute the most common analytics queries in parallel after analytics loads."""
+    _analytics_ready.wait()
+    if not _analytics_loaded:
+        return  # analytics failed to load
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        warmup = [
+            ("analytics_overview", {"period": "30d"}),
+            ("analytics_orders",   {"period": "30d"}),
+            ("analytics_customers", {"period": "30d"}),
+        ]
+        def _run_one(item: tuple) -> None:
+            name, args = item
+            handler = _HANDLERS.get(name)
+            if not handler:
+                return
+            try:
+                result = handler(args)
+                _cache[_cache_key(name, args)] = (result, time.time())
+            except Exception as e:
+                logging.getLogger(__name__).warning("Cache warm failed for %s: %s", name, e)
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            list(ex.map(_run_one, warmup))
+    except Exception as e:
+        logging.getLogger(__name__).warning("Cache warming failed: %s", e)
+
+
+def _load_analytics() -> None:
+    """Lazily import heavy analytics deps (pandas/matplotlib) and inject into globals.
+
+    Must be called from a regular Python thread (NOT from anyio's thread pool),
+    because importing pandas from within the ProactorEventLoop's executor deadlocks.
+    Always sets _analytics_ready even on failure so tool calls never hang forever.
+    """
+    global _analytics_loaded
+    if _analytics_loaded:
+        return
+    try:
+        from cli.commands.analytics import (
+            _get_mcp_overview,
+            _get_mcp_customers,
+            _get_mcp_customer_source,
+            _get_mcp_customer_gender,
+            _get_mcp_orders,
+            _get_mcp_order_returns,
+            _get_mcp_retention,
+            _get_mcp_funnel,
+            _get_mcp_rfm,
+            _get_mcp_ltv,
+            _get_mcp_campaigns,
+            _get_mcp_campaign_detail,
+            _get_mcp_campaign_roi,
+            _get_mcp_canvas,
+            _get_mcp_points,
+            _get_mcp_points_at_risk,
+            _get_mcp_coupons,
+            _get_mcp_coupon_lift,
+            _get_mcp_coupon_anomaly,
+            _get_mcp_products,
+            _get_mcp_stores,
+            _get_mcp_anomaly,
+            _get_mcp_loyalty,
+            _get_mcp_repurchase,
+            _get_mcp_repurchase_path,
+        )
+        from cli.commands.segments import _mcp_segment_analyze
+        g = globals()
+        for fn in [
+            _get_mcp_overview, _get_mcp_customers, _get_mcp_customer_source,
+            _get_mcp_customer_gender, _get_mcp_orders, _get_mcp_order_returns,
+            _get_mcp_retention, _get_mcp_funnel, _get_mcp_rfm, _get_mcp_ltv,
+            _get_mcp_campaigns, _get_mcp_campaign_detail, _get_mcp_campaign_roi,
+            _get_mcp_canvas, _get_mcp_points, _get_mcp_points_at_risk,
+            _get_mcp_coupons, _get_mcp_coupon_lift, _get_mcp_coupon_anomaly,
+            _get_mcp_products, _get_mcp_stores, _get_mcp_anomaly,
+            _get_mcp_loyalty, _get_mcp_repurchase, _get_mcp_repurchase_path,
+        ]:
+            g[fn.__name__] = fn
+        g['_mcp_segment_analyze'] = _mcp_segment_analyze
+        _analytics_loaded = True
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Analytics load failed: {e}", exc_info=True)
+    finally:
+        _analytics_ready.set()  # Always unblock waiting tool calls
 
 logger = logging.getLogger(__name__)
 
@@ -492,179 +578,163 @@ def _err(msg: str) -> list[TextContent]:
 
 
 def _handle_analytics_overview(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
-    data = _get_mcp_overview(mcp_cfg, period)
+    data = _get_mcp_overview(config, period)
     return _ok({"period": period, **data})
 
 
 def _handle_analytics_customers(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     result: dict[str, Any] = {}
-    result["customers"] = _get_mcp_customers(mcp_cfg, period, "all")
+    result["customers"] = _get_mcp_customers(config, period, "all")
     if args.get("include_source"):
-        result["source"] = _get_mcp_customer_source(mcp_cfg, period)
+        result["source"] = _get_mcp_customer_source(config, period)
     if args.get("include_gender"):
-        result["gender"] = _get_mcp_customer_gender(mcp_cfg)
+        result["gender"] = _get_mcp_customer_gender(config)
     return _ok(result)
 
 
 def _handle_analytics_orders(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     group_by = args.get("group_by")
     result: dict[str, Any] = {}
-    result["orders"] = _get_mcp_orders(mcp_cfg, period, "sales", group_by)
+    result["orders"] = _get_mcp_orders(config, period, "sales", group_by)
     if args.get("include_returns"):
-        result["returns"] = _get_mcp_order_returns(mcp_cfg, period)
+        result["returns"] = _get_mcp_order_returns(config, period)
     return _ok(result)
 
 
 def _handle_analytics_retention(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     days = args.get("days", [7, 14, 30])
-    data = _get_mcp_retention(mcp_cfg, days)
+    data = _get_mcp_retention(config, days)
     return _ok(data)
 
 
 def _handle_analytics_funnel(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
-    data = _get_mcp_funnel(mcp_cfg, period)
+    data = _get_mcp_funnel(config, period)
     return _ok(data)
 
 
 def _handle_analytics_rfm(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     segment_filter = args.get("segment_filter", "")
     top_limit = args.get("top_limit", 0)
-    data = _get_mcp_rfm(mcp_cfg, limit=top_limit, segment_filter=segment_filter)
+    data = _get_mcp_rfm(config, limit=top_limit, segment_filter=segment_filter)
     return _ok(data)
 
 
 def _handle_analytics_ltv(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     cohort_months = args.get("cohort_months", 6)
     follow_months = args.get("follow_months", 3)
-    data = _get_mcp_ltv(mcp_cfg, cohort_months, follow_months)
+    data = _get_mcp_ltv(config, cohort_months, follow_months)
     return _ok(data)
 
 
 def _handle_analytics_campaigns(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     campaign_id = args.get("campaign_id")
     canvas_id = args.get("canvas_id")
     result: dict[str, Any] = {}
 
     if canvas_id:
-        result["canvas_funnel"] = _get_mcp_canvas(mcp_cfg, canvas_id)
+        result["canvas_funnel"] = _get_mcp_canvas(config, canvas_id)
     elif campaign_id:
-        result["detail"] = _get_mcp_campaign_detail(mcp_cfg, campaign_id)
+        result["detail"] = _get_mcp_campaign_detail(config, campaign_id)
     else:
         result["campaigns"] = _get_mcp_campaigns(
-            mcp_cfg, period,
-            campaign_id=args.get("campaign_id"),
+            config, period,
+            campaign_id=campaign_id,
             name=args.get("name_filter"),
         )
 
     if args.get("include_roi"):
         window = args.get("attribution_window_days", 30)
-        result["roi"] = _get_mcp_campaign_roi(mcp_cfg, period, window)
+        result["roi"] = _get_mcp_campaign_roi(config, period, window)
 
     return _ok(result)
 
 
 def _handle_analytics_points(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     expiring_days = args.get("expiring_within_days", 0)
     breakdown = args.get("include_breakdown", False)
     at_risk_limit = args.get("at_risk_limit", 100)
 
     result: dict[str, Any] = {}
-    result["points"] = _get_mcp_points(mcp_cfg, period, expiring_days=expiring_days, breakdown=breakdown)
+    result["points"] = _get_mcp_points(config, period, expiring_days=expiring_days, breakdown=breakdown)
     if expiring_days > 0:
-        result["at_risk_members"] = _get_mcp_points_at_risk(mcp_cfg, expiring_days, limit=at_risk_limit)
+        result["at_risk_members"] = _get_mcp_points_at_risk(config, expiring_days, limit=at_risk_limit)
     return _ok(result)
 
 
 def _handle_analytics_coupons(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     roi = args.get("include_roi_breakdown", False)
 
     result: dict[str, Any] = {}
-    result["coupons"] = _get_mcp_coupons(mcp_cfg, period, roi=roi)
+    result["coupons"] = _get_mcp_coupons(config, period, roi=roi)
     if args.get("include_lift"):
-        result["lift"] = _get_mcp_coupon_lift(mcp_cfg, period)
+        result["lift"] = _get_mcp_coupon_lift(config, period)
     if args.get("detect_anomalies"):
-        result["anomaly"] = _get_mcp_coupon_anomaly(mcp_cfg)
+        result["anomaly"] = _get_mcp_coupon_anomaly(config)
     return _ok(result)
 
 
 def _handle_analytics_loyalty(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
-    data = _get_mcp_loyalty(mcp_cfg)
+    config = _get_config()
+    data = _get_mcp_loyalty(config)
     return _ok(data)
 
 
 def _handle_analytics_products(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     by_category = args.get("by_category", False)
     limit = args.get("limit", 20)
-    data = _get_mcp_products(mcp_cfg, period, by_category, limit)
+    data = _get_mcp_products(config, period, by_category, limit)
     return _ok(data)
 
 
 def _handle_analytics_stores(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "30d")
     limit = args.get("limit", 20)
-    data = _get_mcp_stores(mcp_cfg, period, limit)
+    data = _get_mcp_stores(config, period, limit)
     return _ok(data)
 
 
 def _handle_analytics_repurchase(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     period = args.get("period", "90d")
-    data = _get_mcp_repurchase(mcp_cfg, period)
+    data = _get_mcp_repurchase(config, period)
     return _ok(data)
 
 
 def _handle_analytics_anomaly(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     metric = args["metric"]
     lookback = args.get("lookback_days", 30)
     detect = args.get("detect_days", 7)
-    data = _get_mcp_anomaly(mcp_cfg, metric, lookback, detect)
+    data = _get_mcp_anomaly(config, metric, lookback, detect)
     return _ok(data)
 
 
 def _handle_analytics_segment(args: dict) -> list[TextContent]:
-    config = load_config()
-    mcp_cfg = _mcp_config(config)
+    config = _get_config()
     group_id = str(args["group_id"])
     period = args.get("period", "30d")
     max_members = args.get("max_members", 500)
-    data = _mcp_segment_analyze(mcp_cfg, group_id, period, max_members)
+    data = _mcp_segment_analyze(config, group_id, period, max_members)
     return _ok(data)
 
 
@@ -719,11 +789,26 @@ def create_server() -> Server:
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+        import asyncio
         handler = _HANDLERS.get(name)
         if handler is None:
             return _err(f"Unknown tool: {name}")
         try:
-            return handler(arguments or {})
+            args = arguments or {}
+            loop = asyncio.get_running_loop()
+
+            def _run():
+                if not _analytics_ready.wait(timeout=120):
+                    return _err("Analytics failed to load within 120s")
+                key = _cache_key(name, args)
+                cached = _cache.get(key)
+                if cached and time.time() - cached[1] < _CACHE_TTL:
+                    return cached[0]
+                result = handler(args)
+                _cache[key] = (result, time.time())
+                return result
+
+            return await loop.run_in_executor(None, _run)
         except MCPError as e:
             logger.error("MCP database error in %s: %s", name, e)
             return _err(f"Database error: {e}")
