@@ -1,6 +1,7 @@
 """MCP (Model Context Protocol) client for SocialHub analytics database."""
 
 import json
+import logging
 import time
 import uuid
 import threading
@@ -12,6 +13,7 @@ import httpx
 from rich.console import Console
 
 console = Console(stderr=True)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -73,6 +75,14 @@ class MCPClient:
         self._running = True
         self._last_error = None
         self._session_ready.clear()
+        logger.info(
+            "Connecting to upstream MCP via SSE",
+            extra={
+                "sse_url": self.config.sse_url,
+                "post_url": self.config.post_url,
+                "tenant_id": self.config.tenant_id,
+            },
+        )
         self._sse_thread = threading.Thread(target=self._sse_listener, daemon=True)
         self._sse_thread.start()
 
@@ -81,11 +91,21 @@ class MCPClient:
 
         if self._session_id:
             self._connected = True
+            logger.info("Upstream MCP connected: session established", extra={"session_id": self._session_id})
             if show_status:
                 console.print(f"[green]MCP Connected[/green] Session: {self._session_id[:8]}...")
             return True
         else:
             reason = self._last_error or "no session established"
+            logger.error(
+                "Upstream MCP connection failed",
+                extra={
+                    "sse_url": self.config.sse_url,
+                    "post_url": self.config.post_url,
+                    "tenant_id": self.config.tenant_id,
+                    "reason": reason,
+                },
+            )
             if show_status:
                 console.print(f"[red]MCP Connection failed[/red]: {reason}")
             raise MCPError(
@@ -103,6 +123,27 @@ class MCPClient:
                 headers={"tenant_id": self.config.tenant_id},
                 timeout=None,
             ) as response:
+                if response.status_code >= 400:
+                    self._last_error = f"SSE connect failed: HTTP {response.status_code}"
+                    logger.error(
+                        "SSE connect returned error status",
+                        extra={
+                            "status_code": response.status_code,
+                            "sse_url": self.config.sse_url,
+                            "tenant_id": self.config.tenant_id,
+                        },
+                    )
+                    self._session_ready.set()
+                    return
+
+                logger.info(
+                    "SSE stream opened",
+                    extra={
+                        "status_code": response.status_code,
+                        "sse_url": self.config.sse_url,
+                        "tenant_id": self.config.tenant_id,
+                    },
+                )
                 event_type = None
                 event_data = []
 
@@ -126,6 +167,13 @@ class MCPClient:
         except Exception as e:
             if self._running:
                 self._last_error = f"SSE connect failed: {e}"
+                logger.exception(
+                    "SSE listener failed",
+                    extra={
+                        "sse_url": self.config.sse_url,
+                        "tenant_id": self.config.tenant_id,
+                    },
+                )
                 console.print(f"[red]SSE Error: {e}[/red]")
                 self._session_ready.set()
 
@@ -162,21 +210,69 @@ class MCPClient:
             if self._session_id:
                 url = f"{url}?sessionId={self._session_id}"
 
+            started = time.time()
+            logger.info(
+                "Sending upstream MCP request",
+                extra={
+                    "request_id": request_id,
+                    "method": method,
+                    "url": url,
+                    "tenant_id": self.config.tenant_id,
+                },
+            )
+
             # Send POST (response comes via SSE)
-            httpx.post(
+            response = httpx.post(
                 url,
                 headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
                 json=message,
                 timeout=5,
             )
+            if response.status_code >= 400:
+                logger.error(
+                    "Upstream MCP POST returned error status",
+                    extra={
+                        "request_id": request_id,
+                        "method": method,
+                        "status_code": response.status_code,
+                        "url": url,
+                    },
+                )
+                return {"error": {"code": -1, "message": f"Upstream POST failed with HTTP {response.status_code}"}}
 
             # Wait for response via SSE
             try:
                 result = response_queue.get(timeout=timeout)
+                logger.info(
+                    "Received upstream MCP response",
+                    extra={
+                        "request_id": request_id,
+                        "method": method,
+                        "elapsed_ms": int((time.time() - started) * 1000),
+                    },
+                )
                 return result
             except queue.Empty:
+                logger.error(
+                    "Timed out waiting for upstream MCP SSE response",
+                    extra={
+                        "request_id": request_id,
+                        "method": method,
+                        "timeout": timeout,
+                        "url": url,
+                    },
+                )
                 return {"error": {"code": -1, "message": f"Request timed out after {timeout}s"}}
         except (httpx.HTTPError, httpx.TimeoutException, OSError) as e:
+            logger.exception(
+                "Failed to send upstream MCP request",
+                extra={
+                    "request_id": request_id,
+                    "method": method,
+                    "post_url": self.config.post_url,
+                    "tenant_id": self.config.tenant_id,
+                },
+            )
             raise MCPError(
                 "Unable to reach upstream MCP analytics service. "
                 f"POST URL: {self.config.post_url}. "
@@ -324,6 +420,7 @@ class MCPClient:
 
     def disconnect(self):
         """Disconnect from MCP service."""
+        logger.info("Disconnecting MCP client", extra={"session_id": self._session_id})
         self._running = False
         self._connected = False
         self._initialized = False

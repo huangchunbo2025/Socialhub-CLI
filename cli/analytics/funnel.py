@@ -40,86 +40,54 @@ def _get_mcp_funnel(config, period: str = "30d") -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Stage 1: New customers in period
-        new_result = client.query(f"""
-            SELECT SUM(add_custs_num) AS new_customers
-            FROM ads_das_business_overview_d
-            WHERE biz_date BETWEEN '{start_str}' AND '{end_str}'
-        """, database=database)
-        new_customers = 0
-        if isinstance(new_result, list) and new_result:
-            new_customers = new_result[0].get("new_customers") or 0
-
-        # Stage 2 & 3: First-time vs repeat purchasers in period
-        purchase_result = client.query(f"""
+        summary_result = client.query(f"""
             SELECT
-                COUNT(CASE WHEN order_cnt = 1 THEN 1 END) AS first_time_buyers,
-                COUNT(CASE WHEN order_cnt >= 2 THEN 1 END) AS repeat_buyers
+                COALESCE((
+                    SELECT SUM(add_custs_num)
+                    FROM ads_das_business_overview_d
+                    WHERE biz_date BETWEEN '{start_str}' AND '{end_str}'
+                ), 0) AS new_customers,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM dim_customer_info
+                ), 0) AS total_customers
+        """, database=database)
+        new_customers = total_customers = 0
+        if isinstance(summary_result, list) and summary_result:
+            summary_row = summary_result[0]
+            new_customers = summary_row.get("new_customers") or 0
+            total_customers = summary_row.get("total_customers") or 0
+
+        lifecycle_result = client.query(f"""
+            SELECT
+                COUNT(CASE WHEN in_period_orders = 1 THEN 1 END) AS first_time_buyers,
+                COUNT(CASE WHEN in_period_orders >= 2 THEN 1 END) AS repeat_buyers,
+                COUNT(CASE WHEN total_orders >= 5 THEN 1 END) AS loyal_customers,
+                COUNT(CASE
+                    WHEN last_order_date BETWEEN '{at_risk_active}' AND '{at_risk_cutoff}' THEN 1
+                END) AS at_risk,
+                COUNT(CASE WHEN last_order_date < '{churned_cutoff}' THEN 1 END) AS churned
             FROM (
-                SELECT customer_code, COUNT(*) AS order_cnt
+                SELECT
+                    customer_code,
+                    COUNT(*) AS total_orders,
+                    SUM(CASE
+                        WHEN order_date BETWEEN '{start_str}' AND '{end_str}' THEN 1
+                        ELSE 0
+                    END) AS in_period_orders,
+                    MAX(order_date) AS last_order_date
                 FROM dwd_v_order
-                WHERE order_date BETWEEN '{start_str}' AND '{end_str}'
                 GROUP BY customer_code
             ) t
         """, database=database)
-        first_time_buyers = repeat_buyers = 0
-        if isinstance(purchase_result, list) and purchase_result:
-            row = purchase_result[0]
+        first_time_buyers = repeat_buyers = loyal_customers = at_risk = churned = 0
+        if isinstance(lifecycle_result, list) and lifecycle_result:
+            row = lifecycle_result[0]
             first_time_buyers = row.get("first_time_buyers") or 0
             repeat_buyers = row.get("repeat_buyers") or 0
-
-        # Stage 4: Loyal customers (5+ total orders ever)
-        loyal_result = client.query("""
-            SELECT COUNT(*) AS loyal_customers
-            FROM (
-                SELECT customer_code
-                FROM dwd_v_order
-                GROUP BY customer_code
-                HAVING COUNT(*) >= 5
-            ) t
-        """, database=database)
-        loyal_customers = 0
-        if isinstance(loyal_result, list) and loyal_result:
-            loyal_customers = loyal_result[0].get("loyal_customers") or 0
-
-        # Stage 5: At-risk (ordered 60-120 days ago, nothing in last 60 days)
-        at_risk_result = client.query(f"""
-            SELECT COUNT(DISTINCT customer_code) AS at_risk
-            FROM dwd_v_order
-            WHERE order_date BETWEEN '{at_risk_active}' AND '{at_risk_cutoff}'
-              AND customer_code NOT IN (
-                  SELECT DISTINCT customer_code
-                  FROM dwd_v_order
-                  WHERE order_date > '{at_risk_cutoff}'
-              )
-        """, database=database)
-        at_risk = 0
-        if isinstance(at_risk_result, list) and at_risk_result:
-            at_risk = at_risk_result[0].get("at_risk") or 0
-
-        # Stage 6: Churned (had orders before 180 days ago, nothing since)
-        churned_result = client.query(f"""
-            SELECT COUNT(DISTINCT customer_code) AS churned
-            FROM dwd_v_order
-            WHERE order_date < '{churned_cutoff}'
-              AND customer_code NOT IN (
-                  SELECT DISTINCT customer_code
-                  FROM dwd_v_order
-                  WHERE order_date >= '{churned_cutoff}'
-              )
-        """, database=database)
-        churned = 0
-        if isinstance(churned_result, list) and churned_result:
-            churned = churned_result[0].get("churned") or 0
-
-        # Total active base for conversion reference
-        total_result = client.query(
-            "SELECT COUNT(*) AS total FROM dim_customer_info",
-            database=database
-        )
-        total_customers = 0
-        if isinstance(total_result, list) and total_result:
-            total_customers = total_result[0].get("total") or 0
+            loyal_customers = row.get("loyal_customers") or 0
+            at_risk = row.get("at_risk") or 0
+            churned = row.get("churned") or 0
 
     return {
         "period": period,

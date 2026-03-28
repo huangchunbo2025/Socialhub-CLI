@@ -281,7 +281,12 @@ def _overview_from_rows(start_str: str, end_str: str,
 
 
 def _get_mcp_overview_compare_both(config, prev_start, prev_end, cur_start, cur_end):
-    """Run overview queries for both periods in a single MCP session."""
+    """Run overview compare queries for both periods in a single MCP session.
+
+    Optimized to reduce upstream round trips:
+    - 1 query for overview aggregates of both windows
+    - 1 query for active-buyer distinct counts of both windows
+    """
     for d in (prev_start, prev_end, cur_start, cur_end):
         s = d.isoformat()
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", s):
@@ -300,32 +305,46 @@ def _get_mcp_overview_compare_both(config, prev_start, prev_end, cur_start, cur_
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        cur_ov = client.query(f"""
-            SELECT SUM(add_custs_num) AS new_customers,
-                   SUM(total_order_num) AS total_orders,
-                   SUM(total_transaction_amt) AS total_revenue
+        overview_rows = client.query(f"""
+            SELECT
+                CASE
+                    WHEN biz_date BETWEEN '{cs}' AND '{ce}' THEN 'current'
+                    WHEN biz_date BETWEEN '{ps}' AND '{pe}' THEN 'previous'
+                END AS period_label,
+                SUM(add_custs_num) AS new_customers,
+                SUM(total_order_num) AS total_orders,
+                SUM(total_transaction_amt) AS total_revenue
             FROM ads_das_business_overview_d
-            WHERE biz_date BETWEEN '{cs}' AND '{ce}'
-        """, database=database)
-        cur_act = client.query(f"""
-            SELECT COUNT(DISTINCT customer_code) AS active
-            FROM dwd_v_order WHERE order_date BETWEEN '{cs}' AND '{ce}'
-        """, database=database)
-        prev_ov = client.query(f"""
-            SELECT SUM(add_custs_num) AS new_customers,
-                   SUM(total_order_num) AS total_orders,
-                   SUM(total_transaction_amt) AS total_revenue
-            FROM ads_das_business_overview_d
-            WHERE biz_date BETWEEN '{ps}' AND '{pe}'
-        """, database=database)
-        prev_act = client.query(f"""
-            SELECT COUNT(DISTINCT customer_code) AS active
-            FROM dwd_v_order WHERE order_date BETWEEN '{ps}' AND '{pe}'
+            WHERE (biz_date BETWEEN '{cs}' AND '{ce}')
+               OR (biz_date BETWEEN '{ps}' AND '{pe}')
+            GROUP BY period_label
         """, database=database)
 
+        active_rows = client.query(f"""
+            SELECT 'current' AS period_label, COUNT(DISTINCT customer_code) AS active
+            FROM dwd_v_order
+            WHERE order_date BETWEEN '{cs}' AND '{ce}'
+            UNION ALL
+            SELECT 'previous' AS period_label, COUNT(DISTINCT customer_code) AS active
+            FROM dwd_v_order
+            WHERE order_date BETWEEN '{ps}' AND '{pe}'
+        """, database=database)
+
+    overview_map = {
+        row.get("period_label"): [row]
+        for row in overview_rows
+        if isinstance(row, dict) and row.get("period_label")
+    } if isinstance(overview_rows, list) else {}
+
+    active_map = {
+        row.get("period_label"): [row]
+        for row in active_rows
+        if isinstance(row, dict) and row.get("period_label")
+    } if isinstance(active_rows, list) else {}
+
     return (
-        _overview_from_rows(cs, ce, cur_ov, cur_act),
-        _overview_from_rows(ps, pe, prev_ov, prev_act),
+        _overview_from_rows(cs, ce, overview_map.get("current", []), active_map.get("current", [])),
+        _overview_from_rows(ps, pe, overview_map.get("previous", []), active_map.get("previous", [])),
     )
 
 

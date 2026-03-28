@@ -41,11 +41,58 @@ _analytics_ready = threading.Event()
 
 # Results cache: key -> (result, timestamp)
 _cache: dict[str, tuple[list, float]] = {}
-_CACHE_TTL = 300  # seconds (5 minutes)
+_CACHE_TTL = 900  # seconds (15 minutes)
+_inflight: dict[str, threading.Event] = {}
+_inflight_lock = threading.Lock()
 
 
 def _cache_key(name: str, args: dict) -> str:
     return f"{name}:{json.dumps(args, sort_keys=True)}"
+
+
+def _get_cached_result(key: str) -> list | None:
+    cached = _cache.get(key)
+    if cached and time.time() - cached[1] < _CACHE_TTL:
+        return cached[0]
+    return None
+
+
+def _run_with_cache(name: str, args: dict, compute_fn) -> list:
+    """Reuse cached or in-flight work for identical tool requests."""
+    key = _cache_key(name, args)
+    cached = _get_cached_result(key)
+    if cached is not None:
+        logger.info("MCP tool cache hit: %s", name)
+        return cached
+
+    with _inflight_lock:
+        event = _inflight.get(key)
+        if event is None:
+            event = threading.Event()
+            _inflight[key] = event
+            is_owner = True
+        else:
+            is_owner = False
+
+    if not is_owner:
+        logger.info("MCP tool waiting on in-flight result: %s", name)
+        if event.wait(timeout=180):
+            cached = _get_cached_result(key)
+            if cached is not None:
+                logger.info("MCP tool cache hit after wait: %s", name)
+                return cached
+        logger.warning("MCP tool in-flight wait expired or cache missing: %s", name)
+
+    try:
+        result = compute_fn()
+        _cache[key] = (result, time.time())
+        return result
+    finally:
+        if is_owner:
+            with _inflight_lock:
+                current = _inflight.pop(key, None)
+                if current is not None:
+                    current.set()
 
 
 def _warm_cache() -> None:
@@ -57,8 +104,14 @@ def _warm_cache() -> None:
         from concurrent.futures import ThreadPoolExecutor
         warmup = [
             ("analytics_overview", {"period": "30d"}),
+            ("analytics_overview", {"period": "30d", "compare": True}),
+            ("analytics_overview", {"period": "365d", "compare": True}),
             ("analytics_orders",   {"period": "30d"}),
+            ("analytics_orders",   {"period": "365d", "include_returns": True}),
+            ("analytics_orders",   {"period": "365d", "group_by": "channel"}),
+            ("analytics_orders",   {"period": "365d", "group_by": "province"}),
             ("analytics_customers", {"period": "30d"}),
+            ("analytics_funnel", {"period": "365d"}),
         ]
         def _run_one(item: tuple) -> None:
             name, args = item
@@ -66,8 +119,9 @@ def _warm_cache() -> None:
             if not handler:
                 return
             try:
-                result = handler(args)
-                _cache[_cache_key(name, args)] = (result, time.time())
+                logging.getLogger(__name__).info("Cache warm started: %s args=%s", name, json.dumps(args, ensure_ascii=False, sort_keys=True))
+                result = _run_with_cache(name, args, lambda: handler(args))
+                logging.getLogger(__name__).info("Cache warm finished: %s", name)
             except Exception as e:
                 logging.getLogger(__name__).warning("Cache warm failed for %s: %s", name, e)
         with ThreadPoolExecutor(max_workers=3) as ex:
@@ -94,6 +148,7 @@ def _load_analytics() -> None:
             _get_mcp_customer_gender,
             _get_mcp_orders,
             _get_mcp_order_returns,
+            _get_mcp_orders_tool_payload,
             _get_mcp_retention,
             _get_mcp_funnel,
             _get_mcp_rfm,
@@ -119,6 +174,7 @@ def _load_analytics() -> None:
         for fn in [
             _get_mcp_overview, _get_mcp_customers, _get_mcp_customer_source,
             _get_mcp_customer_gender, _get_mcp_orders, _get_mcp_order_returns,
+            _get_mcp_orders_tool_payload,
             _get_mcp_retention, _get_mcp_funnel, _get_mcp_rfm, _get_mcp_ltv,
             _get_mcp_campaigns, _get_mcp_campaign_detail, _get_mcp_campaign_roi,
             _get_mcp_canvas, _get_mcp_points, _get_mcp_points_at_risk,
@@ -135,6 +191,31 @@ def _load_analytics() -> None:
         _analytics_ready.set()  # Always unblock waiting tool calls
 
 logger = logging.getLogger(__name__)
+
+
+def probe_upstream_mcp(timeout: int = 15) -> tuple[bool, str]:
+    """Check whether the configured upstream MCP analytics service is reachable.
+
+    This intentionally performs a lightweight real connection so server startup can
+    fail fast in logs instead of surfacing only as Claude tool timeouts later.
+    """
+    try:
+        from cli.api.mcp_client import MCPClient, MCPConfig
+
+        config = _get_config()
+        client = MCPClient(MCPConfig(
+            sse_url=config.mcp.sse_url,
+            post_url=config.mcp.post_url,
+            tenant_id=config.mcp.tenant_id,
+            timeout=timeout,
+        ))
+        client.connect(show_status=False)
+        client.initialize()
+        tools = client.list_tools()
+        client.disconnect()
+        return True, f"upstream reachable, tools={len(tools)}"
+    except Exception as e:
+        return False, str(e)
 
 # ---------------------------------------------------------------------------
 # Tool definitions
@@ -600,10 +681,12 @@ def _handle_analytics_orders(args: dict) -> list[TextContent]:
     config = _get_config()
     period = args.get("period", "30d")
     group_by = args.get("group_by")
-    result: dict[str, Any] = {}
-    result["orders"] = _get_mcp_orders(config, period, "sales", group_by)
-    if args.get("include_returns"):
-        result["returns"] = _get_mcp_order_returns(config, period)
+    result = _get_mcp_orders_tool_payload(
+        config,
+        period,
+        group_by=group_by,
+        include_returns=args.get("include_returns", False),
+    )
     return _ok(result)
 
 
@@ -796,19 +879,17 @@ def create_server() -> Server:
         try:
             args = arguments or {}
             loop = asyncio.get_running_loop()
+            started = time.time()
+            logger.info("MCP tool call started: %s args=%s", name, json.dumps(args, ensure_ascii=False, sort_keys=True))
 
             def _run():
                 if not _analytics_ready.wait(timeout=120):
                     return _err("Analytics failed to load within 120s")
-                key = _cache_key(name, args)
-                cached = _cache.get(key)
-                if cached and time.time() - cached[1] < _CACHE_TTL:
-                    return cached[0]
-                result = handler(args)
-                _cache[key] = (result, time.time())
-                return result
+                return _run_with_cache(name, args, lambda: handler(args))
 
-            return await loop.run_in_executor(None, _run)
+            result = await loop.run_in_executor(None, _run)
+            logger.info("MCP tool call finished: %s elapsed_ms=%s", name, int((time.time() - started) * 1000))
+            return result
         except MCPError as e:
             logger.error("MCP database error in %s: %s", name, e)
             return _err(f"Database error: {e}")
