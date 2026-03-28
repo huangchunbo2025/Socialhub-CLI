@@ -732,7 +732,9 @@ def html_to_pdf(html_path: Path, pdf_path: Path) -> bool:
         result = subprocess.run(
             ['wkhtmltopdf', '--enable-local-file-access', str(html_path), str(pdf_path)],
             capture_output=True,
-            text=True
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode == 0:
             return True
@@ -747,7 +749,9 @@ def html_to_pdf(html_path: Path, pdf_path: Path) -> bool:
             result = subprocess.run(
                 [chrome_cmd, '--headless', '--disable-gpu', f'--print-to-pdf={pdf_path}', str(html_path)],
                 capture_output=True,
-                text=True
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             if result.returncode == 0:
                 return True
