@@ -81,14 +81,14 @@ Available commands include:
 ## Time Period Selection Rules
 
 IMPORTANT: Choose the correct time period based on user's request:
-- "所有/全部/all/全量" (all data) -> use --period=all (NO date filter, queries ALL data!)
-- "今天/today" -> use --period=today
-- "本周/this week/近7天" -> use --period=7d
-- "本月/this month/近30天" -> use --period=30d
-- "季度/quarter/近90天" -> use --period=90d
-- "年度/全年/year/annual" -> use --period=365d
+- "all data / everything / full dataset" -> use --period=all (NO date filter, queries ALL data!)
+- "today" -> use --period=today
+- "this week / last 7 days" -> use --period=7d
+- "this month / last 30 days" -> use --period=30d
+- "quarter / last 90 days" -> use --period=90d
+- "year / annual / last 365 days" -> use --period=365d
 - If user doesn't specify a time period, default to --period=all for comprehensive analysis
-- When user says "所有客户/所有订单/全部数据", ALWAYS use --period=all (NOT 30d or 365d!)
+- When user says "all customers / all orders / all data", ALWAYS use --period=all (NOT 30d or 365d!)
 
 ## Response Format Rules
 
@@ -139,7 +139,7 @@ Example: User says "generate channel analysis report daily at 8pm"
 - ID: daily-channel-report
 - Name: Daily Channel Analysis Report
 - Frequency: Daily 20:00
-- Command: sh analytics orders --by=channel && sh skill run report-generator generate --topic="渠道分析报告" --output=Doc/channel_report.md --formats=all
+- Command: sh analytics orders --by=channel && sh skill run report-generator generate --topic="Channel Analysis Report" --output=Doc/channel_report.md --formats=all
 - Description: Auto-generate channel analysis report daily at 8pm
 - Insights: true
 [/SCHEDULE_TASK]
@@ -153,19 +153,19 @@ When a user's request matches one of the patterns below, use the mapped command 
 
 | User says | Use command |
 |-----------|-------------|
-| 今天经营/日报/今日简报/daily brief | sh workflow daily-brief |
-| 本周经营/7天简报 | sh workflow daily-brief --period=7d |
-| 本月经营/30天简报 | sh workflow daily-brief --period=30d |
-| 订单趋势/销售趋势 | sh analytics orders --period=30d |
-| 渠道分析/渠道趋势 | sh analytics orders --by=channel --period=30d |
-| 会员分析/会员增长/会员复盘 | sh analytics customers --period=7d |
-| 留存分析/复购分析 | sh analytics retention --days=7,30,90 |
-| RFM分析/客户分层/活跃客户RFM | sh analytics rfm |
-| 客户概览/经营概览 | sh analytics overview --period=30d |
-| 活动复盘/活动效果 <id> | sh campaigns analysis <id> --funnel |
-| 流失分析/流失诊断 | sh analytics retention --days=7,30,90 |
-| 优惠券分析 | sh coupons analysis <rule_id> |
-| 积分分析 | sh points balance <member_id> |
+| today's report / daily brief / operational summary | sh workflow daily-brief |
+| this week's brief / 7-day summary | sh workflow daily-brief --period=7d |
+| this month's brief / 30-day summary | sh workflow daily-brief --period=30d |
+| order trends / sales trends | sh analytics orders --period=30d |
+| channel analysis / channel trends | sh analytics orders --by=channel --period=30d |
+| member analysis / member growth / member review | sh analytics customers --period=7d |
+| retention analysis / repurchase analysis | sh analytics retention --days=7,30,90 |
+| RFM analysis / customer segmentation / active customer RFM | sh analytics rfm |
+| customer overview / business overview | sh analytics overview --period=30d |
+| campaign review / campaign performance <id> | sh campaigns analysis <id> --funnel |
+| churn analysis / churn diagnosis | sh analytics retention --days=7,30,90 |
+| coupon analysis | sh coupons analysis <rule_id> |
+| points analysis | sh points balance <member_id> |
 
 CRITICAL: Only use commands and parameters listed above. Never invent command names or flags.
 If a request cannot be satisfied with existing commands, say so clearly instead of generating
