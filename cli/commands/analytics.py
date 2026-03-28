@@ -133,6 +133,19 @@ app = typer.Typer(help="Data analytics commands")
 console = Console()
 
 
+_OVERVIEW_EXPLAIN = """[bold dim]── Data Source ──────────────────────────────────────────────[/bold dim]
+  Tables   : [cyan]ads_das_business_overview_d[/cyan] (das_demoen)
+             [cyan]dwd_v_order[/cyan] (das_demoen) — active buyers
+  Updated  : Daily partition on [dim]biz_date[/dim]
+
+[bold dim]Metric Definitions[/bold dim]
+  GMV            [dim]total_transaction_amt[/dim] — sum of payment amounts in period
+  Orders         [dim]total_order_num[/dim] — count of completed orders
+  New customers  [dim]add_custs_num[/dim] — first-time registrations in period
+  Active buyers  [dim]COUNT(DISTINCT customer_code)[/dim] from dwd_v_order
+  AOV            [dim]GMV ÷ Orders[/dim] — average order value"""
+
+
 @app.command("overview")
 def analytics_overview(
     period: str = typer.Option("7d", "--period", "-p", help="Time period (today, 7d, 30d, 90d, 365d, ytd)"),
@@ -142,26 +155,44 @@ def analytics_overview(
     compare: bool = typer.Option(False, "--compare", help="Compare with previous period (MCP only)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    explain: bool = typer.Option(False, "--explain", help="Show metric definitions and data sources"),
+    sql_trace: bool = typer.Option(False, "--sql-trace", help="Print SQL queries executed"),
 ) -> None:
     """Show analytics overview dashboard.
 
     Examples:
         sh analytics overview --period=30d
         sh analytics overview --period=30d --compare
+        sh analytics overview --explain
     """
     config = load_config()
 
     if config.mode == "mcp":
         # MCP mode - query real database
         try:
-            if compare:
-                prev_start, prev_end, cur_start, cur_end = _compute_compare_range(period)
-                cur_data, prev_data = _get_mcp_overview_compare_both(
-                    config, prev_start, prev_end, cur_start, cur_end
-                )
-                _print_overview_compare(cur_data, prev_data, period)
-                return
-            data = _get_mcp_overview(config, period)
+            if sql_trace:
+                with _sql_trace_ctx() as sql_log:
+                    if compare:
+                        prev_start, prev_end, cur_start, cur_end = _compute_compare_range(period)
+                        cur_data, prev_data = _get_mcp_overview_compare_both(
+                            config, prev_start, prev_end, cur_start, cur_end
+                        )
+                        _print_overview_compare(cur_data, prev_data, period)
+                        _print_sql_trace(sql_log)
+                        return
+                    data = _get_mcp_overview(config, period)
+                _print_sql_trace(sql_log)
+            else:
+                if compare:
+                    prev_start, prev_end, cur_start, cur_end = _compute_compare_range(period)
+                    cur_data, prev_data = _get_mcp_overview_compare_both(
+                        config, prev_start, prev_end, cur_start, cur_end
+                    )
+                    _print_overview_compare(cur_data, prev_data, period)
+                    if explain:
+                        console.print(_OVERVIEW_EXPLAIN)  # already in MCP branch
+                    return
+                data = _get_mcp_overview(config, period)
         except MCPError as e:
             print_error(f"MCP Error: {e}")
             raise typer.Exit(1)
@@ -203,6 +234,14 @@ def analytics_overview(
         console.print_json(json.dumps(data, default=str))
     else:
         print_overview(data, title=f"Analytics Overview ({period})")
+        if explain:
+            if config.mode == "mcp":
+                console.print(_OVERVIEW_EXPLAIN)
+            else:
+                console.print(
+                    f"[dim]-- explain is only available in MCP mode "
+                    f"(current mode: {config.mode})[/dim]"
+                )
 
 
 @app.command("customers")
