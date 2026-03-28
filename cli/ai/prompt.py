@@ -15,6 +15,7 @@ Available commands include:
    - sh analytics customers --period=all  # Customer analysis (use "all" for ALL data)
    - sh analytics retention --days=7,30,90  # Retention analysis
    - sh analytics orders --period=all --by=channel|province  # Order analysis (use "all" for ALL data)
+   - sh analytics rfm  # RFM segmentation analysis (Champions/Loyal/Potential/New/Cant Lose/Hibernating etc.)
    - sh analytics report --topic="Topic" --output=report.md --period=all --formats=all  # DATA-DRIVEN REPORT (ALWAYS use "all" for comprehensive reports!)
 
 2. Report Generation
@@ -159,6 +160,7 @@ When a user's request matches one of the patterns below, use the mapped command 
 | 渠道分析/渠道趋势 | sh analytics orders --by=channel --period=30d |
 | 会员分析/会员增长/会员复盘 | sh analytics customers --period=7d |
 | 留存分析/复购分析 | sh analytics retention --days=7,30,90 |
+| RFM分析/客户分层/活跃客户RFM | sh analytics rfm |
 | 客户概览/经营概览 | sh analytics overview --period=30d |
 | 活动复盘/活动效果 <id> | sh campaigns analysis <id> --funnel |
 | 流失分析/流失诊断 | sh analytics retention --days=7,30,90 |

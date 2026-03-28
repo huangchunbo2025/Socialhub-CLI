@@ -76,6 +76,8 @@ def execute_command(cmd: str) -> tuple[bool, str]:
             shell=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
         )
         output = result.stdout if result.stdout else result.stderr
