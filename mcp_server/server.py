@@ -112,6 +112,10 @@ def _warm_cache() -> None:
             ("analytics_orders",   {"period": "365d", "group_by": "province"}),
             ("analytics_customers", {"period": "30d"}),
             ("analytics_funnel", {"period": "365d"}),
+            # Heavy queries — pre-warm so Claude Desktop tool calls return from cache
+            ("analytics_rfm",      {}),
+            ("analytics_retention", {"days": [7, 30, 90]}),
+            ("analytics_repurchase", {"period": "90d"}),
         ]
         def _run_one(item: tuple) -> None:
             name, args = item
