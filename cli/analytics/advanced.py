@@ -1097,7 +1097,7 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
     with MCPClient(mcp_config) as client:
         client.initialize()
 
-        # Segment distribution
+        # Segment distribution — use extended timeout (120s) as ads_v_rfm is a heavy view
         dist_rows = client.query(f"""
             SELECT segment,
                    COUNT(*)                    AS customer_count,
@@ -1112,7 +1112,7 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
             {seg_filter}
             GROUP BY segment
             ORDER BY customer_count DESC
-        """, database=database)
+        """, database=database, timeout=120)
 
         total_rows = client.query(f"""
             SELECT COUNT(*) AS total
@@ -1120,7 +1120,7 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
                 SELECT {_segment_expr} AS segment FROM ads_v_rfm
             ) t
             {seg_filter}
-        """, database=database)
+        """, database=database, timeout=120)
 
         total = int((total_rows[0].get("total") or 0) if isinstance(total_rows, list) and total_rows else 0)
 
@@ -1153,7 +1153,7 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
                 {seg_filter}
                 ORDER BY Monetary_1 DESC
                 LIMIT {safe_limit}
-            """, database=database)
+            """, database=database, timeout=120)
             if isinstance(top_rows, list):
                 top_customers = [
                     {
