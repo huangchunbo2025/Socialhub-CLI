@@ -225,9 +225,74 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_overview",
         description=(
-            "Business analytics overview: GMV, order count, AOV, active customers, "
-            "new customers, coupon redemption rate, points issued/consumed, message delivery rate. "
-            "Optionally compares current period vs prior same-length period."
+            "Top-level business KPI dashboard — call this tool for daily/weekly/monthly business reviews, "
+            "operational summaries, or when the user asks 'how is the business doing', 'show me today's numbers', "
+            "'give me a business overview', or any request for a high-level performance snapshot. "
+            "Returns GMV (gross merchandise value), total orders, AOV (average order value), active customers, "
+            "new customers, coupon redemption rate, loyalty points issued and consumed, and message delivery rate. "
+            "Set compare=true to include prior-period delta so you can show growth/decline trends."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "period": {
+                    "type": "string",
+                    "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
+                    "default": "30d",
+                    "description": "Analysis window: today, 7d (last 7 days), 30d, 90d, 365d, or ytd (year-to-date)",
+                },
+                "compare": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, also returns the same metrics for the prior equal-length period so growth rates can be computed",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="analytics_customers",
+        description=(
+            "Customer base and growth metrics — call this tool when the user asks about customer counts, "
+            "member growth, new vs returning customers, how many registered users or buyers there are, "
+            "or where customers come from. "
+            "Returns total registered customers, total buyers (customers who have ordered at least once), "
+            "active buyers in period, member vs non-member split, and new customer acquisitions. "
+            "Set include_source=true to add acquisition channel breakdown (which channels bring the most customers). "
+            "Set include_gender=true to add gender distribution of the customer base."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "period": {
+                    "type": "string",
+                    "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
+                    "default": "30d",
+                    "description": "Analysis window for active buyers and new customer counts",
+                },
+                "include_source": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, include acquisition channel breakdown (e.g. WeChat, app, offline, etc.)",
+                },
+                "include_gender": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, include gender distribution of the registered customer base",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="analytics_orders",
+        description=(
+            "Order and sales analytics — call this tool when the user asks about sales performance, "
+            "revenue trends, order volume, channel breakdown, regional/province analysis, product rankings, "
+            "repurchase rate, or return/refund rates. "
+            "Returns GMV, order count, AOV, unique customers, new vs returning buyer split, and daily order trend. "
+            "Set group_by='channel' for sales by sales channel (Tmall, JD, WeChat Mini Program, offline, etc.). "
+            "Set group_by='province' for regional/geographic sales breakdown. "
+            "Set group_by='product' for top products by revenue. "
+            "Set include_returns=true to add return and refund order breakdown by channel."
         ),
         inputSchema={
             "type": "object",
@@ -238,65 +303,15 @@ TOOLS: list[Tool] = [
                     "default": "30d",
                     "description": "Analysis window",
                 },
-                "compare": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include prior-period comparison",
-                },
-            },
-        },
-    ),
-    Tool(
-        name="analytics_customers",
-        description=(
-            "Customer base metrics: total registered, total buyers, active buyers, "
-            "member vs non-member split. Optionally includes acquisition channel source "
-            "breakdown and gender distribution."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "period": {
-                    "type": "string",
-                    "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
-                    "default": "30d",
-                },
-                "include_source": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include acquisition channel breakdown",
-                },
-                "include_gender": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include gender distribution",
-                },
-            },
-        },
-    ),
-    Tool(
-        name="analytics_orders",
-        description=(
-            "Order metrics: GMV, order count, AOV, unique customers, new vs returning buyer split. "
-            "Optionally group by channel, province, or product. Optionally include return/refund analysis."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "period": {
-                    "type": "string",
-                    "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
-                    "default": "30d",
-                },
                 "group_by": {
                     "type": "string",
                     "enum": ["channel", "province", "product"],
-                    "description": "Group results by this dimension. Omit for overall totals.",
+                    "description": "Dimension to group by: 'channel' for sales channel, 'province' for region, 'product' for SKU/item ranking. Omit for overall totals only.",
                 },
                 "include_returns": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Include return/refund breakdown by channel",
+                    "description": "If true, include return order count and refund GMV breakdown by channel",
                 },
             },
         },
@@ -304,9 +319,11 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_retention",
         description=(
-            "Cohort-based customer retention. For each day window, shows what percentage of "
-            "customers who bought N days ago made another purchase. "
-            "Use to measure how well the business retains buyers over time."
+            "Cohort-based customer retention rates — call this tool when the user asks about retention, "
+            "how many customers come back, buyer loyalty over time, or whether customers are returning to purchase again. "
+            "For each specified day window (e.g. 7, 30, 90 days), shows: total customers who bought in that window, "
+            "how many made a second purchase within that window, and the retention rate percentage. "
+            "Use multiple windows (e.g. [7, 30, 90]) to see short-term vs long-term retention patterns."
         ),
         inputSchema={
             "type": "object",
@@ -315,7 +332,7 @@ TOOLS: list[Tool] = [
                     "type": "array",
                     "items": {"type": "integer", "minimum": 1, "maximum": 365},
                     "default": [7, 14, 30],
-                    "description": "Retention window sizes in days",
+                    "description": "List of retention window sizes in days (e.g. [7, 30, 90]). Each window measures how many buyers repurchased within that many days.",
                 },
             },
         },
@@ -323,9 +340,13 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_funnel",
         description=(
-            "Customer lifecycle funnel: New → First Purchase → Repeat → Loyal → At-Risk → Churned. "
-            "Shows headcount at each stage and conversion rate between stages. "
-            "Use to identify where customers drop off."
+            "Customer lifecycle funnel — call this tool when the user asks about the customer lifecycle, "
+            "how many loyal or churned customers there are, customer health distribution, "
+            "conversion from new customer to repeat buyer, or where customers are dropping off. "
+            "Returns headcount and conversion rates across six lifecycle stages: "
+            "New (registered, never ordered) → First Purchase → Repeat Buyer (2+ orders) → "
+            "Loyal (frequent, high-value) → At-Risk (lapsed, may churn) → Churned (long inactive). "
+            "Use to understand the overall health of the customer base and identify the biggest drop-off stage."
         ),
         inputSchema={
             "type": "object",
@@ -334,6 +355,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "30d",
+                    "description": "Analysis window for determining active vs at-risk vs churned status",
                 },
             },
         },
@@ -369,9 +391,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_ltv",
         description=(
-            "Cohort Lifetime Value. Groups customers by first-order month and tracks GMV "
-            "per customer in subsequent months. Use to compare whether newer cohorts are "
-            "more or less valuable than older ones."
+            "Cohort Lifetime Value (LTV) analysis — call this tool when the user asks about customer lifetime value, "
+            "cohort analysis, whether newer customers are more or less valuable than older ones, "
+            "or how much revenue each acquisition cohort generates over time. "
+            "Groups customers by their first-order month (acquisition cohort) and tracks cumulative GMV per customer "
+            "in each subsequent month. Useful for identifying which cohorts have the highest long-term value "
+            "and whether the business is acquiring increasingly valuable customers over time."
         ),
         inputSchema={
             "type": "object",
@@ -381,14 +406,14 @@ TOOLS: list[Tool] = [
                     "minimum": 1,
                     "maximum": 24,
                     "default": 6,
-                    "description": "How many past months of cohorts to include",
+                    "description": "How many past acquisition months to include as cohorts (e.g. 6 = last 6 months of new customers)",
                 },
                 "follow_months": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 12,
                     "default": 3,
-                    "description": "How many months to track each cohort after acquisition",
+                    "description": "How many months to track each cohort's revenue after their first order",
                 },
             },
         },
@@ -396,9 +421,14 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_campaigns",
         description=(
-            "Marketing campaign analytics. Lists campaigns with funnel metrics "
-            "(target/reach/click/convert) and reward metrics (points, coupons, messages). "
-            "Set campaign_id for a single campaign. Set canvas_id for per-node journey funnel."
+            "Marketing campaign performance analytics — call this tool when the user asks about campaign results, "
+            "marketing ROI, which campaigns are performing well, campaign reach/click/conversion rates, "
+            "or the effectiveness of a specific campaign or customer journey. "
+            "Returns campaign list with funnel metrics (targeted audience → reached → clicked → converted) "
+            "and reward distribution (points awarded, coupons sent, messages delivered). "
+            "Set campaign_id to drill into a single campaign's details. "
+            "Set canvas_id to get per-node conversion funnel for a multi-step journey campaign. "
+            "Set include_roi=true to add GMV attribution (revenue generated by customers who participated in the campaign)."
         ),
         inputSchema={
             "type": "object",
@@ -407,30 +437,31 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "30d",
+                    "description": "Time window for filtering campaigns by start date",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "Filter to this specific campaign ID",
+                    "description": "If provided, return detailed metrics for this specific campaign ID only",
                 },
                 "name_filter": {
                     "type": "string",
-                    "description": "Filter campaigns by name (partial match)",
+                    "description": "Filter campaigns by name keyword (case-insensitive partial match)",
                 },
                 "canvas_id": {
                     "type": "string",
-                    "description": "If set, return per-node journey funnel for this canvas campaign",
+                    "description": "If provided, return per-node journey funnel for this canvas/automation campaign ID",
                 },
                 "include_roi": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Include revenue attribution (GMV generated by campaign participants)",
+                    "description": "If true, include GMV revenue attributed to each campaign's converted customers",
                 },
                 "attribution_window_days": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 90,
                     "default": 30,
-                    "description": "Days after campaign conversion to attribute revenue (used when include_roi=true)",
+                    "description": "Number of days after campaign conversion event to count attributed purchases (used when include_roi=true)",
                 },
             },
         },
@@ -438,9 +469,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_points",
         description=(
-            "Points program analytics: earned, redeemed, expired, redemption rate, active members. "
-            "Optionally includes operation-type breakdown (purchase earn, promotion, redeem gift, expired). "
-            "Optionally lists at-risk members whose points are expiring soon."
+            "Loyalty points program analytics — call this tool when the user asks about the points program, "
+            "how many points were earned or redeemed, points redemption rate, points liability, "
+            "which members are at risk of losing expiring points, or points program engagement. "
+            "Returns total points earned, redeemed, expired, redemption rate percentage, and count of active members. "
+            "Set include_breakdown=true to add breakdown by operation type (purchase earn, promotion bonus, gift redemption, expiry). "
+            "Set expiring_within_days to identify members with points expiring soon (useful for win-back campaigns)."
         ),
         inputSchema={
             "type": "object",
@@ -449,25 +483,26 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "30d",
+                    "description": "Analysis window for points activity",
                 },
                 "include_breakdown": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Include per-operation-type earn/redeem breakdown",
+                    "description": "If true, break down earned and redeemed points by operation type",
                 },
                 "expiring_within_days": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 365,
                     "default": 0,
-                    "description": "If > 0, include members whose points expire within N days",
+                    "description": "If > 0, also return list of members whose points will expire within this many days",
                 },
                 "at_risk_limit": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 500,
                     "default": 100,
-                    "description": "Max at-risk members to return (requires expiring_within_days > 0)",
+                    "description": "Maximum number of expiring-points members to return (requires expiring_within_days > 0)",
                 },
             },
         },
@@ -475,9 +510,14 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_coupons",
         description=(
-            "Coupon analytics: issued, redeemed, expired, redemption rate, total face value redeemed. "
-            "Optionally includes per-rule ROI breakdown and lift analysis comparing "
-            "coupon users vs non-users (AOV and repurchase rate lift)."
+            "Coupon and discount program analytics — call this tool when the user asks about coupon performance, "
+            "discount usage, redemption rates, which coupon rules are most effective, "
+            "whether coupons are actually driving incremental revenue, or coupon fraud/anomaly detection. "
+            "Returns total coupons issued, redeemed, expired, redemption rate, and total face value redeemed (CNY). "
+            "Set include_roi_breakdown=true to see GMV and ROI per coupon rule (which coupons generate the most revenue). "
+            "Set include_lift=true to compare coupon users vs non-users on AOV and repurchase rate "
+            "(measures whether coupons actually change customer behavior). "
+            "Set detect_anomalies=true to flag days with unusually high or low redemption volume."
         ),
         inputSchema={
             "type": "object",
@@ -486,21 +526,22 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "30d",
+                    "description": "Analysis window for coupon activity",
                 },
                 "include_roi_breakdown": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Include per-coupon-rule GMV and ROI breakdown",
+                    "description": "If true, include per-coupon-rule GMV attribution and ROI",
                 },
                 "include_lift": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Include lift analysis: coupon users vs non-users comparison",
+                    "description": "If true, compare AOV and repurchase rate between coupon users and non-users",
                 },
                 "detect_anomalies": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Run anomaly detection on daily redemption volume (mean ± 2σ)",
+                    "description": "If true, run mean ± 2σ anomaly detection on daily redemption volume",
                 },
             },
         },
@@ -508,8 +549,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_loyalty",
         description=(
-            "Loyalty program overview: member enrollment rate, tier distribution (headcount per tier), "
-            "points liability in CNY equivalent, and churn risk per tier."
+            "Loyalty program tier and enrollment analytics — call this tool when the user asks about "
+            "the loyalty membership program, tier distribution (how many Bronze/Silver/Gold/Platinum members), "
+            "member enrollment rate, points liability (total unredeemed points value in CNY), "
+            "or which tiers have the highest churn risk. "
+            "Returns member count and percentage per tier, overall enrollment rate vs total customer base, "
+            "total outstanding points liability, and churn risk score per tier."
         ),
         inputSchema={
             "type": "object",
@@ -519,8 +564,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_products",
         description=(
-            "Top products by revenue: order count, quantity, unique buyers, revenue. "
-            "Optionally group by product category. Use for product performance ranking and category analysis."
+            "Product performance ranking — call this tool when the user asks about best-selling products, "
+            "top SKUs by revenue, product category performance, which products drive the most orders, "
+            "or product-level sales analysis. "
+            "Returns top products ranked by revenue with order count, units sold, unique buyers, "
+            "total revenue (CNY), and average selling price. "
+            "Set by_category=true to aggregate by product category instead of individual SKUs."
         ),
         inputSchema={
             "type": "object",
@@ -529,17 +578,19 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "30d",
+                    "description": "Analysis window for order data",
                 },
                 "by_category": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Aggregate by product category instead of individual products",
+                    "description": "If true, aggregate revenue and orders by product category instead of individual products",
                 },
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 100,
                     "default": 20,
+                    "description": "Number of top products (or categories) to return",
                 },
             },
         },
@@ -547,8 +598,11 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_stores",
         description=(
-            "Store-level performance: GMV, order count, unique customers, repeat purchase rate per store. "
-            "Ranked by GMV. Use to identify top-performing stores and laggards."
+            "Store-level sales performance — call this tool when the user asks about which stores are performing best, "
+            "offline store rankings, store GMV comparison, or store-level customer metrics. "
+            "Returns each store's GMV, order count, unique customer count, and repeat purchase rate, "
+            "ranked by GMV descending. Covers both offline retail stores and online flagship stores. "
+            "Use to identify top performers, underperforming locations, or compare channel-specific store results."
         ),
         inputSchema={
             "type": "object",
@@ -557,12 +611,14 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "30d",
+                    "description": "Analysis window for store sales data",
                 },
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 100,
                     "default": 20,
+                    "description": "Number of top stores to return",
                 },
             },
         },
@@ -570,8 +626,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_repurchase",
         description=(
-            "Repurchase behavior: repurchase rate %, GMV contribution by new vs returning buyers, "
-            "median days from first to second order, distribution of first-to-second order timing."
+            "Repurchase behavior and customer repeat-buy analysis — call this tool when the user asks about "
+            "repurchase rate, how quickly customers make their second order, what percentage of revenue comes "
+            "from returning vs new buyers, or how long the typical repurchase cycle is. "
+            "Returns: repurchase rate (% of buyers who ordered more than once), GMV split between new and returning buyers, "
+            "median days from first to second order, and a histogram of first-to-second order timing intervals. "
+            "Longer periods (90d+) give more statistically reliable repurchase rate estimates."
         ),
         inputSchema={
             "type": "object",
@@ -580,6 +640,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["today", "7d", "30d", "90d", "365d", "ytd"],
                     "default": "90d",
+                    "description": "Analysis window — use 90d or longer for reliable repurchase rate calculation",
                 },
             },
         },
@@ -587,9 +648,13 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_anomaly",
         description=(
-            "Statistical anomaly detection on daily business metrics. "
-            "Uses mean ± 2σ baseline to flag abnormal days in the detection window. "
-            "Metrics: gmv (gross revenue), orders (order count), aov (average order value), new_buyers."
+            "Statistical anomaly detection on daily business metrics — call this tool when the user asks "
+            "whether there were any unusual or abnormal days, if GMV/orders suddenly spiked or dropped, "
+            "or to proactively flag data quality issues or business incidents in recent days. "
+            "Uses a rolling mean ± 2σ baseline computed from historical data to identify days where "
+            "the metric was significantly higher or lower than expected. "
+            "Available metrics: gmv (gross revenue), orders (order count), aov (average order value), new_buyers. "
+            "Returns flagged anomaly days with actual vs expected values and severity."
         ),
         inputSchema={
             "type": "object",
@@ -597,21 +662,21 @@ TOOLS: list[Tool] = [
                 "metric": {
                     "type": "string",
                     "enum": ["gmv", "orders", "aov", "new_buyers"],
-                    "description": "The KPI metric to monitor",
+                    "description": "The KPI to check: 'gmv' for gross revenue, 'orders' for order volume, 'aov' for average order value, 'new_buyers' for daily new customer acquisitions",
                 },
                 "lookback_days": {
                     "type": "integer",
                     "minimum": 7,
                     "maximum": 180,
                     "default": 30,
-                    "description": "Days of history to compute baseline mean and σ",
+                    "description": "Number of historical days to use for computing the baseline mean and standard deviation",
                 },
                 "detect_days": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 30,
                     "default": 7,
-                    "description": "How many recent days to check for anomalies",
+                    "description": "Number of most recent days to evaluate against the baseline",
                 },
             },
             "required": ["metric"],
@@ -620,28 +685,32 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_segment",
         description=(
-            "Purchase behavior analysis for customers in a segment. "
-            "Computes buy rate, GMV, AOV, and orders per buyer for segment members. "
-            "Also returns top buyers list. Results are labeled 'sampled' if segment is large."
+            "Purchase behavior analysis for a specific customer segment or group — call this tool when the user "
+            "provides a segment ID or customer group ID and wants to know how that group is performing, "
+            "how active they are, what their AOV is, or who the top buyers in the segment are. "
+            "Queries purchase history for members of the specified segment and returns: buy rate (% who ordered), "
+            "total GMV, AOV, average orders per buyer, and a ranked list of top buyers by spend. "
+            "For large segments, results are automatically sampled (up to max_members) and labeled as such."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "group_id": {
                     "type": "string",
-                    "description": "Segment / customer group ID",
+                    "description": "The segment or customer group ID to analyze (required)",
                 },
                 "period": {
                     "type": "string",
                     "enum": ["7d", "30d", "90d", "365d"],
                     "default": "30d",
+                    "description": "Analysis window for purchase activity within the segment",
                 },
                 "max_members": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 2000,
                     "default": 500,
-                    "description": "Max members to sample for analysis",
+                    "description": "Maximum number of segment members to sample when the group is large",
                 },
             },
             "required": ["group_id"],
