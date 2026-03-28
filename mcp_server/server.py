@@ -341,16 +341,20 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_rfm",
         description=(
-            "RFM (Recency, Frequency, Monetary) customer segmentation. "
-            "Returns segment distribution with average spend, frequency, and recency per bucket. "
-            "Use segment_filter to drill into one segment. Use top_limit to list highest-scoring customers."
+            "RFM (Recency, Frequency, Monetary) customer segmentation — call this tool when the user asks "
+            "about RFM analysis, customer segmentation, customer tiers, high-value customers, loyal customers, "
+            "at-risk customers, or customer loyalty scoring. "
+            "Returns live segment distribution (Champions, Loyal Customers, Potential Loyalists, New Customers, "
+            "Cant Lose Them, Need Attention, About to Sleep, Hibernating) with headcount, average spend, "
+            "order frequency, and recency per segment. "
+            "Use segment_filter to drill into one segment; use top_limit to list the top-N customers."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "segment_filter": {
                     "type": "string",
-                    "description": "Filter to a specific RFM segment code (e.g. 'high_value', 'at_risk'). Omit for all segments.",
+                    "description": "Filter to a specific segment name (e.g. 'Champions', 'Loyal Customers', 'Hibernating'). Omit for all segments.",
                 },
                 "top_limit": {
                     "type": "integer",
