@@ -28,6 +28,7 @@ from .commands import (
     segments,
     skills,
     tags,
+    workflow,
 )
 
 # History file for storing last command
@@ -42,14 +43,6 @@ app = typer.Typer(
 )
 
 console = Console()
-
-# Valid CLI commands
-VALID_COMMANDS = {
-    "analytics", "customers", "members", "segments", "tags", "campaigns",
-    "coupons", "points", "messages", "config", "ai", "skills", "skill",
-    "mcp", "schema", "heartbeat", "history",
-    "--help", "-h", "--version", "-v"
-}
 
 # Register command groups
 app.add_typer(analytics.app, name="analytics", help="Data analytics commands")
@@ -69,6 +62,13 @@ app.add_typer(mcp.app, name="mcp", help="MCP analytics database (connect to Soci
 app.add_typer(schema.app, name="schema", help="Warehouse schema explorer - discover tables and fields")
 app.add_typer(heartbeat.app, name="heartbeat", help="Scheduled task management")
 app.add_typer(history.app, name="history", help="Run history: list, inspect, and replay past commands")
+app.add_typer(workflow.app, name="workflow", help="Business workflow shortcuts (daily-brief, etc.)")
+
+# Derive valid commands from registered groups — single source of truth
+VALID_COMMANDS = (
+    {g.name for g in app.registered_groups if g.name}
+    | {"--help", "-h", "--version", "-v"}
+)
 
 
 def version_callback(value: bool) -> None:
@@ -194,7 +194,7 @@ def cli() -> None:
 
         if last_commands:
             console.print("\n[dim]Re-executing last command...[/dim]")
-            from .commands.ai import execute_command
+            from .ai import execute_command
 
             for cmd in last_commands:
                 console.print(f"\n[cyan]Executing: {cmd}[/cyan]\n")
@@ -213,7 +213,7 @@ def cli() -> None:
 
     try:
         import re
-        from .commands.ai import (
+        from .ai import (
             call_ai_api,
             execute_command,
             execute_plan,

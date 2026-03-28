@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cli.main import app
+from cli.ai.validator import validate_command
 
 
 runner = CliRunner()
@@ -109,3 +110,105 @@ def test_tags_help():
     assert result.exit_code == 0
     assert "list" in result.output
     assert "create" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Validator tests
+# ---------------------------------------------------------------------------
+
+def test_validator_rejects_non_sh():
+    ok, reason = validate_command("rm -rf /")
+    assert not ok
+    assert "must start with" in reason
+
+
+def test_validator_accepts_valid_top_cmd():
+    ok, _ = validate_command("sh analytics overview")
+    assert ok
+
+
+def test_validator_rejects_unknown_top_cmd():
+    ok, reason = validate_command("sh foobar list")
+    assert not ok
+    assert "foobar" in reason
+
+
+def test_validator_rejects_unknown_subcmd():
+    ok, reason = validate_command("sh analytics doesnotexist")
+    assert not ok
+    assert "doesnotexist" in reason
+
+
+def test_validator_accepts_flags_after_top_cmd():
+    ok, _ = validate_command("sh analytics --help")
+    assert ok
+
+
+def test_validator_nested_valid():
+    """sh coupons rules list — two-level nesting should pass."""
+    ok, _ = validate_command("sh coupons rules list")
+    assert ok
+
+
+def test_validator_nested_invalid_leaf():
+    """sh coupons rules listt — typo at the third level should fail."""
+    ok, reason = validate_command("sh coupons rules listt")
+    assert not ok
+    assert "listt" in reason
+
+
+def test_validator_nested_invalid_group():
+    """sh messages badrules list — bad second-level group should fail."""
+    ok, reason = validate_command("sh messages badrules list")
+    assert not ok
+    assert "badrules" in reason
+
+
+def test_validator_workflow_daily_brief():
+    ok, _ = validate_command("sh workflow daily-brief")
+    assert ok
+
+
+def test_validator_workflow_with_option():
+    ok, _ = validate_command("sh workflow daily-brief --period=7d")
+    assert ok
+
+
+def test_validator_workflow_unknown_subcmd():
+    ok, reason = validate_command("sh workflow nonexistent")
+    assert not ok
+    assert "nonexistent" in reason
+
+
+# ---------------------------------------------------------------------------
+# Workflow smoke tests
+# ---------------------------------------------------------------------------
+
+def test_workflow_help():
+    result = runner.invoke(app, ["workflow", "--help"])
+    assert result.exit_code == 0
+    assert "daily-brief" in result.output
+
+
+def test_workflow_daily_brief_help():
+    result = runner.invoke(app, ["workflow", "daily-brief", "--help"])
+    assert result.exit_code == 0
+    assert "period" in result.output
+    assert "output" in result.output
+
+
+# ---------------------------------------------------------------------------
+# analytics overview --explain / --sql-trace smoke tests
+# ---------------------------------------------------------------------------
+
+def test_analytics_overview_explain_flag_exists():
+    """--explain flag should be recognised (local mode, no MCP)."""
+    result = runner.invoke(app, ["analytics", "overview", "--help"])
+    assert result.exit_code == 0
+    assert "explain" in result.output
+
+
+def test_analytics_overview_sql_trace_flag_exists():
+    result = runner.invoke(app, ["analytics", "overview", "--help"])
+    assert result.exit_code == 0
+    assert "sql-trace" in result.output
