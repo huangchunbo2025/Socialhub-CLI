@@ -17,6 +17,135 @@ from .overview import _fmt_cny, _pct_delta, _color_delta, _print_compare_row
 console = Console()
 
 
+def _get_mcp_orders_overall_with_client(client, database: str, date_filter: str, timeout=None) -> dict:
+    """Get overall order metrics in one query within an existing MCP session."""
+    result = client.query(f"""
+        SELECT
+            COUNT(*) AS total_orders,
+            SUM(total_amount) AS total_sales,
+            AVG(total_amount) AS avg_order_value,
+            COUNT(DISTINCT customer_code) AS unique_customers,
+            COUNT(DISTINCT CASE WHEN order_cnt > 1 THEN customer_code END) AS repeat_customers
+        FROM (
+            SELECT
+                customer_code,
+                total_amount,
+                COUNT(*) OVER (PARTITION BY customer_code) AS order_cnt
+            FROM dwd_v_order
+            {date_filter}
+        ) t
+    """, database=database, timeout=timeout)
+
+    data = {
+        "total_orders": 0,
+        "total_sales": 0.0,
+        "avg_order_value": 0.0,
+        "unique_customers": 0,
+        "repurchase_rate": 0.0,
+    }
+    if isinstance(result, list) and result:
+        row = result[0]
+        data["total_orders"] = row.get("total_orders") or 0
+        data["total_sales"] = float(row.get("total_sales") or 0)
+        data["avg_order_value"] = float(row.get("avg_order_value") or 0)
+        data["unique_customers"] = row.get("unique_customers") or 0
+        repeat_customers = row.get("repeat_customers") or 0
+        if data["unique_customers"] > 0:
+            data["repurchase_rate"] = round(repeat_customers / data["unique_customers"] * 100, 2)
+    return data
+
+
+def _get_mcp_orders_grouped_with_client(client, database: str, date_filter: str, by: str, timeout=None) -> list:
+    """Get grouped order metrics within an existing MCP session."""
+    if by == "channel":
+        result = client.query(f"""
+            SELECT
+                COALESCE(source_name, 'unknown') as channel,
+                COUNT(*) as order_count,
+                SUM(total_amount) as total_sales,
+                AVG(total_amount) as avg_order_value
+            FROM dwd_v_order
+            {date_filter}
+            GROUP BY source_name
+            ORDER BY total_sales DESC
+        """, database=database, timeout=timeout)
+        return result if isinstance(result, list) else []
+
+    result = client.query(f"""
+        SELECT
+            COALESCE(store_name, 'Online') as store,
+            COUNT(*) as order_count,
+            SUM(total_amount) as total_sales
+        FROM dwd_v_order
+        {date_filter}
+        GROUP BY store_name
+        ORDER BY total_sales DESC
+        LIMIT 20
+    """, database=database, timeout=timeout)
+    return result if isinstance(result, list) else []
+
+
+def _get_mcp_order_returns_with_client(client, database: str, date_filter: str, period: str, timeout=None) -> dict:
+    """Get return/exchange analysis within an existing MCP session."""
+    summary = client.query(f"""
+        SELECT
+            direction,
+            COUNT(*) AS order_count,
+            SUM(total_amount) / 100.0 AS amount_cny,
+            COUNT(DISTINCT customer_code) AS unique_customers
+        FROM dwd_v_order
+        {date_filter}
+        GROUP BY direction
+        ORDER BY direction
+    """, database=database, timeout=timeout)
+
+    trend = client.query(f"""
+        SELECT
+            order_date,
+            COUNT(CASE WHEN direction = 0 THEN 1 END) AS normal_orders,
+            COUNT(CASE WHEN direction = 1 THEN 1 END) AS return_orders,
+            COUNT(CASE WHEN direction = 2 THEN 1 END) AS exchange_orders
+        FROM dwd_v_order
+        {date_filter}
+        GROUP BY order_date
+        ORDER BY order_date DESC
+        LIMIT 14
+    """, database=database, timeout=timeout)
+
+    direction_labels = {0: "姝ｅ崟 (Sale)", 1: "閫€鍗?(Return)", 2: "鎹㈣揣鍗?(Exchange)"}
+    breakdown = []
+    totals = {"normal": 0, "return": 0, "exchange": 0, "total": 0}
+
+    if isinstance(summary, list):
+        for row in summary:
+            d = row.get("direction")
+            cnt = int(row.get("order_count") or 0)
+            breakdown.append({
+                "direction": d,
+                "label": direction_labels.get(d, f"Unknown ({d})"),
+                "order_count": cnt,
+                "amount_cny": float(row.get("amount_cny") or 0),
+                "unique_customers": int(row.get("unique_customers") or 0),
+            })
+            if d == 0:
+                totals["normal"] = cnt
+            elif d == 1:
+                totals["return"] = cnt
+            elif d == 2:
+                totals["exchange"] = cnt
+            totals["total"] += cnt
+
+    total = totals["total"]
+    return {
+        "period": period,
+        "breakdown": breakdown,
+        "return_rate": round(totals["return"] / total * 100, 2) if total else 0,
+        "exchange_rate": round(totals["exchange"] / total * 100, 2) if total else 0,
+        "return_exchange_rate": round((totals["return"] + totals["exchange"]) / total * 100, 2) if total else 0,
+        "trend": trend if isinstance(trend, list) else [],
+    }
+
+
 def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
     """Get order analytics from MCP database."""
     # Validate inputs
@@ -39,86 +168,18 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
         client.initialize()
 
         if by == "channel":
-            result = client.query(f"""
-                SELECT
-                    COALESCE(source_name, 'unknown') as channel,
-                    COUNT(*) as order_count,
-                    SUM(total_amount) as total_sales,
-                    AVG(total_amount) as avg_order_value
-                FROM dwd_v_order
-                {date_filter}
-                GROUP BY source_name
-                ORDER BY total_sales DESC
-            """, database=database, timeout=query_timeout)
-            # Return list directly for proper table display
-            return result if isinstance(result, list) else []
+            return _get_mcp_orders_grouped_with_client(client, database, date_filter, by, query_timeout)
 
         elif by == "province" or by == "store":
-            # Use store_name for regional distribution (province data is not available)
-            result = client.query(f"""
-                SELECT
-                    COALESCE(store_name, 'Online') as store,
-                    COUNT(*) as order_count,
-                    SUM(total_amount) as total_sales
-                FROM dwd_v_order
-                {date_filter}
-                GROUP BY store_name
-                ORDER BY total_sales DESC
-                LIMIT 20
-            """, database=database, timeout=query_timeout)
-            return result if isinstance(result, list) else []
+            return _get_mcp_orders_grouped_with_client(client, database, date_filter, by, query_timeout)
 
         elif by == "product":
             from .products import _get_mcp_products
             return _get_mcp_products(config, period, by_category=False, limit=30)
 
         else:
-            # Overall metrics
-            result = client.query(f"""
-                SELECT
-                    COUNT(*) as total_orders,
-                    SUM(total_amount) as total_sales,
-                    AVG(total_amount) as avg_order_value,
-                    COUNT(DISTINCT customer_code) as unique_customers
-                FROM dwd_v_order
-                {date_filter}
-            """, database=database, timeout=query_timeout)
-
-            data = {
-                "period": period,
-                "total_orders": 0,
-                "total_sales": 0.0,
-                "avg_order_value": 0.0,
-                "unique_customers": 0,
-            }
-
-            if isinstance(result, list) and len(result) > 0:
-                row = result[0]
-                data["total_orders"] = row.get("total_orders") or 0
-                data["total_sales"] = float(row.get("total_sales") or 0)
-                data["avg_order_value"] = float(row.get("avg_order_value") or 0)
-                data["unique_customers"] = row.get("unique_customers") or 0
-
-            # Repurchase rate
-            repurchase_result = client.query(f"""
-                SELECT
-                    COUNT(*) as repeat_customers
-                FROM (
-                    SELECT customer_code, COUNT(*) as order_cnt
-                    FROM dwd_v_order
-                    {date_filter}
-                    GROUP BY customer_code
-                    HAVING order_cnt > 1
-                ) t
-            """, database=database, timeout=query_timeout)
-
-            if isinstance(repurchase_result, list) and len(repurchase_result) > 0:
-                repeat_customers = repurchase_result[0].get("repeat_customers", 0)
-                if data["unique_customers"] > 0:
-                    data["repurchase_rate"] = round(repeat_customers / data["unique_customers"] * 100, 2)
-                else:
-                    data["repurchase_rate"] = 0
-
+            data = _get_mcp_orders_overall_with_client(client, database, date_filter, query_timeout)
+            data["period"] = period
             return data
 
 
@@ -382,6 +443,39 @@ def _get_mcp_orders_compare_both(config, prev_start, prev_end, cur_start, cur_en
         prev_data = _orders_metrics_query(client, database, ps, pe)
 
     return cur_data, prev_data
+
+
+def _get_mcp_orders_tool_payload(config, period: str, group_by: str = None, include_returns: bool = False) -> dict:
+    """Fetch MCP tool payload for orders in a single session."""
+    start_date, _ = _compute_date_range(period)
+    if group_by:
+        _validate_group_by(group_by)
+
+    date_filter = _safe_date_filter("order_date", start_date)
+    query_timeout = _mcp_query_timeout(period, grouped=bool(group_by) or include_returns)
+    mcp_config = MCPClientConfig(
+        sse_url=config.mcp.sse_url,
+        post_url=config.mcp.post_url,
+        tenant_id=config.mcp.tenant_id,
+    )
+    database = config.mcp.database
+
+    with MCPClient(mcp_config) as client:
+        client.initialize()
+        if group_by == "product":
+            from .products import _get_mcp_products
+            result = {"orders": _get_mcp_products(config, period, by_category=False, limit=30)}
+        elif group_by:
+            result = {"orders": _get_mcp_orders_grouped_with_client(client, database, date_filter, group_by, query_timeout)}
+        else:
+            orders = _get_mcp_orders_overall_with_client(client, database, date_filter, query_timeout)
+            orders["period"] = period
+            result = {"orders": orders}
+
+        if include_returns:
+            result["returns"] = _get_mcp_order_returns_with_client(client, database, date_filter, period, query_timeout)
+
+        return result
 
 
 def _print_orders_compare(cur: dict, prev: dict, period: str) -> None:

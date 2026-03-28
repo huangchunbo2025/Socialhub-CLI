@@ -1061,11 +1061,13 @@ def _print_recommend(data: dict) -> None:
 
 
 def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
-    """Query ads_v_rfm for RFM segment distribution and optionally top customers.
+    """Compute RFM segments from ads_v_rfm using avg benchmarks in the view.
 
-    Args:
-        limit: when > 0, also return top `limit` customers by rfm_score
-        segment_filter: if set, filter to rfm_segment = this value
+    ads_v_rfm columns: customer_code, Recency, Frequency, Monetary_1,
+    avgRecency, avgFrequency, avgMonetary_1 (no pre-computed segment labels).
+
+    Segmentation: compare each customer's R/F/M against the avg columns.
+    CTE syntax is blocked by the gateway, so subqueries are used instead.
     """
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -1076,30 +1078,48 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
     safe_limit = max(1, min(int(limit), 500)) if limit > 0 else 0
     safe_seg   = _sanitize_string_input(segment_filter, 50) if segment_filter else ""
 
-    seg_where  = f"WHERE rfm_segment = '{safe_seg}'" if safe_seg else ""
-    seg_and    = f"AND rfm_segment = '{safe_seg}'" if safe_seg else ""
+    seg_filter = f"WHERE segment = '{safe_seg}'" if safe_seg else ""
+
+    # Inline CASE expression reused in both the distribution and top-customer queries
+    _segment_expr = """
+        CASE
+            WHEN Recency <= avgRecency   AND Frequency >= avgFrequency AND Monetary_1 >= avgMonetary_1 THEN 'Champions'
+            WHEN Recency <= avgRecency   AND Frequency >= avgFrequency AND Monetary_1 <  avgMonetary_1 THEN 'Loyal Customers'
+            WHEN Recency <= avgRecency   AND Frequency <  avgFrequency AND Monetary_1 >= avgMonetary_1 THEN 'Potential Loyalists'
+            WHEN Recency <= avgRecency   AND Frequency <  avgFrequency AND Monetary_1 <  avgMonetary_1 THEN 'New Customers'
+            WHEN Recency >  avgRecency   AND Frequency >= avgFrequency AND Monetary_1 >= avgMonetary_1 THEN 'Cant Lose Them'
+            WHEN Recency >  avgRecency   AND Frequency >= avgFrequency AND Monetary_1 <  avgMonetary_1 THEN 'Need Attention'
+            WHEN Recency >  avgRecency   AND Frequency <  avgFrequency AND Monetary_1 >= avgMonetary_1 THEN 'About to Sleep'
+            ELSE 'Hibernating'
+        END
+    """
 
     with MCPClient(mcp_config) as client:
         client.initialize()
 
         # Segment distribution
         dist_rows = client.query(f"""
-            SELECT
-                rfm_segment,
-                rfm_label,
-                COUNT(*)                       AS customer_count,
-                AVG(monetary)  / 100.0         AS avg_monetary_cny,
-                AVG(frequency)                 AS avg_frequency,
-                AVG(recency_score)             AS avg_recency_days
-            FROM ads_v_rfm
-            {seg_where}
-            GROUP BY rfm_segment, rfm_label
+            SELECT segment,
+                   COUNT(*)                    AS customer_count,
+                   ROUND(AVG(Monetary_1), 0)   AS avg_monetary_cny,
+                   ROUND(AVG(Frequency), 2)    AS avg_frequency,
+                   ROUND(AVG(Recency), 0)      AS avg_recency_days
+            FROM (
+                SELECT customer_code, Recency, Frequency, Monetary_1,
+                       {_segment_expr} AS segment
+                FROM ads_v_rfm
+            ) t
+            {seg_filter}
+            GROUP BY segment
             ORDER BY customer_count DESC
         """, database=database)
 
-        # Total for share %
         total_rows = client.query(f"""
-            SELECT COUNT(*) AS total FROM ads_v_rfm {seg_where}
+            SELECT COUNT(*) AS total
+            FROM (
+                SELECT {_segment_expr} AS segment FROM ads_v_rfm
+            ) t
+            {seg_filter}
         """, database=database)
 
         total = int((total_rows[0].get("total") or 0) if isinstance(total_rows, list) and total_rows else 0)
@@ -1109,42 +1129,39 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
             for r in dist_rows:
                 cnt = int(r.get("customer_count") or 0)
                 distribution.append({
-                    "rfm_segment":      str(r.get("rfm_segment") or "-"),
-                    "rfm_label":        str(r.get("rfm_label") or "-"),
+                    "rfm_segment":      str(r.get("segment") or "-"),
                     "customer_count":   cnt,
                     "share_pct":        round(cnt / total * 100, 1) if total else 0,
-                    "avg_monetary_cny": round(float(r.get("avg_monetary_cny") or 0), 2),
+                    "avg_monetary_cny": round(float(r.get("avg_monetary_cny") or 0), 0),
                     "avg_frequency":    round(float(r.get("avg_frequency") or 0), 1),
-                    "avg_recency_days": round(float(r.get("avg_recency_days") or 0), 1),
+                    "avg_recency_days": round(float(r.get("avg_recency_days") or 0), 0),
                 })
 
         # Top customers (optional)
         top_customers = []
         if safe_limit > 0:
             top_rows = client.query(f"""
-                SELECT
-                    customer_code,
-                    rfm_segment,
-                    rfm_label,
-                    recency_score,
-                    frequency,
-                    monetary / 100.0 AS monetary_cny,
-                    rfm_score
-                FROM ads_v_rfm
-                WHERE 1=1 {seg_and}
-                ORDER BY rfm_score DESC
+                SELECT customer_code, segment,
+                       Recency AS recency_days,
+                       Frequency AS frequency,
+                       Monetary_1 AS monetary_cny
+                FROM (
+                    SELECT customer_code, Recency, Frequency, Monetary_1,
+                           {_segment_expr} AS segment
+                    FROM ads_v_rfm
+                ) t
+                {seg_filter}
+                ORDER BY Monetary_1 DESC
                 LIMIT {safe_limit}
             """, database=database)
             if isinstance(top_rows, list):
                 top_customers = [
                     {
-                        "customer_code":  r.get("customer_code") or "-",
-                        "rfm_segment":    r.get("rfm_segment") or "-",
-                        "rfm_label":      r.get("rfm_label") or "-",
-                        "recency_days":   int(r.get("recency_score") or 0),
-                        "frequency":      int(r.get("frequency") or 0),
-                        "monetary_cny":   round(float(r.get("monetary_cny") or 0), 2),
-                        "rfm_score":      round(float(r.get("rfm_score") or 0), 3),
+                        "customer_code": r.get("customer_code") or "-",
+                        "rfm_segment":   r.get("segment") or "-",
+                        "recency_days":  int(r.get("recency_days") or 0),
+                        "frequency":     int(r.get("frequency") or 0),
+                        "monetary_cny":  round(float(r.get("monetary_cny") or 0), 0),
                     }
                     for r in top_rows
                 ]

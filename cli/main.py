@@ -4,6 +4,12 @@ import json
 import sys
 from pathlib import Path
 
+# Windows GBK terminals can't encode characters like ¥ (U+00A5).
+# Reconfigure stdout/stderr to UTF-8 so Rich renders correctly.
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import typer
 from rich.console import Console
 from rich.panel import Panel

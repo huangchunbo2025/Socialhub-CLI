@@ -2,6 +2,7 @@
 
 import json
 import os
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Optional
 
@@ -86,10 +87,20 @@ def ensure_config_dir() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _load_bundled_defaults() -> dict:
+    """Load bundled defaults.json shipped with the package."""
+    try:
+        text = files("cli").joinpath("defaults.json").read_text(encoding="utf-8")
+        return json.loads(text)
+    except Exception:
+        return {}
+
+
 def load_config() -> Config:
-    """Load configuration from file."""
+    """Load configuration from file, falling back to bundled defaults."""
     if not CONFIG_FILE.exists():
-        return Config()
+        defaults = _load_bundled_defaults()
+        return Config(**defaults) if defaults else Config()
 
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -97,7 +108,8 @@ def load_config() -> Config:
         return Config(**data)
     except Exception as e:
         console.print(f"[yellow]Warning: Failed to load config: {e}[/yellow]")
-        return Config()
+        defaults = _load_bundled_defaults()
+        return Config(**defaults) if defaults else Config()
 
 
 def save_config(config: Config) -> None:
