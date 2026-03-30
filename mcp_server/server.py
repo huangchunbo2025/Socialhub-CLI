@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -46,8 +47,14 @@ _inflight: dict[str, threading.Event] = {}
 _inflight_lock = threading.Lock()
 
 
-def _cache_key(name: str, args: dict) -> str:
-    return f"{name}:{json.dumps(args, sort_keys=True)}"
+def _cache_key(name: str, args: dict, tenant_id: str = "") -> str:
+    """
+    生成缓存 key。
+    tenant_id 必须纳入 key，防止不同租户共享同一缓存结果（跨租户数据泄露）。
+    stdio 模式下 tenant_id 来自环境变量 MCP_TENANT_ID，
+    HTTP 模式下 tenant_id 来自 auth 中间件注入的 ContextVar。
+    """
+    return f"{tenant_id}:{name}:{json.dumps(args, sort_keys=True)}"
 
 
 def _get_cached_result(key: str) -> list | None:
@@ -57,9 +64,9 @@ def _get_cached_result(key: str) -> list | None:
     return None
 
 
-def _run_with_cache(name: str, args: dict, compute_fn) -> list:
+def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     """Reuse cached or in-flight work for identical tool requests."""
-    key = _cache_key(name, args)
+    key = _cache_key(name, args, tenant_id)
     cached = _get_cached_result(key)
     if cached is not None:
         logger.info("MCP tool cache hit: %s", name)
@@ -118,13 +125,18 @@ def _warm_cache() -> None:
             ("analytics_repurchase", {"period": "90d"}),
         ]
         def _run_one(item: tuple) -> None:
+            # _warm_cache 仅供 stdio 模式调用（__main__.py _run_stdio），HTTP 模式的 lifespan 不调用此函数
+            warm_tid = os.getenv("MCP_TENANT_ID", "")
+            if not warm_tid:
+                logging.getLogger(__name__).debug("Cache warm skipped: MCP_TENANT_ID not set")
+                return
             name, args = item
             handler = _HANDLERS.get(name)
             if not handler:
                 return
             try:
                 logging.getLogger(__name__).info("Cache warm started: %s args=%s", name, json.dumps(args, ensure_ascii=False, sort_keys=True))
-                result = _run_with_cache(name, args, lambda: handler(args))
+                result = _run_with_cache(name, args, warm_tid, lambda: handler(args))
                 logging.getLogger(__name__).info("Cache warm finished: %s", name)
             except Exception as e:
                 logging.getLogger(__name__).warning("Cache warm failed for %s: %s", name, e)
@@ -962,7 +974,19 @@ def create_server() -> Server:
             def _run():
                 if not _analytics_ready.wait(timeout=120):
                     return _err("Analytics failed to load within 120s")
-                return _run_with_cache(name, args, lambda: handler(args))
+
+                # 从 ContextVar 读取 tenant_id（HTTP 模式由 auth 中间件注入）
+                # stdio 模式回退到环境变量 MCP_TENANT_ID（延迟导入避免循环依赖）
+                from mcp_server.auth import _get_tenant_id
+                tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
+
+                if not tid:
+                    logger.warning("tenant_id 未设置，tool=%s", name)
+                    return _err("Tenant not configured. Contact IT administrator.")
+
+                # 静默删除客户端传入的 tenant_id（以 API Key 映射的 tenant_id 为准）
+                safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
+                return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
 
             result = await loop.run_in_executor(None, _run)
             logger.info("MCP tool call finished: %s elapsed_ms=%s", name, int((time.time() - started) * 1000))
