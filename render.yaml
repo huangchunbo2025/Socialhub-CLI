@@ -1,0 +1,93 @@
+# render.yaml — Render Blueprint（Infrastructure as Code）
+# 放置于仓库根目录，Render 自动检测并创建服务
+#
+# 部署前必读：
+# 1. 在 Render Dashboard 中填写所有 sync: false 的敏感变量
+# 2. MCP_API_KEYS 格式：sh_abc123:tenant-acme-001,sh_def456:tenant-beta-002
+# 3. 确保客户端 .env 文件已加入 .gitignore，防止 API Key 被误提交到 Git
+
+services:
+  - type: web
+    name: socialhub-mcp
+    runtime: python
+    plan: starter           # $7/月，无冷启动，Render SLA 99.9%（PRD §7 强制要求）
+    region: oregon          # 与 skills-store-backend 同区域，减少跨区延迟
+    branch: main
+    buildCommand: pip install -e ".[http]"
+    startCommand: uvicorn mcp_server.http_app:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info
+    healthCheckPath: /health   # Render 零停机部署探针，/health 不需要认证（PRD §5.1）
+    autoDeploy: true           # push 到 main 分支自动触发重部署
+
+    envVars:
+      # -----------------------------------------------------------------------
+      # 敏感变量：sync: false，值不写入 Git，首次部署后在 Render Dashboard 手动填写
+      # -----------------------------------------------------------------------
+      - key: MCP_API_KEYS
+        sync: false
+        # 格式：sh_abc123...xyz:tenant-acme-001,sh_def456...uvw:tenant-beta-002
+        # 每个 API Key 和 tenant_id 用冒号分隔，多个条目用逗号分隔
+
+      - key: MCP_TENANT_ID
+        sync: false
+        # stdio 模式兼容性保留，HTTP 模式优先使用 MCP_API_KEYS 中的 tenant_id
+        # 单租户部署时可只设置此变量（兼容回退）
+
+      - key: MCP_SSE_URL
+        sync: false
+        # 上游 MCP SSE 端点，probe_upstream_mcp() 使用
+
+      - key: MCP_POST_URL
+        sync: false
+        # 上游 MCP POST 端点
+
+      # -----------------------------------------------------------------------
+      # 非敏感配置：直接写入 render.yaml
+      # -----------------------------------------------------------------------
+      - key: PYTHONUNBUFFERED
+        value: "1"
+        # 确保 Python 日志实时输出到 Render Log，不被缓冲
+
+      - key: LOG_LEVEL
+        value: "INFO"
+
+      - key: ALLOWED_ORIGINS
+        value: ""
+        # 逗号分隔的额外 CORS 允许 origin，生产环境留空（使用代码中的默认白名单）
+        # 如需添加额外 origin，在此填入（不覆盖代码默认白名单，追加方式）
+
+  # ---------------------------------------------------------------------------
+  # Skills Store Backend（已有服务，保持原配置不变）
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: skills-store-backend
+    runtime: python
+    rootDir: skills-store
+    buildCommand: pip install -e .
+    startCommand: bash ./start.sh
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: JWT_EXPIRE_HOURS
+        value: "24"
+      - key: PACKAGE_STORAGE_MODE
+        value: local
+      - key: PACKAGE_STORAGE_ROOT
+        value: ./data/packages
+      - key: ED25519_PRIVATE_KEY_PATH
+        value: ./secrets/ed25519-private.pem
+      - key: ED25519_PUBLIC_KEY_ID
+        value: ed25519-main
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: skills-store-postgres
+          property: connectionString
+
+databases:
+  - name: skills-store-postgres
+    plan: free
+    databaseName: skills_store
+    user: skills_store
