@@ -1,6 +1,7 @@
 """Tests for configuration management."""
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,7 @@ import pytest
 
 from cli.config import (
     Config,
+    StarRocksConfig,
     get_config_value,
     load_config,
     save_config,
@@ -107,9 +109,6 @@ def test_set_config_value(temp_config_dir):
 
 def test_starrocks_config_defaults():
     """StarRocksConfig 默认值从环境变量读取。"""
-    import os
-    from unittest.mock import patch
-
     with patch.dict(os.environ, {
         "STARROCKS_HOST": "sr.example.com",
         "STARROCKS_HTTP_PORT": "8030",
@@ -117,7 +116,6 @@ def test_starrocks_config_defaults():
         "STARROCKS_PASSWORD": "secret",
         "STARROCKS_DB_PREFIX": "myapp",
     }):
-        from cli.config import StarRocksConfig
         cfg = StarRocksConfig()
         assert cfg.host == "sr.example.com"
         assert cfg.port == 8030
@@ -128,7 +126,6 @@ def test_starrocks_config_defaults():
 
 def test_starrocks_config_in_main_config():
     """Config 顶层包含 starrocks 字段。"""
-    from cli.config import Config
     cfg = Config()
     assert hasattr(cfg, "starrocks")
     assert cfg.starrocks.port == 8030  # 默认值
