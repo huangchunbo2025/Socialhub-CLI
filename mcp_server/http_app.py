@@ -33,7 +33,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
+from pathlib import Path
+
+from starlette.responses import HTMLResponse
+
 from mcp_server.auth import APIKeyMiddleware
+from mcp_server.db import close_db, init_db
+from mcp_server.routers.credentials import delete_credentials, get_credentials, upload_credentials
 from mcp_server.server import create_server
 
 logger = logging.getLogger(__name__)
@@ -146,6 +152,17 @@ async def health(request: Request) -> JSONResponse:
     )
 
 
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+async def ui(request: Request) -> HTMLResponse:
+    """GET /ui — serve customer portal HTML."""
+    html_path = _STATIC_DIR / "ui.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>UI not found</h1>", status_code=404)
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
 # ---------------------------------------------------------------------------
 # MCP Session Manager（进程级单例）
 # ---------------------------------------------------------------------------
@@ -201,11 +218,19 @@ async def lifespan(app: Starlette):  # type: ignore[type-arg]
     threading.Thread(target=_load_analytics, daemon=True).start()
     logger.info("Analytics preload thread started")
 
+    # 初始化数据库
+    try:
+        await init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.warning("Database init failed (non-fatal): %s", e)
+
     # 启动 MCP session manager
     async with _session_manager.run():
         logger.info("StreamableHTTPSessionManager started (stateless=True)")
         yield
 
+    await close_db()
     logger.info("HTTP MCP app shutting down")
 
 
@@ -216,6 +241,10 @@ async def lifespan(app: Starlette):  # type: ignore[type-arg]
 _app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
+        Route("/ui", ui, methods=["GET"]),
+        Route("/credentials/bigquery", upload_credentials, methods=["POST"]),
+        Route("/credentials/bigquery", get_credentials, methods=["GET"]),
+        Route("/credentials/bigquery", delete_credentials, methods=["DELETE"]),
         Mount("/mcp", app=_session_manager.handle_request),
     ],
     lifespan=lifespan,

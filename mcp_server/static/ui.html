@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SocialHub - BigQuery 凭据管理</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 640px; margin: 40px auto; padding: 0 20px; }
+    .card { background: #fff; border-radius: 8px; padding: 32px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    h1 { font-size: 22px; margin-bottom: 24px; color: #1a1a1a; }
+    h2 { font-size: 16px; margin-bottom: 16px; color: #444; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #555; }
+    input[type=text], input[type=password], textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px;
+      font-size: 14px; margin-bottom: 16px; outline: none;
+    }
+    input:focus, textarea:focus { border-color: #0070f3; }
+    textarea { height: 120px; resize: vertical; font-family: monospace; font-size: 12px; }
+    button {
+      padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px;
+      font-weight: 500; cursor: pointer;
+    }
+    .btn-primary { background: #0070f3; color: #fff; }
+    .btn-primary:hover { background: #0060df; }
+    .btn-danger { background: #e53e3e; color: #fff; margin-left: 10px; }
+    .btn-secondary { background: #eee; color: #333; }
+    .btn-secondary:hover { background: #ddd; }
+    .alert { padding: 12px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+    .alert-success { background: #f0fff4; border: 1px solid #9ae6b4; color: #276749; }
+    .alert-error { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; }
+    .alert-info { background: #ebf8ff; border: 1px solid #90cdf4; color: #2b6cb0; }
+    .meta { font-size: 12px; color: #888; margin-top: 4px; }
+    .tag { display: inline-block; background: #ebf8ff; color: #2b6cb0; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .tenant-badge { font-size: 13px; color: #666; background: #f0f0f0; padding: 4px 10px; border-radius: 4px; }
+    #file-drop-area {
+      border: 2px dashed #ddd; border-radius: 8px; padding: 24px;
+      text-align: center; cursor: pointer; color: #888; margin-bottom: 16px; font-size: 14px;
+    }
+    #file-drop-area.drag-over { border-color: #0070f3; background: #f0f7ff; }
+    #file-name { font-size: 13px; color: #0070f3; margin-top: 8px; }
+    .hidden { display: none; }
+    .loading { opacity: 0.6; pointer-events: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- Login View -->
+  <div id="view-login" class="card">
+    <h1>SocialHub 凭据管理</h1>
+    <div id="login-error" class="alert alert-error hidden"></div>
+    <label for="token-input">API Token</label>
+    <input type="password" id="token-input" placeholder="输入您的 API Token">
+    <button class="btn-primary" onclick="doLogin()">登录</button>
+  </div>
+
+  <!-- Credential View -->
+  <div id="view-credential" class="hidden">
+    <div class="card">
+      <div class="header-bar">
+        <h1>BigQuery 凭据管理</h1>
+        <div>
+          <span class="tenant-badge" id="tenant-display"></span>
+          <button class="btn-secondary" onclick="doLogout()" style="margin-left:10px">退出</button>
+        </div>
+      </div>
+
+      <!-- Status: configured -->
+      <div id="status-configured" class="hidden">
+        <div class="alert alert-success">✓ BigQuery 凭据已配置</div>
+        <div style="margin-bottom: 16px;">
+          <div><strong>Customer ID：</strong><span id="disp-customer-id"></span></div>
+          <div><strong>GCP Project：</strong><span id="disp-project-id"></span></div>
+          <div><strong>Dataset：</strong><span id="disp-dataset-id"></span></div>
+          <div style="margin-top:8px;"><strong>已发现的表：</strong></div>
+          <div id="disp-tables" style="margin-top:4px;"></div>
+          <div class="meta" id="disp-validated-at"></div>
+        </div>
+        <button class="btn-danger" onclick="confirmDelete()">删除凭据</button>
+      </div>
+
+      <!-- Status: not configured -->
+      <div id="status-not-configured" class="hidden">
+        <div class="alert alert-info" style="margin-bottom:20px;">尚未配置 BigQuery 凭据，请上传 Service Account 文件</div>
+
+        <div id="upload-result" class="hidden"></div>
+
+        <div id="file-drop-area" onclick="document.getElementById('file-input').click()"
+             ondragover="handleDragOver(event)" ondrop="handleDrop(event)">
+          拖拽 Service Account JSON 文件到此处，或点击选择文件
+          <div id="file-name"></div>
+        </div>
+        <input type="file" id="file-input" accept=".json" class="hidden" onchange="handleFileSelect(event)">
+
+        <label>Emarsys Customer ID</label>
+        <input type="text" id="inp-customer-id" placeholder="例如：12345">
+
+        <label>GCP Project ID</label>
+        <input type="text" id="inp-project-id" placeholder="例如：sap-emarsys-project">
+
+        <label>Dataset ID</label>
+        <input type="text" id="inp-dataset-id" placeholder="例如：emarsys_12345">
+
+        <button class="btn-primary" id="upload-btn" onclick="doUpload()">上传并校验</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let _token = localStorage.getItem('sh_token') || '';
+  let _saJson = null;
+
+  function show(id) { document.getElementById(id).classList.remove('hidden'); }
+  function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+  async function doLogin() {
+    const token = document.getElementById('token-input').value.trim();
+    if (!token) return;
+    hide('login-error');
+    try {
+      const resp = await fetch('/credentials/bigquery', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (resp.status === 401) {
+        show('login-error');
+        document.getElementById('login-error').textContent = 'Token 无效，请重试';
+        return;
+      }
+      _token = token;
+      localStorage.setItem('sh_token', token);
+      await loadCredentialView(await resp.json());
+    } catch (e) {
+      show('login-error');
+      document.getElementById('login-error').textContent = '连接失败：' + e.message;
+    }
+  }
+
+  async function loadCredentialView(data) {
+    hide('view-login');
+    show('view-credential');
+    document.getElementById('tenant-display').textContent = 'Token: ' + _token.substring(0, 6) + '***';
+    if (data.configured) {
+      show('status-configured');
+      hide('status-not-configured');
+      document.getElementById('disp-customer-id').textContent = data.customer_id;
+      document.getElementById('disp-project-id').textContent = data.gcp_project_id;
+      document.getElementById('disp-dataset-id').textContent = data.dataset_id;
+      const tablesEl = document.getElementById('disp-tables');
+      tablesEl.innerHTML = (data.tables_found || []).map(t => `<span class="tag">${t}</span>`).join('');
+      document.getElementById('disp-validated-at').textContent =
+        data.validated_at ? '最后校验：' + new Date(data.validated_at).toLocaleString() : '';
+    } else {
+      hide('status-configured');
+      show('status-not-configured');
+      hide('upload-result');
+    }
+  }
+
+  function doLogout() {
+    localStorage.removeItem('sh_token');
+    _token = '';
+    show('view-login');
+    hide('view-credential');
+    document.getElementById('token-input').value = '';
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('file-drop-area').classList.add('drag-over');
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('file-drop-area').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) readFile(file);
+  }
+
+  function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) readFile(file);
+  }
+
+  function readFile(file) {
+    document.getElementById('file-name').textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        _saJson = JSON.parse(e.target.result);
+        if (_saJson.project_id && !document.getElementById('inp-project-id').value) {
+          document.getElementById('inp-project-id').value = _saJson.project_id;
+        }
+      } catch {
+        _saJson = null;
+        document.getElementById('file-name').textContent = '⚠ 文件格式错误，请选择有效的 JSON 文件';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function doUpload() {
+    const customerId = document.getElementById('inp-customer-id').value.trim();
+    const projectId = document.getElementById('inp-project-id').value.trim();
+    const datasetId = document.getElementById('inp-dataset-id').value.trim();
+    const resultEl = document.getElementById('upload-result');
+
+    if (!_saJson) { alert('请先选择 Service Account JSON 文件'); return; }
+    if (!customerId || !projectId || !datasetId) { alert('请填写所有必填字段'); return; }
+
+    const btn = document.getElementById('upload-btn');
+    btn.textContent = '校验中...';
+    btn.classList.add('loading');
+    show('upload-result');
+    resultEl.className = 'alert alert-info';
+    resultEl.textContent = '正在连接 BigQuery 并校验凭据，请稍候...';
+
+    try {
+      const resp = await fetch('/credentials/bigquery', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          gcp_project_id: projectId,
+          dataset_id: datasetId,
+          service_account_json: _saJson,
+        }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        resultEl.className = 'alert alert-success';
+        resultEl.textContent = `✓ 校验通过！发现 ${data.tables_found.length} 张表`;
+        setTimeout(() => loadCredentialView({ configured: true, ...data }), 1500);
+      } else {
+        resultEl.className = 'alert alert-error';
+        resultEl.textContent = '✗ ' + (data.message || '校验失败');
+      }
+    } catch (e) {
+      resultEl.className = 'alert alert-error';
+      resultEl.textContent = '连接失败：' + e.message;
+    } finally {
+      btn.textContent = '上传并校验';
+      btn.classList.remove('loading');
+    }
+  }
+
+  async function confirmDelete() {
+    if (!confirm('确定要删除 BigQuery 凭据吗？此操作不可撤销。')) return;
+    try {
+      const resp = await fetch('/credentials/bigquery', {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + _token },
+      });
+      if (resp.ok) {
+        await loadCredentialView({ configured: false });
+      } else {
+        alert('删除失败：' + (await resp.json()).message);
+      }
+    } catch (e) {
+      alert('删除失败：' + e.message);
+    }
+  }
+
+  // Auto-login if token in localStorage
+  (async () => {
+    if (_token) {
+      try {
+        const resp = await fetch('/credentials/bigquery', {
+          headers: { 'Authorization': 'Bearer ' + _token }
+        });
+        if (resp.ok) {
+          await loadCredentialView(await resp.json());
+          return;
+        }
+      } catch {}
+      localStorage.removeItem('sh_token');
+      _token = '';
+    }
+  })();
+</script>
+</body>
+</html>
