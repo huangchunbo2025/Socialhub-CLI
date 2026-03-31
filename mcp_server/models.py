@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -17,7 +17,8 @@ class TenantBigQueryCredential(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    customer_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    credential_type: Mapped[str] = mapped_column(String(50), nullable=False, default="bigquery_emarsys")
+    customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gcp_project_id: Mapped[str] = mapped_column(String(255), nullable=False)
     dataset_id: Mapped[str] = mapped_column(String(255), nullable=False)
     service_account_json: Mapped[str] = mapped_column(Text, nullable=False)  # Fernet encrypted

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class UploadRequest(BaseModel):
     """Request body for uploading BigQuery credentials."""
 
-    customer_id: str = Field(..., description="Emarsys Customer ID (table name suffix)")
+    customer_id: str | None = Field(None, description="Emarsys Customer ID (optional, auto-detected if omitted)")
     gcp_project_id: str = Field(..., description="SAP-hosted GCP project ID")
     dataset_id: str = Field(..., description="BigQuery dataset ID (e.g. emarsys_12345)")
     service_account_json: dict = Field(..., description="Google Service Account JSON")
@@ -74,10 +74,13 @@ async def upload_credentials(request: Request) -> JSONResponse:
         )
         row = (await session.execute(stmt)).scalar_one_or_none()
 
+        resolved_customer_id = req.customer_id or (result.customer_ids_found[0] if result.customer_ids_found else None)
+
         if row is None:
             row = TenantBigQueryCredential(
                 tenant_id=tenant_id,
-                customer_id=req.customer_id,
+                credential_type="bigquery_emarsys",
+                customer_id=resolved_customer_id,
                 gcp_project_id=req.gcp_project_id,
                 dataset_id=req.dataset_id,
                 service_account_json=encrypted_sa,
@@ -86,7 +89,8 @@ async def upload_credentials(request: Request) -> JSONResponse:
             )
             session.add(row)
         else:
-            row.customer_id = req.customer_id
+            row.credential_type = "bigquery_emarsys"
+            row.customer_id = resolved_customer_id
             row.gcp_project_id = req.gcp_project_id
             row.dataset_id = req.dataset_id
             row.service_account_json = encrypted_sa
@@ -101,7 +105,8 @@ async def upload_credentials(request: Request) -> JSONResponse:
         content={
             "status": "ok",
             "tenant_id": tenant_id,
-            "customer_id": req.customer_id,
+            "customer_id": resolved_customer_id,
+            "customer_ids_found": result.customer_ids_found,
             "tables_found": result.tables_found,
             "validated_at": now.isoformat(),
         },

@@ -1,8 +1,4 @@
-"""BigQuery credentials validator.
-
-Validates a Service Account JSON by listing tables in the specified dataset
-and checking that the core Emarsys table (email_sends_{customer_id}) exists.
-"""
+"""BigQuery credentials validator."""
 
 from __future__ import annotations
 
@@ -23,6 +19,7 @@ _SCOPES = ["https://www.googleapis.com/auth/bigquery.readonly"]
 class ValidationResult:
     success: bool
     tables_found: list[str] = field(default_factory=list)
+    customer_ids_found: list[str] = field(default_factory=list)  # extracted from email_sends_* tables
     error: str | None = None
 
 
@@ -30,21 +27,18 @@ def validate_credentials(
     sa_json: dict[str, Any],
     gcp_project_id: str,
     dataset_id: str,
-    customer_id: str,
+    customer_id: str | None = None,
 ) -> ValidationResult:
     """Validate BigQuery Service Account credentials.
 
-    Steps:
-    1. Check SA JSON has required fields.
-    2. Build BigQuery client with the SA credentials.
-    3. List tables in dataset_id.
-    4. Verify email_sends_{customer_id} is present.
+    If customer_id is provided: verify email_sends_{customer_id} table exists.
+    If customer_id is None: scan for all email_sends_* tables, extract suffixes.
 
     Args:
         sa_json: Service Account JSON dict.
         gcp_project_id: GCP project ID.
         dataset_id: BigQuery dataset ID to validate.
-        customer_id: Emarsys customer ID used to check core table existence.
+        customer_id: Emarsys customer ID (optional). If omitted, auto-detected from table names.
 
     Returns:
         ValidationResult with success=True and tables_found on success,
@@ -64,33 +58,48 @@ def validate_credentials(
         )
 
     try:
-        # Step 2: Build BQ client
         credentials = service_account.Credentials.from_service_account_info(
             sa_json, scopes=_SCOPES
         )
         client = bigquery.Client(credentials=credentials, project=gcp_project_id)
 
-        # Step 3: List tables
         tables = list(client.list_tables(dataset_id))
         table_names = [t.table_id for t in tables]
-        logger.info(
-            "BigQuery list_tables: dataset=%s found=%d tables",
-            dataset_id,
-            len(table_names),
-        )
+        logger.info("BigQuery list_tables: dataset=%s found=%d tables", dataset_id, len(table_names))
 
-        # Step 4: Check core table
-        core_table = f"email_sends_{customer_id}"
-        if core_table not in table_names:
+        if not table_names:
             return ValidationResult(
                 success=False,
-                error=(
-                    f"数据集 {dataset_id} 中未找到核心表 {core_table}。"
-                    f"已发现的表：{', '.join(table_names[:10]) or '(空)'}"
-                ),
+                error=f"数据集 {dataset_id} 中未发现任何表，请检查权限或 Dataset ID",
             )
 
-        return ValidationResult(success=True, tables_found=table_names)
+        # Extract customer_ids from email_sends_* tables
+        customer_ids_found = [
+            t.removeprefix("email_sends_")
+            for t in table_names
+            if t.startswith("email_sends_")
+        ]
+
+        if customer_id:
+            # Specific customer_id check
+            core_table = f"email_sends_{customer_id}"
+            if core_table not in table_names:
+                return ValidationResult(
+                    success=False,
+                    error=(
+                        f"数据集 {dataset_id} 中未找到核心表 {core_table}。"
+                        f"已发现的表：{', '.join(table_names[:10]) or '(空)'}"
+                    ),
+                )
+        else:
+            # No customer_id: just need at least one table
+            pass
+
+        return ValidationResult(
+            success=True,
+            tables_found=table_names,
+            customer_ids_found=customer_ids_found,
+        )
 
     except Exception as exc:
         logger.error("BigQuery validation failed: %s", exc)

@@ -15,7 +15,7 @@ def test_model_columns():
     mapper = inspect(TenantBigQueryCredential)
     col_names = {col.key for col in mapper.columns}
     required = {
-        "id", "tenant_id", "customer_id", "gcp_project_id",
+        "id", "tenant_id", "credential_type", "customer_id", "gcp_project_id",
         "dataset_id", "service_account_json", "tables_found",
         "validated_at", "created_at", "updated_at",
     }

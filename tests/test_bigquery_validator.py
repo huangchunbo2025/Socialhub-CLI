@@ -50,6 +50,7 @@ def test_validate_success():
     assert isinstance(result, ValidationResult)
     assert result.success is True
     assert "email_sends_12345" in result.tables_found
+    assert "12345" in result.customer_ids_found
     assert result.error is None
 
 
@@ -114,3 +115,30 @@ def test_validate_bq_api_error():
 
     assert result.success is False
     assert "Permission denied" in result.error
+
+
+def test_validate_no_customer_id_auto_detect():
+    """未提供 customer_id 时自动从表名提取。"""
+    from mcp_server.services.bigquery_validator import validate_credentials
+
+    mock_tables = [
+        _mock_table("email_sends_12345"),
+        _mock_table("email_opens_12345"),
+    ]
+
+    with patch("mcp_server.services.bigquery_validator.service_account") as mock_sa:
+        with patch("mcp_server.services.bigquery_validator.bigquery") as mock_bq:
+            mock_sa.Credentials.from_service_account_info.return_value = MagicMock()
+            mock_client = MagicMock()
+            mock_bq.Client.return_value = mock_client
+            mock_client.list_tables.return_value = mock_tables
+
+            result = validate_credentials(
+                sa_json=VALID_SA_JSON,
+                gcp_project_id="test-project",
+                dataset_id="emarsys_12345",
+                # no customer_id
+            )
+
+    assert result.success is True
+    assert "12345" in result.customer_ids_found
