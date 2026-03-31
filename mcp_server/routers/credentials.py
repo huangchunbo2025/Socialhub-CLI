@@ -12,6 +12,8 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from starlette.requests import Request
@@ -32,7 +34,7 @@ class UploadRequest(BaseModel):
     customer_id: str | None = Field(None, description="Emarsys Customer ID (optional, auto-detected if omitted)")
     gcp_project_id: str = Field(..., description="SAP-hosted GCP project ID")
     dataset_id: str | None = Field(None, description="BigQuery dataset ID (optional, auto-discovers emarsys_* if omitted)")
-    service_account_json: dict = Field(..., description="Google Service Account JSON")
+    service_account_json: dict[str, Any] = Field(..., description="Google Service Account JSON")
 
 
 async def upload_credentials(request: Request) -> JSONResponse:
@@ -65,7 +67,11 @@ async def upload_credentials(request: Request) -> JSONResponse:
     # Encrypt and store
     encrypted_sa = encrypt(json.dumps(req.service_account_json))
     tables_json = json.dumps(result.tables_found)
-    datasets_found_str = ",".join(result.datasets_found) if result.datasets_found else None
+    # If single-dataset path, datasets_found is empty but we know the dataset
+    effective_datasets = result.datasets_found if result.datasets_found else (
+        [req.dataset_id] if req.dataset_id else []
+    )
+    datasets_found_str = json.dumps(effective_datasets) if effective_datasets else None
     now = datetime.now(timezone.utc)
 
     session = await get_session()
@@ -110,7 +116,7 @@ async def upload_credentials(request: Request) -> JSONResponse:
             "tenant_id": tenant_id,
             "customer_id": resolved_customer_id,
             "account_ids_found": result.account_ids_found,
-            "datasets_found": result.datasets_found,
+            "datasets_found": effective_datasets,
             "tables_found": result.tables_found,
             "validated_at": now.isoformat(),
         },
@@ -132,7 +138,7 @@ async def get_credentials(request: Request) -> JSONResponse:
         return JSONResponse(status_code=200, content={"status": "ok", "configured": False})
 
     tables = json.loads(row.tables_found) if row.tables_found else []
-    datasets = row.datasets_found.split(",") if row.datasets_found else []
+    datasets = json.loads(row.datasets_found) if row.datasets_found else []
     return JSONResponse(
         status_code=200,
         content={

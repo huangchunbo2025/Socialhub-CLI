@@ -74,7 +74,7 @@ def validate_credentials(
             if not emarsys_datasets:
                 return ValidationResult(
                     success=False,
-                    error="No emarsys_* datasets found in project",
+                    error="未在项目中发现任何 emarsys_* 数据集，请检查 GCP Project ID 和 Service Account 权限",
                 )
 
             all_tables: list[Any] = []
