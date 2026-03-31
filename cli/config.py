@@ -20,7 +20,8 @@ class APIConfig(BaseModel):
     """API connection configuration."""
 
     url: str = Field(default="https://api.socialhub.ai", description="API base URL")
-    key: str = Field(default="", description="API key for authentication")
+    app_id: str = Field(default="", description="App ID for API authentication")
+    app_secret: str = Field(default="", description="App Secret for API authentication")
     timeout: int = Field(default=30, description="Request timeout in seconds")
 
 
@@ -70,6 +71,15 @@ class MCPConfig(BaseModel):
     )
 
 
+class OAuthConfig(BaseModel):
+    """OAuth2 ROPC authentication configuration."""
+
+    enabled: bool = Field(default=False, description="Enable OAuth2 auth gate")
+    token_url: str = Field(default="", description="OAuth2 token endpoint URL")
+    client_id: str = Field(default="", description="OAuth2 client ID")
+    scopes: str = Field(default="", description="Space-separated OAuth2 scopes")
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -78,6 +88,7 @@ class Config(BaseModel):
     local: LocalConfig = Field(default_factory=LocalConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    oauth: OAuthConfig = Field(default_factory=OAuthConfig)
     default_format: str = Field(default="table", description="Default output format")
     page_size: int = Field(default=50, description="Default page size for list commands")
 
@@ -171,6 +182,7 @@ def get_env_config() -> dict:
     """Get configuration from environment variables."""
     return {
         "api_url": os.getenv("SOCIALHUB_API_URL"),
-        "api_key": os.getenv("SOCIALHUB_API_KEY"),
+        "app_id": os.getenv("SOCIALHUB_APP_ID"),
+        "app_secret": os.getenv("SOCIALHUB_APP_SECRET"),
         "mode": os.getenv("SOCIALHUB_MODE"),
     }

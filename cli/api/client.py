@@ -1,14 +1,19 @@
 """API client for SocialHub platform."""
 
-from datetime import datetime
+import json
+import stat
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
 from rich.console import Console
 
-from ..config import load_config
+from ..config import CONFIG_DIR, load_config
 
 console = Console()
+
+# Token cache file (parallel to store_token.json)
+_TOKEN_FILE = CONFIG_DIR / "api_token.json"
 
 
 class APIError(Exception):
@@ -21,24 +26,130 @@ class APIError(Exception):
 
 
 class SocialHubClient:
-    """HTTP client for SocialHub API."""
+    """HTTP client for SocialHub API.
+
+    Authentication flow:
+    1. Load cached token from ~/.socialhub/api_token.json
+    2. If missing or expired, fetch new token via appId + appSecret
+    3. Use accessToken as Bearer token for all subsequent requests
+    4. On 401, refresh token and retry once
+    """
 
     def __init__(
         self,
         base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
         timeout: int = 30,
     ):
         config = load_config()
         self.base_url = (base_url or config.api.url).rstrip("/")
-        self.api_key = api_key or config.api.key
         self.timeout = timeout or config.api.timeout
+        self._app_id = config.api.app_id
+        self._app_secret = config.api.app_secret
+        self._access_token: Optional[str] = None
+
+        # Ensure we have a valid token before building the client
+        self._ensure_token()
 
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=self.timeout,
             headers=self._build_headers(),
         )
+
+    # ── Token cache management ──────────────────────────────────────
+
+    @staticmethod
+    def _load_token() -> Optional[dict[str, str]]:
+        """Load cached token from disk. Returns None if missing or expired."""
+        if not _TOKEN_FILE.exists():
+            return None
+        try:
+            data = json.loads(_TOKEN_FILE.read_text(encoding="utf-8"))
+            expires_at = data.get("expires_at")
+            if expires_at:
+                exp = datetime.fromisoformat(expires_at)
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) >= exp:
+                    return None
+            return data
+        except Exception:
+            return None
+
+    @staticmethod
+    def _save_token(access_token: str, refresh_token: str, expires_at: datetime) -> None:
+        """Save token to disk with restricted permissions (0600)."""
+        _TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _TOKEN_FILE.write_text(
+            json.dumps(
+                {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "expires_at": expires_at.isoformat(),
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        try:
+            _TOKEN_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass  # Windows best-effort
+
+    def _fetch_token(self) -> str:
+        """Fetch a new token from the auth endpoint using appId + appSecret."""
+        if not self._app_id or not self._app_secret:
+            raise APIError(
+                "API credentials not configured. "
+                "Run 'sh config set api.app_id YOUR_APP_ID' and "
+                "'sh config set api.app_secret YOUR_APP_SECRET'."
+            )
+
+        url = f"{self.base_url}/v1/auth/token"
+        response = httpx.post(
+            url,
+            json={"appId": self._app_id, "appSecret": self._app_secret},
+            headers={"Content-Type": "application/json"},
+            timeout=self.timeout,
+        )
+
+        if response.status_code >= 400:
+            raise APIError(
+                f"Token request failed: HTTP {response.status_code} — {response.text}",
+                response.status_code,
+            )
+
+        body = response.json()
+        if str(body.get("code")) != "200":
+            raise APIError(f"Token request failed: {body.get('msg', 'unknown error')}")
+
+        data = body.get("data", {})
+        access_token = data.get("accessToken")
+        refresh_token = data.get("refreshToken", "")
+        expires_time = data.get("expiresTime")
+
+        if not access_token or expires_time is None:
+            raise APIError("Token response missing accessToken or expiresTime")
+
+        # expiresTime is an absolute Unix timestamp (seconds)
+        expires_at = datetime.fromtimestamp(int(expires_time), tz=timezone.utc)
+        self._save_token(access_token, refresh_token, expires_at)
+        return access_token
+
+    def _ensure_token(self) -> None:
+        """Ensure a valid access token is available (cache-first)."""
+        cached = self._load_token()
+        if cached and cached.get("access_token"):
+            self._access_token = cached["access_token"]
+        else:
+            self._access_token = self._fetch_token()
+
+    def _refresh_and_rebuild(self) -> None:
+        """Force-refresh token and rebuild the httpx client headers."""
+        self._access_token = self._fetch_token()
+        self._client.headers.update({"Authorization": f"Bearer {self._access_token}"})
+
+    # ── HTTP helpers ────────────────────────────────────────────────
 
     def _build_headers(self) -> dict[str, str]:
         """Build request headers."""
@@ -47,8 +158,8 @@ class SocialHubClient:
             "Accept": "application/json",
             "User-Agent": "SocialHub-CLI/0.1.0",
         }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
         return headers
 
     def _handle_response(self, response: httpx.Response) -> dict[str, Any]:
@@ -66,25 +177,41 @@ class SocialHubClient:
         except Exception:
             return {"data": response.text}
 
+    def _request_with_retry(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[dict] = None,
+        data: Optional[dict] = None,
+    ) -> dict[str, Any]:
+        """Execute request; on 401 refresh token and retry once."""
+        try:
+            response = self._client.request(method, endpoint, params=params, json=data)
+            if response.status_code == 401:
+                raise APIError("Unauthorized", 401)
+            return self._handle_response(response)
+        except APIError as e:
+            if e.status_code == 401:
+                self._refresh_and_rebuild()
+                response = self._client.request(method, endpoint, params=params, json=data)
+                return self._handle_response(response)
+            raise
+
     def get(self, endpoint: str, params: Optional[dict] = None) -> dict[str, Any]:
         """Make GET request."""
-        response = self._client.get(endpoint, params=params)
-        return self._handle_response(response)
+        return self._request_with_retry("GET", endpoint, params=params)
 
     def post(self, endpoint: str, data: Optional[dict] = None) -> dict[str, Any]:
         """Make POST request."""
-        response = self._client.post(endpoint, json=data)
-        return self._handle_response(response)
+        return self._request_with_retry("POST", endpoint, data=data)
 
     def put(self, endpoint: str, data: Optional[dict] = None) -> dict[str, Any]:
         """Make PUT request."""
-        response = self._client.put(endpoint, json=data)
-        return self._handle_response(response)
+        return self._request_with_retry("PUT", endpoint, data=data)
 
     def delete(self, endpoint: str) -> dict[str, Any]:
         """Make DELETE request."""
-        response = self._client.delete(endpoint)
-        return self._handle_response(response)
+        return self._request_with_retry("DELETE", endpoint)
 
     def close(self) -> None:
         """Close the client."""
