@@ -138,6 +138,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         # 注入 tenant_id 到请求 state（同步代码可读）和 ContextVar（executor 线程可读）
         request.state.tenant_id = tenant_id
+        logger.info(
+            "API Key authentication succeeded: path=%s tenant=%s key_prefix=%s",
+            request.url.path,
+            tenant_id,
+            api_key[:8] if api_key else "<empty>",
+        )
         token = _tenant_id_var.set(tenant_id)
 
         try:
