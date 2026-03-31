@@ -21,19 +21,59 @@ import contextlib
 import datetime
 import logging
 import os
+import time
+import uuid
 from datetime import timezone
 
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
 from mcp_server.auth import APIKeyMiddleware
 from mcp_server.server import create_server
 
 logger = logging.getLogger(__name__)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log inbound HTTP requests so Render logs show whether Copilot reached /mcp."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+        started = time.time()
+        logger.info(
+            "HTTP request started: id=%s method=%s path=%s user_agent=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            request.headers.get("user-agent", "-"),
+        )
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.exception(
+                "HTTP request failed: id=%s method=%s path=%s elapsed_ms=%s",
+                request_id,
+                request.method,
+                request.url.path,
+                int((time.time() - started) * 1000),
+            )
+            raise
+
+        response.headers["X-Request-Id"] = request_id
+        logger.info(
+            "HTTP request finished: id=%s method=%s path=%s status=%s elapsed_ms=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            int((time.time() - started) * 1000),
+        )
+        return response
 
 # ---------------------------------------------------------------------------
 # CORS 配置
@@ -184,6 +224,7 @@ _app = Starlette(
 # 中间件包裹顺序（add_middleware 是从内到外，越后 add 越先执行）
 # 执行顺序：CORS（最外层，先执行）→ APIKey → Starlette Router
 # CORS 必须在 APIKey 之外，确保 OPTIONS preflight 不被 401 拦截
+_app.add_middleware(RequestLoggingMiddleware)
 _app.add_middleware(APIKeyMiddleware)
 _app.add_middleware(
     CORSMiddleware,
