@@ -17,9 +17,11 @@
 - 安全: cryptography（Ed25519 签名验证）
 
 ### MCP Server
-- 协议: MCP 1.0（stdio 默认，兼容 Claude Desktop / GitHub Copilot）
-- 工具数量: 36+ 分析工具
-- 缓存: 内存 TTL 缓存（900s）
+- 协议: MCP 1.8+（stdio 默认；HTTP Streamable Transport 可选，兼容 M365 Copilot）
+- 工具数量: 36+ 分析工具（其中 8 个暴露给 M365 Declarative Agent）
+- 缓存: 内存 TTL 缓存（900s），cache key 含 tenant_id 防跨租户泄漏
+- HTTP 认证: API Key（环境变量 `MCP_API_KEYS=key1:tenant1,key2:tenant2`）
+- HTTP 部署: Render（`pip install -e ".[http]"`，`uvicorn mcp_server.http_app:app`）
 
 ### Skills Store 后端
 - 框架: FastAPI + SQLAlchemy
@@ -73,8 +75,18 @@ cli/                    # CLI 主包（入口: cli/main.py:cli()）
   main.py               # CLI 入口：智能模式检测（自然语言 vs 注册命令）
 
 mcp_server/             # MCP Server 包（入口: socialhub-mcp 命令）
-  __main__.py           # stdio / SSE 传输启动
-  server.py             # 工具定义 + 36+ handler + 缓存层
+  __main__.py           # stdio / HTTP 传输启动（--transport [stdio|http] --port）
+  server.py             # 工具定义 + 36+ handler + 缓存层（支持 tenant_id 隔离）
+  auth.py               # API Key 认证中间件（Starlette BaseHTTPMiddleware + ContextVar 多租户）
+  http_app.py           # HTTP Streamable Transport ASGI 应用（/health + /mcp）
+
+build/m365-agent/       # M365 Teams App 包（zip 后上传 Teams Developer Portal）
+  manifest.json         # Teams App manifest v1.17
+  declarativeAgent.json # M365 Declarative Agent（Instructions + 6 Conversation Starters）
+  plugin.json           # M365 Plugin（ApiKeyPluginVault + MCPServer runtime）
+  mcp-tools.json        # 8 个分析工具 Schema（token 预算 1172/3000）
+
+render.yaml             # Render Blueprint（Starter plan，/health 探针，单 worker）
 
 skills-store/           # Skills Store 服务（独立部署）
   backend/app/
@@ -224,7 +236,8 @@ PATCH /api/v1/users/me/skills/{skill_name}/toggle → 200
 ```bash
 MCP_SSE_URL       # MCP SSE 端点
 MCP_POST_URL      # MCP 消息端点
-MCP_TENANT_ID     # 租户 ID（必须）
+MCP_TENANT_ID     # 租户 ID（stdio 模式必须；HTTP 模式由 API Key 自动映射）
+MCP_API_KEYS      # HTTP 模式 API Key 映射（格式: key1:tenant1,key2:tenant2）
 MCP_DATABASE      # 默认数据库名
 AI_PROVIDER       # azure | openai（覆盖 config.json）
 AZURE_OPENAI_ENDPOINT
