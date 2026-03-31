@@ -71,7 +71,7 @@ def _load_api_key_map() -> dict[str, str]:
 _API_KEY_MAP: dict[str, str] = _load_api_key_map()
 
 # 不需要认证的路径白名单
-_AUTH_EXEMPT_PATHS: frozenset[str] = frozenset({"/health", "/health/"})
+_AUTH_EXEMPT_PATHS: frozenset[str] = frozenset({"/health", "/health/", "/ui", "/ui/"})
 
 
 def _extract_api_key(request: Request) -> str:
