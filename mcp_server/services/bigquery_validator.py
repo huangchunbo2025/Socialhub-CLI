@@ -18,18 +18,22 @@ _SCOPES = ["https://www.googleapis.com/auth/bigquery.readonly"]
 @dataclass
 class ValidationResult:
     success: bool
+    datasets_found: list[str] = field(default_factory=list)  # auto-discovered emarsys_* dataset IDs
     tables_found: list[str] = field(default_factory=list)
-    customer_ids_found: list[str] = field(default_factory=list)  # extracted from email_sends_* tables
+    account_ids_found: list[str] = field(default_factory=list)  # suite account IDs from email_sends_* tables
     error: str | None = None
 
 
 def validate_credentials(
     sa_json: dict[str, Any],
     gcp_project_id: str,
-    dataset_id: str,
+    dataset_id: str | None = None,
     customer_id: str | None = None,
 ) -> ValidationResult:
     """Validate BigQuery Service Account credentials.
+
+    If dataset_id is provided: validate that single dataset (existing behavior).
+    If dataset_id is None: auto-discover all emarsys_* datasets in the GCP project.
 
     If customer_id is provided: verify email_sends_{customer_id} table exists.
     If customer_id is None: scan for all email_sends_* tables, extract suffixes.
@@ -37,7 +41,7 @@ def validate_credentials(
     Args:
         sa_json: Service Account JSON dict.
         gcp_project_id: GCP project ID.
-        dataset_id: BigQuery dataset ID to validate.
+        dataset_id: BigQuery dataset ID to validate. If None, auto-discovers emarsys_* datasets.
         customer_id: Emarsys customer ID (optional). If omitted, auto-detected from table names.
 
     Returns:
@@ -63,6 +67,43 @@ def validate_credentials(
         )
         client = bigquery.Client(credentials=credentials, project=gcp_project_id)
 
+        if dataset_id is None:
+            # Auto-discover all emarsys_* datasets
+            datasets = list(client.list_datasets())
+            emarsys_datasets = [ds for ds in datasets if ds.dataset_id.startswith("emarsys_")]
+            if not emarsys_datasets:
+                return ValidationResult(
+                    success=False,
+                    error="No emarsys_* datasets found in project",
+                )
+
+            all_tables: list[Any] = []
+            dataset_ids: list[str] = []
+            for ds in emarsys_datasets:
+                dataset_ref = client.dataset(ds.dataset_id)
+                ds_tables = list(client.list_tables(dataset_ref))
+                all_tables.extend(ds_tables)
+                dataset_ids.append(ds.dataset_id)
+                logger.info(
+                    "BigQuery list_tables: dataset=%s found=%d tables",
+                    ds.dataset_id,
+                    len(ds_tables),
+                )
+
+            customer_ids = list({
+                t.table_id.removeprefix("email_sends_")
+                for t in all_tables
+                if t.table_id.startswith("email_sends_")
+            })
+
+            return ValidationResult(
+                success=True,
+                datasets_found=dataset_ids,
+                tables_found=[t.table_id for t in all_tables],
+                account_ids_found=customer_ids,
+            )
+
+        # Single dataset validation (existing behavior)
         tables = list(client.list_tables(dataset_id))
         table_names = [t.table_id for t in tables]
         logger.info("BigQuery list_tables: dataset=%s found=%d tables", dataset_id, len(table_names))
@@ -73,8 +114,8 @@ def validate_credentials(
                 error=f"数据集 {dataset_id} 中未发现任何表，请检查权限或 Dataset ID",
             )
 
-        # Extract customer_ids from email_sends_* tables
-        customer_ids_found = [
+        # Extract account_ids from email_sends_* tables
+        account_ids_found = [
             t.removeprefix("email_sends_")
             for t in table_names
             if t.startswith("email_sends_")
@@ -98,7 +139,7 @@ def validate_credentials(
         return ValidationResult(
             success=True,
             tables_found=table_names,
-            customer_ids_found=customer_ids_found,
+            account_ids_found=account_ids_found,
         )
 
     except Exception as exc:

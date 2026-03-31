@@ -31,7 +31,7 @@ class UploadRequest(BaseModel):
 
     customer_id: str | None = Field(None, description="Emarsys Customer ID (optional, auto-detected if omitted)")
     gcp_project_id: str = Field(..., description="SAP-hosted GCP project ID")
-    dataset_id: str = Field(..., description="BigQuery dataset ID (e.g. emarsys_12345)")
+    dataset_id: str | None = Field(None, description="BigQuery dataset ID (optional, auto-discovers emarsys_* if omitted)")
     service_account_json: dict = Field(..., description="Google Service Account JSON")
 
 
@@ -65,6 +65,7 @@ async def upload_credentials(request: Request) -> JSONResponse:
     # Encrypt and store
     encrypted_sa = encrypt(json.dumps(req.service_account_json))
     tables_json = json.dumps(result.tables_found)
+    datasets_found_str = ",".join(result.datasets_found) if result.datasets_found else None
     now = datetime.now(timezone.utc)
 
     session = await get_session()
@@ -74,7 +75,7 @@ async def upload_credentials(request: Request) -> JSONResponse:
         )
         row = (await session.execute(stmt)).scalar_one_or_none()
 
-        resolved_customer_id = req.customer_id or (result.customer_ids_found[0] if result.customer_ids_found else None)
+        resolved_customer_id = req.customer_id or (result.account_ids_found[0] if result.account_ids_found else None)
 
         if row is None:
             row = TenantBigQueryCredential(
@@ -85,6 +86,7 @@ async def upload_credentials(request: Request) -> JSONResponse:
                 dataset_id=req.dataset_id,
                 service_account_json=encrypted_sa,
                 tables_found=tables_json,
+                datasets_found=datasets_found_str,
                 validated_at=now,
             )
             session.add(row)
@@ -95,6 +97,7 @@ async def upload_credentials(request: Request) -> JSONResponse:
             row.dataset_id = req.dataset_id
             row.service_account_json = encrypted_sa
             row.tables_found = tables_json
+            row.datasets_found = datasets_found_str
             row.validated_at = now
 
         await session.commit()
@@ -106,7 +109,8 @@ async def upload_credentials(request: Request) -> JSONResponse:
             "status": "ok",
             "tenant_id": tenant_id,
             "customer_id": resolved_customer_id,
-            "customer_ids_found": result.customer_ids_found,
+            "account_ids_found": result.account_ids_found,
+            "datasets_found": result.datasets_found,
             "tables_found": result.tables_found,
             "validated_at": now.isoformat(),
         },
@@ -128,6 +132,7 @@ async def get_credentials(request: Request) -> JSONResponse:
         return JSONResponse(status_code=200, content={"status": "ok", "configured": False})
 
     tables = json.loads(row.tables_found) if row.tables_found else []
+    datasets = row.datasets_found.split(",") if row.datasets_found else []
     return JSONResponse(
         status_code=200,
         content={
@@ -137,6 +142,7 @@ async def get_credentials(request: Request) -> JSONResponse:
             "gcp_project_id": row.gcp_project_id,
             "dataset_id": row.dataset_id,
             "tables_found": tables,
+            "datasets_found": datasets,
             "validated_at": row.validated_at.isoformat() if row.validated_at else None,
             "created_at": row.created_at.isoformat() if row.created_at else None,
         },

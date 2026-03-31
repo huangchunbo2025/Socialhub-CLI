@@ -50,7 +50,7 @@ def test_validate_success():
     assert isinstance(result, ValidationResult)
     assert result.success is True
     assert "email_sends_12345" in result.tables_found
-    assert "12345" in result.customer_ids_found
+    assert "12345" in result.account_ids_found
     assert result.error is None
 
 
@@ -141,4 +141,4 @@ def test_validate_no_customer_id_auto_detect():
             )
 
     assert result.success is True
-    assert "12345" in result.customer_ids_found
+    assert "12345" in result.account_ids_found

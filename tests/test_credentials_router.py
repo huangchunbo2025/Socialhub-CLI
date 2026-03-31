@@ -153,3 +153,59 @@ def test_delete_not_found(client):
         )
 
     assert resp.status_code == 404
+
+
+def test_upload_without_dataset_id(client):
+    """dataset_id is optional — validator auto-discovers datasets."""
+    from mcp_server.services.bigquery_validator import ValidationResult
+
+    mock_result = ValidationResult(
+        success=True,
+        datasets_found=["emarsys_sap_12345"],
+        tables_found=["email_sends_12345"],
+        account_ids_found=["12345"],
+    )
+
+    mock_credential = MagicMock()
+    mock_credential.customer_id = "12345"
+    mock_credential.tables_found = '["email_sends_12345"]'
+    mock_credential.validated_at = datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc)
+
+    with patch("mcp_server.routers.credentials.validate_credentials", return_value=mock_result):
+        with patch("mcp_server.routers.credentials.encrypt", return_value="encrypted-blob"):
+            with patch("mcp_server.routers.credentials.get_session") as mock_session_fn:
+                mock_session = AsyncMock()
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=False)
+                mock_session.execute = AsyncMock(
+                    return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+                )
+                mock_session.add = MagicMock()
+                mock_session.commit = AsyncMock()
+                mock_session.refresh = AsyncMock(
+                    side_effect=lambda obj: (
+                        setattr(obj, "validated_at", mock_credential.validated_at)
+                        or setattr(obj, "tables_found", mock_credential.tables_found)
+                    )
+                )
+                mock_session_fn.return_value = mock_session
+
+                resp = client.post(
+                    "/credentials/bigquery",
+                    json={
+                        "gcp_project_id": "sap-od-test",
+                        "service_account_json": {
+                            "type": "service_account",
+                            "project_id": "x",
+                            "private_key": "k",
+                            "client_email": "e@e.com",
+                        },
+                    },
+                    headers={"Authorization": "Bearer test-token-001"},
+                )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["datasets_found"] == ["emarsys_sap_12345"]
+    assert body["account_ids_found"] == ["12345"]
