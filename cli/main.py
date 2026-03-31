@@ -20,7 +20,6 @@ from . import __version__
 from .commands import (
     ai,
     analytics,
-    auth,
     campaigns,
     config_cmd,
     coupons,
@@ -62,7 +61,6 @@ app.add_typer(coupons.app, name="coupons", help="Coupon management commands")
 app.add_typer(points.app, name="points", help="Points program commands")
 app.add_typer(messages.app, name="messages", help="Message management commands")
 app.add_typer(config_cmd.app, name="config", help="Configuration management")
-app.add_typer(auth.app, name="auth", help="Authentication management")
 app.add_typer(ai.app, name="ai", help="AI assistant (natural language interface)")
 app.add_typer(skills.app, name="skills", help="Skills Store - Install official skills")
 app.add_typer(skills.app, name="skill", help="Skills Store (alias)", hidden=True)
@@ -84,10 +82,6 @@ def version_callback(value: bool) -> None:
     if value:
         console.print(f"SocialHub.AI CLI v{__version__}")
         raise typer.Exit()
-
-
-# Commands exempt from OAuth2 auth gate
-_AUTH_EXEMPT_COMMANDS = {"auth", "config", "--help", "-h", "--version", "-v"}
 
 
 @app.callback()
@@ -113,20 +107,7 @@ def main(
 
     Use [bold]sh <command> --help[/bold] for more information on a specific command.
     """
-    _run_auth_gate()
-
-
-def _run_auth_gate() -> None:
-    """Run OAuth2 auth gate for registered commands (Typer path)."""
-    args = sys.argv[1:]
-    if not args:
-        return
-    first_arg = args[0]
-    if first_arg in _AUTH_EXEMPT_COMMANDS:
-        return
-    from .auth.gate import ensure_authenticated
-
-    ensure_authenticated()
+    pass
 
 
 def load_history() -> dict:
@@ -235,11 +216,6 @@ def cli() -> None:
             return
 
     console.print(f"\n[dim]Smart mode: {query}[/dim]")
-
-    # Auth gate for smart-mode (natural language path bypasses Typer callback)
-    from .auth.gate import ensure_authenticated
-
-    ensure_authenticated()
 
     try:
         import re
