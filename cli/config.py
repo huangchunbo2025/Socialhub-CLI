@@ -70,6 +70,31 @@ class MCPConfig(BaseModel):
     )
 
 
+class StarRocksConfig(BaseModel):
+    """StarRocks connection configuration for Stream Load."""
+
+    host: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_HOST", ""),
+        description="StarRocks FE host",
+    )
+    port: int = Field(
+        default_factory=lambda: int(os.environ.get("STARROCKS_HTTP_PORT", "8030")),
+        description="StarRocks HTTP Load port (default 8030)",
+    )
+    user: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_USER", "root"),
+        description="StarRocks username",
+    )
+    password: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_PASSWORD", ""),
+        description="StarRocks password",
+    )
+    db_prefix: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_DB_PREFIX", "socialhub"),
+        description="Database name prefix; final db = {db_prefix}_{tenant_id}",
+    )
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -78,6 +103,7 @@ class Config(BaseModel):
     local: LocalConfig = Field(default_factory=LocalConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    starrocks: StarRocksConfig = Field(default_factory=StarRocksConfig)
     default_format: str = Field(default="table", description="Default output format")
     page_size: int = Field(default=50, description="Default page size for list commands")
 

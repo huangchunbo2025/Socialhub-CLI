@@ -103,3 +103,33 @@ def test_set_config_value(temp_config_dir):
     # Set mode
     assert set_config_value("mode", "local")
     assert get_config_value("mode") == "local"
+
+
+def test_starrocks_config_defaults():
+    """StarRocksConfig 默认值从环境变量读取。"""
+    import os
+    from unittest.mock import patch
+
+    with patch.dict(os.environ, {
+        "STARROCKS_HOST": "sr.example.com",
+        "STARROCKS_HTTP_PORT": "8030",
+        "STARROCKS_USER": "admin",
+        "STARROCKS_PASSWORD": "secret",
+        "STARROCKS_DB_PREFIX": "myapp",
+    }):
+        from cli.config import StarRocksConfig
+        cfg = StarRocksConfig()
+        assert cfg.host == "sr.example.com"
+        assert cfg.port == 8030
+        assert cfg.user == "admin"
+        assert cfg.password == "secret"
+        assert cfg.db_prefix == "myapp"
+
+
+def test_starrocks_config_in_main_config():
+    """Config 顶层包含 starrocks 字段。"""
+    from cli.config import Config
+    cfg = Config()
+    assert hasattr(cfg, "starrocks")
+    assert cfg.starrocks.port == 8030  # 默认值
+    assert cfg.starrocks.db_prefix == "socialhub"  # 默认值
