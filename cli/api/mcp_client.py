@@ -44,6 +44,9 @@ class MCPClient:
         self._initialized = False
         self._session_ready = threading.Event()
         self._last_error: Optional[str] = None
+        self._connect_timeout = 10.0
+        self._post_timeout = 5.0
+        self._post_retries = 1
 
     def _validate_config(self) -> None:
         """Validate that required configuration is provided.
@@ -87,7 +90,7 @@ class MCPClient:
         self._sse_thread.start()
 
         # Wait for session ID via event (no busy-wait)
-        self._session_ready.wait(timeout=10.0)
+        self._session_ready.wait(timeout=self._connect_timeout)
 
         if self._session_id:
             self._connected = True
@@ -121,7 +124,7 @@ class MCPClient:
                 "GET",
                 self.config.sse_url,
                 headers={"tenant_id": self.config.tenant_id},
-                timeout=None,
+                timeout=httpx.Timeout(connect=self._connect_timeout, read=None, write=self._connect_timeout, pool=self._connect_timeout),
             ) as response:
                 if response.status_code >= 400:
                     self._last_error = f"SSE connect failed: HTTP {response.status_code}"
@@ -221,13 +224,45 @@ class MCPClient:
                 },
             )
 
-            # Send POST (response comes via SSE)
-            response = httpx.post(
-                url,
-                headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
-                json=message,
-                timeout=5,
-            )
+            # Send POST (response comes via SSE). Retry once for transient transport failures.
+            response = None
+            for attempt in range(self._post_retries + 1):
+                try:
+                    response = httpx.post(
+                        url,
+                        headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
+                        json=message,
+                        timeout=self._post_timeout,
+                    )
+                    if response.status_code < 500:
+                        break
+                    logger.warning(
+                        "Upstream MCP POST returned retryable status",
+                        extra={
+                            "request_id": request_id,
+                            "method": method,
+                            "status_code": response.status_code,
+                            "attempt": attempt + 1,
+                            "url": url,
+                        },
+                    )
+                except (httpx.HTTPError, httpx.TimeoutException, OSError) as e:
+                    if attempt >= self._post_retries:
+                        raise
+                    logger.warning(
+                        "Retrying upstream MCP POST after transport error",
+                        extra={
+                            "request_id": request_id,
+                            "method": method,
+                            "attempt": attempt + 1,
+                            "url": url,
+                            "error": str(e),
+                        },
+                    )
+                    time.sleep(0.3 * (attempt + 1))
+
+            if response is None:
+                return {"error": {"code": -1, "message": "Upstream POST failed before response"}}
             if response.status_code >= 400:
                 logger.error(
                     "Upstream MCP POST returned error status",
@@ -308,11 +343,13 @@ class MCPClient:
         if self._initialized:
             return {"result": "already initialized"}
 
+        started = time.time()
         result = self._send_request("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {"listChanged": True}},
             "clientInfo": {"name": "SocialHub-CLI", "version": "1.0.0"},
         }, timeout=30)
+        logger.info("Upstream MCP initialize completed", extra={"elapsed_ms": int((time.time() - started) * 1000)})
 
         if "result" in result:
             self._initialized = True
@@ -323,18 +360,31 @@ class MCPClient:
 
     def list_tools(self) -> list[dict]:
         """List available MCP tools."""
+        started = time.time()
         result = self._send_request("tools/list", {}, timeout=60)
         if "result" in result:
             self._tools = result["result"].get("tools", [])
+            logger.info(
+                "Upstream MCP tools/list completed",
+                extra={"elapsed_ms": int((time.time() - started) * 1000), "tools": len(self._tools)},
+            )
             return self._tools
         return []
 
     def call_tool(self, tool_name: str, arguments: Optional[dict] = None, timeout: int = 60) -> Any:
         """Call an MCP tool."""
+        started = time.time()
         result = self._send_request("tools/call", {
             "name": tool_name,
             "arguments": arguments or {},
         }, timeout=timeout)
+        logger.info(
+            "Upstream MCP tools/call completed",
+            extra={
+                "tool_name": tool_name,
+                "elapsed_ms": int((time.time() - started) * 1000),
+            },
+        )
 
         if "error" in result:
             raise MCPError(result["error"].get("message", str(result["error"])))
