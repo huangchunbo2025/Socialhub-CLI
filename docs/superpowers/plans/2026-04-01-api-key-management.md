@@ -105,7 +105,7 @@ git commit -m "feat: add TenantApiKey model with migration"
 
 ---
 
-## Task 2: JWT Service + Portal Login
+## Task 2: JWT Service + Portal Login ✅ 已完成
 
 **Files:**
 - Create: `mcp_server/services/jwt_service.py`
@@ -476,7 +476,7 @@ git commit -m "feat: add JWT service and portal login endpoint"
 
 ---
 
-## Task 3: API Key Management Endpoints
+## Task 3: API Key Management Endpoints ✅ 已完成
 
 **Files:**
 - Create: `mcp_server/routers/api_keys.py`
@@ -801,7 +801,7 @@ git commit -m "feat: add API key management endpoints (create/list/revoke)"
 
 ---
 
-## Task 4: Update APIKeyMiddleware to Check DB + resolve_tenant_id
+## Task 4: Update APIKeyMiddleware to Check DB + resolve_tenant_id ✅ 已完成
 
 **Files:**
 - Modify: `mcp_server/auth.py`
@@ -952,7 +952,7 @@ git commit -m "feat: APIKeyMiddleware checks DB first, add resolve_tenant_id for
 
 ---
 
-## Task 5: UI Complete Redesign
+## Task 5: UI Complete Redesign ✅ 已完成
 
 **Files:**
 - Modify: `mcp_server/static/ui.html`
