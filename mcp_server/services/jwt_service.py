@@ -36,10 +36,12 @@ def _now() -> int:
 
 
 def _b64encode(data: bytes) -> str:
+    """URL-safe base64 encode without padding."""
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
 def _b64decode(s: str) -> bytes:
+    """URL-safe base64 decode with padding restoration."""
     pad = 4 - len(s) % 4
     if pad != 4:
         s += "=" * pad
@@ -47,6 +49,7 @@ def _b64decode(s: str) -> bytes:
 
 
 def _sign(message: str) -> str:
+    """HMAC-SHA256 sign a message string, return base64url-encoded digest."""
     return _b64encode(hmac.new(_SECRET, message.encode(), hashlib.sha256).digest())
 
 

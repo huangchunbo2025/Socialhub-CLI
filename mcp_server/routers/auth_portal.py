@@ -29,7 +29,17 @@ class LoginRequest(BaseModel):
 
 
 async def login(request: Request) -> JSONResponse:
-    """POST /auth/login — authenticate with SocialHub credentials, return JWT."""
+    """Authenticate with SocialHub credentials and return a signed JWT.
+
+    Args:
+        request: Starlette request with JSON body: {tenantId, account, pwd}.
+
+    Returns:
+        200 with {"token": "<jwt>", "tenant_id": "<id>"} on success.
+        401 if credentials are invalid.
+        422 if request body is malformed.
+        503 if SOCIALHUB_AUTH_URL is not configured.
+    """
     try:
         body = await request.json()
         req = LoginRequest(**body)
@@ -54,7 +64,7 @@ async def login(request: Request) -> JSONResponse:
         return JSONResponse(status_code=401, content={"error": f"登录失败：{e.message}"})
     except Exception as e:
         logger.error("Portal login unexpected error: %s", e)
-        return JSONResponse(status_code=401, content={"error": "登录失败"})
+        return JSONResponse(status_code=503, content={"error": "登录服务异常，请稍后重试"})
 
     jwt_token = create_token(req.tenantId)
     logger.info("Portal login success: tenant=%s", req.tenantId)
