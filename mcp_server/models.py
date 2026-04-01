@@ -20,9 +20,10 @@ class TenantBigQueryCredential(Base):
     credential_type: Mapped[str] = mapped_column(String(50), nullable=False, default="bigquery_emarsys")
     customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gcp_project_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    dataset_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    dataset_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     service_account_json: Mapped[str] = mapped_column(Text, nullable=False)  # Fernet encrypted
     tables_found: Mapped[str | None] = mapped_column(Text, nullable=True)    # JSON array string
+    datasets_found: Mapped[str | None] = mapped_column(Text, nullable=True)  # comma-separated dataset IDs
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
