@@ -70,6 +70,13 @@ class MCPConfig(BaseModel):
     )
 
 
+class OAuthConfig(BaseModel):
+    """SocialHub OAuth2 authentication configuration."""
+
+    enabled: bool = Field(default=False, description="Enable OAuth2 auth gate")
+    auth_url: str = Field(default="", description="Auth API base URL")
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -78,6 +85,7 @@ class Config(BaseModel):
     local: LocalConfig = Field(default_factory=LocalConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    oauth: OAuthConfig = Field(default_factory=OAuthConfig)
     default_format: str = Field(default="table", description="Default output format")
     page_size: int = Field(default=50, description="Default page size for list commands")
 

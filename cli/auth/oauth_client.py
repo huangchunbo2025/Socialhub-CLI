@@ -1,4 +1,11 @@
-"""OAuth2 Resource Owner Password Credentials (ROPC) HTTP client."""
+"""SocialHub authentication HTTP client.
+
+Login:   POST {auth_url}/v1/user/auth/token
+         Body: {"tenantId": "...", "account": "...", "pwd": "..."}
+
+Refresh: GET  {auth_url}/v1/user/auth/refreshToken?refreshToken=...
+         Header: Authorization: {current_token}
+"""
 
 from typing import Any, Optional
 
@@ -6,7 +13,7 @@ import httpx
 
 
 class OAuthError(Exception):
-    """OAuth2 authentication error."""
+    """Authentication error."""
 
     def __init__(self, message: str, status_code: Optional[int] = None):
         self.message = message
@@ -15,91 +22,83 @@ class OAuthError(Exception):
 
 
 class OAuthClient:
-    """HTTP client for OAuth2 ROPC token operations.
+    """HTTP client for SocialHub user authentication."""
 
-    Supports two grant types:
-    - password: exchange username + password for tokens
-    - refresh_token: exchange refresh_token for a new access_token
-    """
+    def __init__(self, auth_url: str):
+        if not auth_url:
+            raise OAuthError("OAuth2 auth_url is not configured.")
+        self.auth_url = auth_url.rstrip("/")
 
-    def __init__(self, token_url: str, client_id: str, scopes: str = ""):
-        if not token_url:
-            raise OAuthError("OAuth2 token_url is not configured.")
-        if not client_id:
-            raise OAuthError("OAuth2 client_id is not configured.")
-        self.token_url = token_url
-        self.client_id = client_id
-        self.scopes = scopes
+    def fetch_token(self, tenant_id: str, account: str, password: str) -> dict[str, Any]:
+        """Login with tenant_id + account + password.
 
-    def fetch_token_with_password(self, username: str, password: str) -> dict[str, Any]:
-        """Exchange username + password for an access token (ROPC grant).
+        POST /v1/user/auth/token
+        Body: {"tenantId": "...", "account": "...", "pwd": "..."}
 
-        Args:
-            username: User's login name or email.
-            password: User's password (never stored on disk).
-
-        Returns:
-            Token dict with keys: access_token, refresh_token, expires_in, token_type.
-
-        Raises:
-            OAuthError: On HTTP or authentication failure.
+        Returns the full ``data`` dict from the response, including:
+        token, refreshToken, expiresTime (absolute Unix seconds), etc.
         """
-        payload = {
-            "grant_type": "password",
-            "username": username,
-            "password": password,
-            "client_id": self.client_id,
+        url = f"{self.auth_url}/v1/user/auth/token"
+        body = {
+            "tenantId": tenant_id,
+            "account": account,
+            "pwd": password,
         }
-        if self.scopes:
-            payload["scope"] = self.scopes
-        return self._post_token_request(payload)
-
-    def refresh_access_token(self, refresh_token: str) -> dict[str, Any]:
-        """Exchange a refresh_token for a new access token.
-
-        Args:
-            refresh_token: The refresh token from a previous authentication.
-
-        Returns:
-            Token dict with keys: access_token, refresh_token, expires_in, token_type.
-
-        Raises:
-            OAuthError: On HTTP failure or if refresh_token is expired/invalid.
-        """
-        payload = {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": self.client_id,
-        }
-        return self._post_token_request(payload)
-
-    def _post_token_request(self, payload: dict) -> dict[str, Any]:
-        """Send a POST request to the token endpoint (form-encoded per OAuth2 spec)."""
-        try:
-            response = httpx.post(
-                self.token_url,
-                data=payload,  # form-encoded, NOT json
-                headers={"Accept": "application/json"},
+        return self._request_token(
+            lambda: httpx.post(
+                url,
+                json=body,
+                headers={"Content-Type": "application/json"},
                 timeout=15,
             )
+        )
+
+    def refresh_token(self, current_token: str, refresh_token: str) -> dict[str, Any]:
+        """Refresh an expired access token.
+
+        GET /v1/user/auth/refreshToken?refreshToken=...
+        Header: Authorization: {current_token}
+
+        Returns the full ``data`` dict from the response.
+        """
+        url = f"{self.auth_url}/v1/user/auth/refreshToken"
+        return self._request_token(
+            lambda: httpx.get(
+                url,
+                params={"refreshToken": refresh_token},
+                headers={"Authorization": current_token},
+                timeout=15,
+            )
+        )
+
+    # ── Internal ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _request_token(do_request) -> dict[str, Any]:
+        """Execute an HTTP request and extract the token data."""
+        try:
+            response = do_request()
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise OAuthError(f"Cannot reach OAuth2 server: {exc}") from exc
+            raise OAuthError(f"Cannot reach auth server: {exc}") from exc
 
         if response.status_code >= 400:
-            # Try to extract error description from OAuth2 error response
-            try:
-                err = response.json()
-                desc = err.get("error_description", err.get("error", "Unknown error"))
-            except Exception:
-                desc = response.text or f"HTTP {response.status_code}"
-            raise OAuthError(f"Authentication failed: {desc}", response.status_code)
+            raise OAuthError(
+                f"Auth request failed: HTTP {response.status_code}",
+                response.status_code,
+            )
 
         try:
-            data = response.json()
+            body = response.json()
         except Exception as exc:
-            raise OAuthError(f"Invalid token response: {exc}") from exc
+            raise OAuthError(f"Invalid auth response: {exc}") from exc
 
-        if not data.get("access_token"):
-            raise OAuthError("Token response missing access_token")
+        if str(body.get("code")) != "200":
+            raise OAuthError(
+                f"Auth failed: {body.get('msg', 'unknown error')}"
+            )
+
+        data = body.get("data")
+        if not data or not data.get("token"):
+            raise OAuthError("Auth response missing token")
 
         return data

@@ -17,44 +17,36 @@ console = Console()
 
 @app.command("login")
 def login(
-    username: Optional[str] = typer.Option(None, "--username", "-u", help="Account username"),
+    tenant_id: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID"),
+    account: Optional[str] = typer.Option(None, "--account", "-a", help="Login account"),
     password: Optional[str] = typer.Option(None, "--password", "-p", help="Account password"),
 ) -> None:
-    """Authenticate with the SocialHub platform via OAuth2."""
+    """Authenticate with the SocialHub platform."""
     config = load_config()
     oauth = config.oauth
 
-    if not oauth.enabled:
+    if not oauth.auth_url:
         console.print(
-            "[yellow]OAuth2 is not enabled.[/yellow]\n"
-            "Run: [cyan]sh config set oauth.enabled true[/cyan]"
+            "[red]Error: auth_url is not configured.[/red]\n"
+            "Run: [cyan]sh config set oauth.auth_url YOUR_AUTH_URL[/cyan]"
         )
         raise typer.Exit(1)
 
-    if not oauth.token_url or not oauth.client_id:
-        console.print(
-            "[red]Error: OAuth2 is not configured.[/red]\n"
-            "Run:\n"
-            "  [cyan]sh config set oauth.token_url YOUR_TOKEN_URL[/cyan]\n"
-            "  [cyan]sh config set oauth.client_id YOUR_CLIENT_ID[/cyan]"
-        )
-        raise typer.Exit(1)
-
-    if not username:
-        username = typer.prompt("Username")
+    if not tenant_id:
+        tenant_id = typer.prompt("Tenant ID")
+    if not account:
+        account = typer.prompt("Account")
     if not password:
         password = typer.prompt("Password", hide_input=True)
 
     try:
-        client = OAuthClient(oauth.token_url, oauth.client_id, oauth.scopes)
-        data = client.fetch_token_with_password(username, password)
-        save_oauth_token(
-            access_token=data["access_token"],
-            refresh_token=data.get("refresh_token", ""),
-            expires_in=int(data.get("expires_in", 3600)),
-            token_type=data.get("token_type", "Bearer"),
+        client = OAuthClient(oauth.auth_url)
+        data = client.fetch_token(tenant_id, account, password)
+        save_oauth_token(data)
+        console.print(
+            f"[green]Login successful.[/green] "
+            f"[dim]({data.get('email', '')})[/dim]"
         )
-        console.print("[green]Login successful.[/green]")
     except OAuthError as exc:
         console.print(f"[red]Login failed: {exc.message}[/red]")
         raise typer.Exit(1)
@@ -62,7 +54,7 @@ def login(
 
 @app.command("logout")
 def logout() -> None:
-    """Clear local OAuth2 token (log out)."""
+    """Clear local auth token (log out)."""
     delete_oauth_token()
     console.print("[green]Logged out. Local token removed.[/green]")
 
@@ -92,15 +84,16 @@ def status() -> None:
 
         content = (
             f"[green]Authenticated[/green]\n"
-            f"Token type:  {token.get('token_type', 'Bearer')}\n"
+            f"Email:       {token.get('email', '-')}\n"
+            f"Tenant:      {token.get('tenant_id', '-')}\n"
             f"Expires at:  {expires_display}\n"
-            f"Server:      {oauth.token_url}"
+            f"Server:      {oauth.auth_url}"
         )
     else:
         content = (
             f"[red]Not authenticated[/red]\n"
-            f"Server:  {oauth.token_url or '(not configured)'}\n"
+            f"Server:  {oauth.auth_url or '(not configured)'}\n"
             "Run: [cyan]sh auth login[/cyan]"
         )
 
-    console.print(Panel(content, title="OAuth2 Status", border_style="blue"))
+    console.print(Panel(content, title="Auth Status", border_style="blue"))
