@@ -58,6 +58,33 @@ After installation, run `socialhub` to see the welcome screen:
                 v0.1.0 | Customer Intelligence Platform
 ```
 
+## Authentication
+
+CLI requires authentication before use. On first run, you will be prompted to log in:
+
+```bash
+# Interactive login (prompts for Tenant ID, Account, Password)
+socialhub auth login
+
+# Or pass credentials directly
+socialhub auth login --tenant YOUR_TENANT --account YOUR_ACCOUNT --password YOUR_PASSWORD
+
+# Check authentication status
+socialhub auth status
+
+# Log out (clear local token)
+socialhub auth logout
+```
+
+Enable the auth gate and configure the auth server:
+
+```bash
+socialhub config set oauth.enabled true
+socialhub config set oauth.auth_url "https://s1.socialhub.ai/openapi-prod"
+```
+
+Once authenticated, the token is cached locally (`~/.socialhub/oauth_token.json`) and refreshed automatically when expired.
+
 ## Usage Examples
 
 ### Natural Language Interaction (Smart Mode)
@@ -192,7 +219,12 @@ socialhub/
 ├── cli/
 │   ├── main.py              # Entry point + smart routing + welcome screen
 │   ├── config.py            # Configuration management (Pydantic v2)
+│   ├── auth/
+│   │   ├── oauth_client.py  # SocialHub auth HTTP client
+│   │   ├── token_store.py   # Token cache (~/.socialhub/oauth_token.json)
+│   │   └── gate.py          # Auth gate (runs before every command)
 │   ├── commands/
+│   │   ├── auth.py          # Authentication commands (login/logout/status)
 │   │   ├── analytics.py     # Data analytics commands (MCP)
 │   │   ├── ai.py            # AI assistant + multi-step execution + insights
 │   │   ├── heartbeat.py     # Scheduled task scheduler (&&-chained commands)
