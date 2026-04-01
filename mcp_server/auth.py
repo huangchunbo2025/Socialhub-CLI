@@ -146,6 +146,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if path in _AUTH_EXEMPT_PATHS or path.startswith("/api-keys"):
             return await call_next(request)
 
+        # 带 X-Portal-Token 的请求（门户 UI 访问 /credentials）由 resolve_tenant_id() 处理
+        if request.headers.get("X-Portal-Token"):
+            return await call_next(request)
+
         api_key = _extract_api_key(request)
 
         # DB-first lookup, fallback to env var (hmac.compare_digest 防止时序攻击)
