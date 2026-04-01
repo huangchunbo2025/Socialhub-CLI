@@ -48,7 +48,7 @@
   .error-msg { color:var(--danger); font-size:13px; margin-top:12px; min-height:20px; }
 
   /* App shell */
-  #app { display:none; width:100%; }
+  #app { display:flex; width:100%; }
   .sidebar { width:220px; background:var(--sidebar-bg); display:flex;
     flex-direction:column; flex-shrink:0; padding:0 0 24px; }
   .sidebar-logo { padding:24px 20px 20px; font-size:15px; font-weight:700; color:#fff;
@@ -140,7 +140,7 @@
 </div>
 
 <!-- APP -->
-<div id="app">
+<div id="app" class="hidden">
   <aside class="sidebar">
     <div class="sidebar-logo">MCP 管理门户<span>SocialHub</span></div>
     <div class="nav-item active" id="nav-apikeys" onclick="showPage('apikeys')">

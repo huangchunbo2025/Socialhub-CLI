@@ -40,6 +40,23 @@ services:
         sync: false
         # 上游 MCP POST 端点
 
+      - key: DATABASE_URL
+        sync: false
+        # PostgreSQL 连接串：postgresql+asyncpg://user:pass@host/db
+
+      - key: CREDENTIAL_ENCRYPT_KEY
+        sync: false
+        # Fernet 加密 key，用 Fernet.generate_key() 生成，base64 格式
+
+      - key: SOCIALHUB_AUTH_URL
+        sync: false
+        # SocialHub 认证 API 地址（如 https://api.socialhub.io）
+        # 门户登录 POST /auth/login 使用，未设置则 /auth/login 返回 503
+
+      - key: PORTAL_JWT_SECRET
+        sync: false
+        # JWT 签名密钥（建议设置，否则重启后所有门户会话失效）
+
       # -----------------------------------------------------------------------
       # 非敏感配置：直接写入 render.yaml
       # -----------------------------------------------------------------------

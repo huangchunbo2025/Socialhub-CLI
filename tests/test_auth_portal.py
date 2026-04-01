@@ -1,6 +1,6 @@
 """Tests for POST /auth/login endpoint."""
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -26,11 +26,10 @@ def test_login_missing_fields(client):
 def test_login_socialhub_error(client):
     """Login with wrong credentials returns 401."""
     with patch("mcp_server.routers.auth_portal._SOCIALHUB_AUTH_URL", "https://auth.example.com"):
-        with patch("mcp_server.routers.auth_portal.OAuthClient") as mock_cls:
-            from cli.auth.oauth_client import OAuthError
-            mock_client = MagicMock()
-            mock_client.fetch_token.side_effect = OAuthError("invalid credentials")
-            mock_cls.return_value = mock_client
+        with patch(
+            "mcp_server.routers.auth_portal._verify_socialhub_credentials",
+            side_effect=ValueError("invalid credentials"),
+        ):
             resp = client.post("/auth/login", json={
                 "tenantId": "democn", "account": "bad", "pwd": "wrong"
             })
@@ -41,12 +40,7 @@ def test_login_socialhub_error(client):
 def test_login_success_returns_jwt(client):
     """Successful login returns a JWT token."""
     with patch("mcp_server.routers.auth_portal._SOCIALHUB_AUTH_URL", "https://auth.example.com"):
-        with patch("mcp_server.routers.auth_portal.OAuthClient") as mock_cls:
-            mock_client = MagicMock()
-            mock_client.fetch_token.return_value = {
-                "token": "sh-token", "refreshToken": "r", "expiresTime": 9999
-            }
-            mock_cls.return_value = mock_client
+        with patch("mcp_server.routers.auth_portal._verify_socialhub_credentials"):
             resp = client.post("/auth/login", json={
                 "tenantId": "democn", "account": "admin", "pwd": "pass"
             })
