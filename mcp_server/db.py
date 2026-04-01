@@ -31,7 +31,7 @@ class Base(DeclarativeBase):
 
 async def init_db() -> None:
     """Create all tables. Called at application startup."""
-    from mcp_server.models import TenantBigQueryCredential  # noqa: F401 — registers model
+    from mcp_server.models import TenantBigQueryCredential, TenantApiKey  # noqa: F401
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables initialized")

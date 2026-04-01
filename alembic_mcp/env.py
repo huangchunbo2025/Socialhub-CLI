@@ -22,7 +22,7 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 from mcp_server.db import Base
-from mcp_server.models import TenantBigQueryCredential  # noqa: F401 — registers model
+from mcp_server.models import TenantBigQueryCredential, TenantApiKey  # noqa: F401 — registers models
 
 target_metadata = Base.metadata
 
