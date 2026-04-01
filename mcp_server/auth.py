@@ -14,6 +14,7 @@ API Key 认证中间件。
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import os
@@ -95,6 +96,36 @@ def _extract_api_key(request: Request) -> str:
     return ""
 
 
+async def _lookup_api_key_in_db(api_key: str) -> str | None:
+    """Look up an API key in DB by SHA-256 hash.
+
+    Args:
+        api_key: Raw API key string from request header.
+
+    Returns:
+        tenant_id if key exists and is not revoked, None otherwise.
+        Returns None gracefully if DB is unavailable (fallback to env var).
+    """
+    try:
+        from mcp_server.db import get_session
+        from mcp_server.models import TenantApiKey
+        from sqlalchemy import select
+
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        session = await get_session()
+        async with session:
+            stmt = select(TenantApiKey).where(
+                TenantApiKey.key_hash == key_hash,
+                TenantApiKey.revoked_at.is_(None),
+            )
+            row = (await session.execute(stmt)).scalar_one_or_none()
+        if row is not None:
+            return row.tenant_id
+    except Exception as e:
+        logger.warning("DB API key lookup failed (fallback to env var): %s", e)
+    return None
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """
     Starlette 中间件：API Key 认证 + tenant_id 注入。
@@ -117,12 +148,16 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         api_key = _extract_api_key(request)
 
-        # 使用 hmac.compare_digest 防止时序攻击
+        # DB-first lookup, fallback to env var (hmac.compare_digest 防止时序攻击)
         tenant_id: str | None = None
-        for stored_key, tid in self._key_map.items():
-            if api_key and hmac.compare_digest(api_key, stored_key):
-                tenant_id = tid
-                break
+        if api_key:
+            tenant_id = await _lookup_api_key_in_db(api_key)
+
+        if tenant_id is None:
+            for stored_key, tid in self._key_map.items():
+                if api_key and hmac.compare_digest(api_key, stored_key):
+                    tenant_id = tid
+                    break
 
         if tenant_id is None:
             ref_id = str(uuid.uuid4())
@@ -158,3 +193,29 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             _tenant_id_var.reset(token)
 
         return response
+
+
+async def resolve_tenant_id(request: Request) -> str | None:
+    """Resolve tenant_id from either API Key (middleware) or JWT portal token.
+
+    Checks API Key auth first (set by APIKeyMiddleware via request.state.tenant_id),
+    then falls back to X-Portal-Token JWT header for portal UI access.
+
+    Args:
+        request: Incoming Starlette request.
+
+    Returns:
+        tenant_id string, or None if not authenticated by either method.
+    """
+    # API Key path: already injected by APIKeyMiddleware
+    tenant_id: str | None = getattr(request.state, "tenant_id", None)
+    if tenant_id:
+        return tenant_id
+
+    # JWT path: portal UI access
+    jwt_token = request.headers.get("X-Portal-Token", "").strip()
+    if jwt_token:
+        from mcp_server.services.jwt_service import verify_token
+        return verify_token(jwt_token)
+
+    return None

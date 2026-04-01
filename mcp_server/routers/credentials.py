@@ -19,7 +19,7 @@ from sqlalchemy import select
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from mcp_server.auth import _get_tenant_id
+from mcp_server.auth import resolve_tenant_id
 from mcp_server.db import get_session
 from mcp_server.models import TenantBigQueryCredential
 from mcp_server.services.bigquery_validator import validate_credentials
@@ -48,8 +48,10 @@ async def upload_credentials(request: Request) -> JSONResponse:
             content={"status": "error", "message": f"请求格式错误: {e}"},
         )
 
-    # Get tenant_id from auth ContextVar (set by APIKeyMiddleware)
-    tenant_id = _get_tenant_id()
+    # Get tenant_id from API Key middleware state or JWT portal token
+    tenant_id = await resolve_tenant_id(request)
+    if tenant_id is None:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "未认证"})
 
     # Validate BigQuery credentials
     result = validate_credentials(
@@ -125,7 +127,9 @@ async def upload_credentials(request: Request) -> JSONResponse:
 
 async def get_credentials(request: Request) -> JSONResponse:
     """GET /credentials/bigquery — get credential status (no SA JSON returned)."""
-    tenant_id = _get_tenant_id()
+    tenant_id = await resolve_tenant_id(request)
+    if tenant_id is None:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "未认证"})
 
     session = await get_session()
     async with session:
@@ -157,7 +161,9 @@ async def get_credentials(request: Request) -> JSONResponse:
 
 async def delete_credentials(request: Request) -> JSONResponse:
     """DELETE /credentials/bigquery — delete credentials for current tenant."""
-    tenant_id = _get_tenant_id()
+    tenant_id = await resolve_tenant_id(request)
+    if tenant_id is None:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "未认证"})
 
     session = await get_session()
     async with session:
