@@ -114,7 +114,7 @@ def main(
     Use [bold]sh <command> --help[/bold] for more information on a specific command.
     """
     _run_auth_gate()
-
+    pass
 
 def _run_auth_gate() -> None:
     """Run OAuth2 auth gate for registered commands (Typer path)."""
