@@ -27,8 +27,9 @@ def test_login_socialhub_error(client):
     """Login with wrong credentials returns 401."""
     with patch("mcp_server.routers.auth_portal._SOCIALHUB_AUTH_URL", "https://auth.example.com"):
         with patch("mcp_server.routers.auth_portal.OAuthClient") as mock_cls:
+            from cli.auth.oauth_client import OAuthError
             mock_client = MagicMock()
-            mock_client.fetch_token.side_effect = Exception("invalid credentials")
+            mock_client.fetch_token.side_effect = OAuthError("invalid credentials")
             mock_cls.return_value = mock_client
             resp = client.post("/auth/login", json={
                 "tenantId": "democn", "account": "bad", "pwd": "wrong"
