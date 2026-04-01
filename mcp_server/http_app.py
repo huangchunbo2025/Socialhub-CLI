@@ -39,6 +39,7 @@ from starlette.responses import HTMLResponse
 
 from mcp_server.auth import APIKeyMiddleware
 from mcp_server.db import close_db, init_db
+from mcp_server.routers.api_keys import create_api_key, list_api_keys, revoke_api_key
 from mcp_server.routers.auth_portal import login
 from mcp_server.routers.credentials import delete_credentials, get_credentials, upload_credentials
 from mcp_server.server import create_server
@@ -247,6 +248,9 @@ _app = Starlette(
         Route("/credentials/bigquery", upload_credentials, methods=["POST"]),
         Route("/credentials/bigquery", get_credentials, methods=["GET"]),
         Route("/credentials/bigquery", delete_credentials, methods=["DELETE"]),
+        Route("/api-keys", create_api_key, methods=["POST"]),
+        Route("/api-keys", list_api_keys, methods=["GET"]),
+        Route("/api-keys/{key_id}", revoke_api_key, methods=["DELETE"]),
         Mount("/mcp", app=_session_manager.handle_request),
     ],
     lifespan=lifespan,

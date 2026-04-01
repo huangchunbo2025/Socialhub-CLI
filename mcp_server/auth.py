@@ -71,8 +71,10 @@ def _load_api_key_map() -> dict[str, str]:
 _API_KEY_MAP: dict[str, str] = _load_api_key_map()
 
 # 不需要认证的路径白名单
+# /api-keys* 路由使用独立的 JWT 认证（X-Portal-Token），不走 API Key 中间件
 _AUTH_EXEMPT_PATHS: frozenset[str] = frozenset({
-    "/health", "/health/", "/ui", "/ui/", "/auth/login", "/auth/login/"
+    "/health", "/health/", "/ui", "/ui/", "/auth/login", "/auth/login/",
+    "/api-keys", "/api-keys/",
 })
 
 
@@ -108,8 +110,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         self._key_map = _API_KEY_MAP
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # 白名单路径跳过认证
-        if request.url.path in _AUTH_EXEMPT_PATHS:
+        # 白名单路径跳过认证（精确匹配 + /api-keys* 前缀匹配，由路由自身的 JWT 认证处理）
+        path = request.url.path
+        if path in _AUTH_EXEMPT_PATHS or path.startswith("/api-keys"):
             return await call_next(request)
 
         api_key = _extract_api_key(request)
