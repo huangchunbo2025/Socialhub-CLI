@@ -39,6 +39,7 @@ from starlette.responses import HTMLResponse
 
 from mcp_server.auth import APIKeyMiddleware
 from mcp_server.db import close_db, init_db
+from mcp_server.routers.auth_portal import login
 from mcp_server.routers.credentials import delete_credentials, get_credentials, upload_credentials
 from mcp_server.server import create_server
 
@@ -242,6 +243,7 @@ _app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
         Route("/ui", ui, methods=["GET"]),
+        Route("/auth/login", login, methods=["POST"]),
         Route("/credentials/bigquery", upload_credentials, methods=["POST"]),
         Route("/credentials/bigquery", get_credentials, methods=["GET"]),
         Route("/credentials/bigquery", delete_credentials, methods=["DELETE"]),
