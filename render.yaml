@@ -145,6 +145,10 @@ services:
         fromDatabase:
           name: skills-store-postgres
           property: connectionString
+      - key: ALEMBIC_DATABASE_URL
+        sync: false
+        # Alembic 迁移使用同步 psycopg 驱动，格式：postgresql+psycopg://user:pass@host/db
+        # Render connectionString 格式为 postgres://...，需手动转换驱动前缀后在 Dashboard 填写
 
 databases:
   - name: skills-store-postgres

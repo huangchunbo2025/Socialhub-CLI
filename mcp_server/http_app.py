@@ -209,6 +209,13 @@ async def lifespan(app: Starlette):  # type: ignore[type-arg]
     import threading
     from mcp_server.server import _load_analytics, probe_upstream_mcp
 
+    # 启动时校验关键配置
+    if not os.getenv("CREDENTIAL_ENCRYPT_KEY"):
+        logger.warning(
+            "CREDENTIAL_ENCRYPT_KEY is not set — credential encryption/decryption will fail at runtime. "
+            "Generate a key with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+
     # 上游健康检查：通过 asyncio.to_thread 避免阻塞事件循环（同步 HTTP 请求最长 15s）
     try:
         ok, message = await asyncio.to_thread(probe_upstream_mcp)
