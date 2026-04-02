@@ -1,0 +1,232 @@
+"""TraceLogger — AI 决策可观测性日志。
+
+文件位置：{trace_dir}/ai_trace.jsonl（权限 600，TOCTOU 安全写入）
+文件管理：超过 max_file_size_mb 时轮转为 ai_trace.jsonl.1
+PII 脱敏：默认开启，通过 TraceConfig.pii_masking=False 关闭
+
+写入是静默操作：任何 IO 异常仅静默忽略，不影响主执行流程。
+
+SECURITY WARNING:
+    _mask_pii() 只用于 TraceLogger 日志脱敏，绝对不能用于净化传给 AI 的用户输入
+    （净化输入是 cli/ai/sanitizer.py 的职责）。两条代码路径完全隔离，不可混用。
+"""
+
+import json
+import logging
+import os
+import re
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from cli.config import TraceConfig
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# PII 脱敏模式（按顺序执行，顺序不可更改）
+# ---------------------------------------------------------------------------
+# 1. 身份证必须先于订单号运行，否则 18 位身份证会被订单号正则预先消费掉
+# 2. 手机号、邮箱在身份证之后但订单号之前，避免部分重叠匹配
+# ---------------------------------------------------------------------------
+
+
+def _build_pii_patterns(order_id_min_digits: int) -> list[tuple[re.Pattern, str]]:
+    """构建 PII 正则列表，订单号最小位数由配置决定。"""
+    return [
+        # 中国大陆身份证（17 位数字 + 1 位数字或 X）
+        (re.compile(r"\b\d{17}[\dX]\b", re.IGNORECASE), "[ID_MASKED]"),
+        # 中国大陆手机号（1 开头，第二位 3-9，共 11 位）
+        (re.compile(r"\b1[3-9]\d{9}\b"), "[PHONE_MASKED]"),
+        # 电子邮箱
+        (re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"), "[EMAIL_MASKED]"),
+        # 订单号（纯数字长串，最小位数可配置，默认 16）
+        (re.compile(r"\b\d{" + str(order_id_min_digits) + r",}\b"), "[ORDER_ID]"),
+    ]
+
+
+def _mask_pii(text: str, patterns: list[tuple[re.Pattern, str]]) -> str:
+    """按顺序应用所有 PII 脱敏规则。仅供 TraceLogger 内部使用。"""
+    for pattern, replacement in patterns:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+# ---------------------------------------------------------------------------
+# TraceLogger
+# ---------------------------------------------------------------------------
+
+
+class TraceLogger:
+    """记录 AI 执行计划的可观测性日志，写入 NDJSON 格式的 ai_trace.jsonl。
+
+    每个公共方法对应计划生命周期中的一个事件：
+        log_plan_start  — 计划开始，返回 trace_id（UUID）
+        log_step        — 单步执行结果
+        log_plan_end    — 计划完成，含 token 消耗
+
+    当 config.enabled=False 时，所有方法立即返回，不写文件。
+    当 config.pii_masking=True 时，user_input 在写入前经过 PII 脱敏。
+
+    TOCTOU 安全写入：使用 os.open(O_CREAT|O_WRONLY|O_APPEND, 0o600) 保证
+    文件从创建时起即为 600 权限，消除 open()+chmod() 的时间窗口。
+    """
+
+    TRACE_FILENAME = "ai_trace.jsonl"
+    TRACE_BACKUP_FILENAME = "ai_trace.jsonl.1"
+
+    def __init__(self, config: TraceConfig) -> None:
+        self._config = config
+        self._trace_path = Path(config.trace_dir) / self.TRACE_FILENAME
+        self._backup_path = Path(config.trace_dir) / self.TRACE_BACKUP_FILENAME
+        self._max_bytes = config.max_file_size_mb * 1024 * 1024
+        self._pii_patterns: Optional[list[tuple[re.Pattern, str]]] = (
+            _build_pii_patterns(config.order_id_min_digits)
+            if config.pii_masking
+            else None
+        )
+        self._lock = threading.Lock()  # serializes rotate + write to prevent rename race
+        self._trace_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # 公共 API
+    # ------------------------------------------------------------------
+
+    def log_plan_start(self, session_id: str, user_input: str, model: str) -> str:
+        """记录计划开始，返回 trace_id（UUID hex 字符串）。
+
+        如果 config.enabled=False，仍返回有效的 trace_id，但不写文件。
+        这样调用方无需判断 None，可以将 trace_id 无条件传给后续方法。
+        """
+        trace_id = uuid.uuid4().hex
+
+        if not self._config.enabled:
+            return trace_id
+
+        masked_input = self._apply_pii(user_input)
+        event = {
+            "ts": _utcnow(),
+            "type": "plan_start",
+            "trace_id": trace_id,
+            "session_id": session_id,
+            "user_input": masked_input,
+            "model": model,
+        }
+        self._write(event)
+        return trace_id
+
+    def log_step(
+        self,
+        trace_id: str,
+        step_num: int,
+        command: str,
+        success: bool,
+        duration_ms: int,
+        output_chars: int,
+        error_msg: str = "",
+    ) -> None:
+        """记录单步执行结果。enabled=False 时静默忽略。"""
+        if not self._config.enabled:
+            return
+
+        event: dict = {
+            "ts": _utcnow(),
+            "type": "step",
+            "trace_id": trace_id,
+            "step": step_num,
+            "command": command,
+            "success": success,
+            "duration_ms": duration_ms,
+            "output_chars": output_chars,
+        }
+        if not success and error_msg:
+            event["error_msg"] = error_msg[:500]  # cap at 500 chars to avoid huge logs
+        self._write(event)
+
+    def log_plan_end(
+        self,
+        trace_id: str,
+        total_steps: int,
+        succeeded: int,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> None:
+        """记录计划完成，含 token 消耗。enabled=False 时静默忽略。"""
+        if not self._config.enabled:
+            return
+
+        event = {
+            "ts": _utcnow(),
+            "type": "plan_end",
+            "trace_id": trace_id,
+            "total": total_steps,
+            "succeeded": succeeded,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+        self._write(event)
+
+    # ------------------------------------------------------------------
+    # 内部方法
+    # ------------------------------------------------------------------
+
+    def _apply_pii(self, text: str) -> str:
+        """如果 pii_masking 开启则脱敏，否则原样返回。"""
+        if self._pii_patterns is None:
+            return text
+        return _mask_pii(text, self._pii_patterns)
+
+    def _write(self, event: dict) -> None:
+        """TOCTOU 安全写入单条 NDJSON 事件到 ai_trace.jsonl。
+
+        写入步骤：
+          1. 确保 trace_dir 存在（parents=True，exist_ok=True）
+          2. 检查是否需要轮转
+          3. 用 os.open(O_CREAT|O_WRONLY|O_APPEND, 0o600) 追加写入
+             — 文件从创建起即为 0o600，消除 chmod TOCTOU 窗口
+             — 已存在的文件权限不被 mode 参数修改（仅 O_CREAT 时生效）
+
+        任何异常静默忽略（PRD AC-8）。
+        """
+        try:
+            with self._lock:
+                self._rotate_if_needed()
+                line = json.dumps(event, ensure_ascii=False) + "\n"
+                fd = os.open(
+                    str(self._trace_path),
+                    os.O_CREAT | os.O_WRONLY | os.O_APPEND,
+                    0o600,
+                )
+                try:
+                    os.write(fd, line.encode("utf-8"))
+                finally:
+                    os.close(fd)
+        except Exception as exc:
+            # 写入失败静默忽略，不影响主执行流程（PRD AC-8）
+            logger.debug("Trace write failed (non-fatal): %s", exc)
+
+    def _rotate_if_needed(self) -> None:
+        """文件超出 max_file_size_mb 时轮转：backup 覆盖旧 backup，当前文件改名为 backup。
+
+        轮转后 _write() 会用 O_CREAT 创建新的 ai_trace.jsonl（权限 600）。
+        """
+        try:
+            if self._trace_path.exists() and self._trace_path.stat().st_size >= self._max_bytes:
+                if self._backup_path.exists():
+                    self._backup_path.unlink()
+                self._trace_path.rename(self._backup_path)
+        except Exception as exc:
+            logger.debug("Trace rotate failed (non-fatal): %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# 辅助函数
+# ---------------------------------------------------------------------------
+
+
+def _utcnow() -> str:
+    """返回当前 UTC 时间的 ISO 8601 字符串（秒精度，不含微秒）。"""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")

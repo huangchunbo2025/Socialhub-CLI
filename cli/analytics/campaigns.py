@@ -41,6 +41,7 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -202,6 +203,7 @@ def _get_mcp_campaign_detail(config, campaign_id: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -373,6 +375,7 @@ def _get_mcp_campaign_audience(config, campaign_id: str) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -491,6 +494,7 @@ def _get_mcp_campaign_roi(config, period: str, window_days: int) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -608,6 +612,7 @@ def _get_mcp_campaign_postmortem(config, campaign_id: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 

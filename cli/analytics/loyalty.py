@@ -34,6 +34,7 @@ def _get_mcp_points(config, period: str, expiring_days: int = 0, breakdown: bool
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -223,6 +224,7 @@ def _get_mcp_points_at_risk(config, expiring_days: int, limit: int = 200) -> lis
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -318,6 +320,7 @@ def _get_mcp_loyalty(config) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     src_db = "dts_demoen"
 
@@ -495,6 +498,7 @@ def _get_mcp_points_daily_trend(config, period: str) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -575,6 +579,7 @@ def _get_mcp_loyalty_health(config) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 

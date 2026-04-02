@@ -25,6 +25,7 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     query_timeout = _mcp_query_timeout(period)
@@ -121,6 +122,7 @@ def _get_mcp_retention(config, days_list: list) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     longest_window = max(days_list) if days_list else 30
@@ -193,6 +195,7 @@ def _get_mcp_customer_source(config, period: str) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     with MCPClient(mcp_config) as client:
@@ -269,6 +272,7 @@ def _get_mcp_customer_gender(config) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     with MCPClient(mcp_config) as client:

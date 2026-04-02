@@ -60,7 +60,22 @@ class SkillLoader:
         manifest_path = skill_path / "skill.yaml"
 
         if not manifest_path.exists():
-            raise SkillLoadError(f"Skill manifest not found: {manifest_path}")
+            # Fallback: bundled skills live in the source tree under cli/skills/store/<name>/
+            # If the registry has a stale absolute path (e.g. after a directory move), try to
+            # locate the skill relative to this loader module and auto-heal the registry.
+            _source_fallback = Path(__file__).parent / "store" / name
+            if (_source_fallback / "skill.yaml").exists():
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "Skill '%s': registry path '%s' not found, "
+                    "falling back to source tree '%s' and updating registry.",
+                    name, skill_path, _source_fallback,
+                )
+                skill_path = _source_fallback
+                manifest_path = skill_path / "skill.yaml"
+                self.registry.update_skill(name, path=str(skill_path))
+            else:
+                raise SkillLoadError(f"Skill manifest not found: {manifest_path}")
 
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
@@ -98,17 +113,24 @@ class SkillLoader:
         if not entrypoint_path.exists():
             raise SkillLoadError(f"Skill entrypoint not found: {entrypoint_path}")
 
-        try:
-            spec = importlib.util.spec_from_file_location(
-                f"socialhub_skill_{name}",
-                entrypoint_path,
-            )
-            if spec is None or spec.loader is None:
-                raise SkillLoadError(f"Failed to load skill module: {entrypoint_path}")
+        spec = importlib.util.spec_from_file_location(
+            f"socialhub_skill_{name}",
+            entrypoint_path,
+        )
+        if spec is None or spec.loader is None:
+            raise SkillLoadError(f"Failed to load skill module: {entrypoint_path}")
 
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[spec.name] = module
-            spec.loader.exec_module(module)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+
+        # Load Python module under sandbox to prevent module-level code escaping
+        _load_sandbox = SandboxManager(
+            skill_name=name,
+            permissions=[],  # No permissions during import — module-level code gets zero trust
+        )
+        try:
+            with _load_sandbox:
+                spec.loader.exec_module(module)
         except Exception as e:
             raise SkillLoadError(f"Failed to execute skill module: {e}")
 
@@ -151,7 +173,6 @@ class SkillLoader:
         skill_name: str,
         command_name: str,
         *args,
-        use_sandbox: bool = True,
         **kwargs,
     ) -> Any:
         """Execute a skill command.
@@ -160,7 +181,6 @@ class SkillLoader:
             skill_name: Skill name
             command_name: Command name
             *args: Positional arguments
-            use_sandbox: Whether to enable sandbox isolation (default: True)
             **kwargs: Keyword arguments
 
         Returns:
@@ -190,14 +210,11 @@ class SkillLoader:
         sandbox = SandboxManager(
             skill_name=skill_name,
             permissions=granted_permissions,
-        ) if use_sandbox else None
+        )
 
         # Execute command within permission context and sandbox
         with perm_context:
-            if sandbox:
-                with sandbox:
-                    return func(*args, **kwargs)
-            else:
+            with sandbox:
                 return func(*args, **kwargs)
 
     def get_permission_context(self, skill_name: str) -> Optional[PermissionContext]:

@@ -40,6 +40,7 @@ def _get_mcp_report(config, period: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 

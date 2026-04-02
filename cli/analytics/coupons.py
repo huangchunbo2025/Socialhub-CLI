@@ -27,6 +27,7 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -200,6 +201,7 @@ def _get_mcp_coupon_lift(config, period: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -419,6 +421,7 @@ def _get_mcp_coupons_by_rule(config, period: str, limit: int) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -536,6 +539,7 @@ def _get_mcp_coupon_anomaly(config, lookback: int = 30, detect_days: int = 7) ->
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 

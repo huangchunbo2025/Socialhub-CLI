@@ -17,17 +17,24 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class MCPConfig:
-    """MCP service configuration.
+class MCPConnectionConfig:
+    """MCP service connection configuration (for the SSE/HTTP client).
+
+    Distinct from ``cli.config.MCPConfig`` (the Pydantic settings model).
 
     SECURITY: No default URLs - must be explicitly configured via:
     1. Config file (~/.socialhub/config.json)
-    2. Environment variables (MCP_SSE_URL, MCP_POST_URL, MCP_TENANT_ID)
+    2. Environment variables (MCP_SSE_URL, MCP_POST_URL, MCP_TENANT_ID, MCP_API_KEY)
     """
     sse_url: str = ""  # Required - no hardcoded default
     post_url: str = ""  # Required - no hardcoded default
     tenant_id: str = ""  # Required - no hardcoded default
     timeout: int = 120
+    api_key: str = ""  # Optional: sent as Authorization: Bearer <api_key>
+
+
+# Backward-compatibility alias — existing code importing ``MCPConfig`` continues to work.
+MCPConfig = MCPConnectionConfig
 
 
 class MCPClient:
@@ -44,6 +51,7 @@ class MCPClient:
         self._initialized = False
         self._session_ready = threading.Event()
         self._last_error: Optional[str] = None
+        self._sse_response: Optional[httpx.Response] = None
         self._connect_timeout = 10.0
         self._post_timeout = 5.0
         self._post_retries = 1
@@ -66,6 +74,18 @@ class MCPClient:
                 f"MCP configuration missing: {', '.join(missing)}. "
                 "Please configure via 'sh config set mcp.<field>' or environment variables."
             )
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Build auth headers shared by every outbound request.
+
+        Always includes tenant_id.  When api_key is configured, also adds
+        Authorization: Bearer <api_key> as required by gateway deployments
+        that enforce token authentication.
+        """
+        headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        return headers
 
     def connect(self, show_status: bool = True) -> bool:
         """Connect to MCP service via SSE."""
@@ -123,9 +143,10 @@ class MCPClient:
             with httpx.stream(
                 "GET",
                 self.config.sse_url,
-                headers={"tenant_id": self.config.tenant_id},
+                headers=self._auth_headers(),
                 timeout=httpx.Timeout(connect=self._connect_timeout, read=None, write=self._connect_timeout, pool=self._connect_timeout),
             ) as response:
+                self._sse_response = response
                 if response.status_code >= 400:
                     self._last_error = f"SSE connect failed: HTTP {response.status_code}"
                     logger.error(
@@ -197,7 +218,7 @@ class MCPClient:
 
     def _send_request(self, method: str, params: Optional[dict] = None, timeout: Optional[int] = None) -> dict:
         """Send MCP request and wait for response via SSE."""
-        request_id = str(uuid.uuid4())[:8]
+        request_id = uuid.uuid4().hex
         timeout = timeout or self.config.timeout
 
         message = {"jsonrpc": "2.0", "id": request_id, "method": method}
@@ -230,7 +251,7 @@ class MCPClient:
                 try:
                     response = httpx.post(
                         url,
-                        headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
+                        headers={**self._auth_headers(), "Content-Type": "application/json"},
                         json=message,
                         timeout=self._post_timeout,
                     )
@@ -275,29 +296,45 @@ class MCPClient:
                 )
                 return {"error": {"code": -1, "message": f"Upstream POST failed with HTTP {response.status_code}"}}
 
-            # Wait for response via SSE
-            try:
-                result = response_queue.get(timeout=timeout)
-                logger.info(
-                    "Received upstream MCP response",
-                    extra={
-                        "request_id": request_id,
-                        "method": method,
-                        "elapsed_ms": int((time.time() - started) * 1000),
-                    },
-                )
-                return result
-            except queue.Empty:
-                logger.error(
-                    "Timed out waiting for upstream MCP SSE response",
-                    extra={
-                        "request_id": request_id,
-                        "method": method,
-                        "timeout": timeout,
-                        "url": url,
-                    },
-                )
-                return {"error": {"code": -1, "message": f"Request timed out after {timeout}s"}}
+            # Wait for response via SSE — poll every 0.5 s so we can fast-fail
+            # immediately if the SSE thread dies instead of blocking until the
+            # full timeout expires (A6.2 fast-fail fix).
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    result = response_queue.get(timeout=0.5)
+                    logger.info(
+                        "Received upstream MCP response",
+                        extra={
+                            "request_id": request_id,
+                            "method": method,
+                            "elapsed_ms": int((time.time() - started) * 1000),
+                        },
+                    )
+                    return result
+                except queue.Empty:
+                    pass
+                if not self._sse_thread.is_alive():
+                    logger.error(
+                        "SSE thread died while waiting for upstream MCP response",
+                        extra={
+                            "request_id": request_id,
+                            "method": method,
+                            "url": url,
+                        },
+                    )
+                    raise MCPError("SSE connection lost while waiting for response")
+                if time.monotonic() >= deadline:
+                    logger.error(
+                        "Timed out waiting for upstream MCP SSE response",
+                        extra={
+                            "request_id": request_id,
+                            "method": method,
+                            "timeout": timeout,
+                            "url": url,
+                        },
+                    )
+                    raise MCPError(f"Request timed out after {timeout}s")
         except (httpx.HTTPError, httpx.TimeoutException, OSError) as e:
             logger.exception(
                 "Failed to send upstream MCP request",
@@ -330,7 +367,7 @@ class MCPClient:
         try:
             httpx.post(
                 url,
-                headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
+                headers={**self._auth_headers(), "Content-Type": "application/json"},
                 json=message,
                 timeout=5,
             )
@@ -475,6 +512,15 @@ class MCPClient:
         self._connected = False
         self._initialized = False
         self._session_ready.clear()
+        sse_resp = self._sse_response
+        self._sse_response = None
+        if sse_resp is not None:
+            try:
+                sse_resp.close()
+            except Exception:
+                pass
+        if self._sse_thread is not None and self._sse_thread.is_alive():
+            self._sse_thread.join(timeout=2)
 
     def __enter__(self):
         self.connect()
@@ -487,3 +533,5 @@ class MCPClient:
 class MCPError(Exception):
     """MCP error exception."""
     pass
+
+

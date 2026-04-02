@@ -160,6 +160,7 @@ def _get_mcp_orders(config, period: str, metric: str, by: str = None) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     query_timeout = _mcp_query_timeout(period, grouped=bool(by))
@@ -195,6 +196,7 @@ def _get_mcp_order_returns(config, period: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -434,6 +436,7 @@ def _get_mcp_orders_compare_both(config, prev_start, prev_end, cur_start, cur_en
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -457,6 +460,7 @@ def _get_mcp_orders_tool_payload(config, period: str, group_by: str = None, incl
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 

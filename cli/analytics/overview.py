@@ -23,6 +23,7 @@ def _get_mcp_overview(config, period: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     query_timeout = _mcp_query_timeout(period)
@@ -96,6 +97,7 @@ def _get_mcp_report_data(config) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -299,6 +301,7 @@ def _get_mcp_overview_compare_both(config, prev_start, prev_end, cur_start, cur_
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 

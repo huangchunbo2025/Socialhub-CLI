@@ -45,6 +45,7 @@ def _get_mcp_ltv(config, cohort_months: int, follow_months: int) -> list:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -144,6 +145,7 @@ def _get_mcp_repurchase(config, period: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -375,6 +377,7 @@ def _get_mcp_repurchase_path(config, period: str, limit: int) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
 
     with MCPClient(mcp_config) as client:
@@ -553,6 +556,7 @@ def _get_mcp_anomaly(config, metric: str, lookback: int, detect_days: int) -> di
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -739,6 +743,7 @@ def _get_mcp_canvas(config, canvas_id: str) -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -895,6 +900,7 @@ def _get_mcp_recommend(config, user_id: Optional[str] = None,
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
 
@@ -1073,6 +1079,7 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
         sse_url=config.mcp.sse_url,
         post_url=config.mcp.post_url,
         tenant_id=config.mcp.tenant_id,
+        api_key=config.mcp.api_key,
     )
     database = config.mcp.database
     safe_limit = max(1, min(int(limit), 500)) if limit > 0 else 0
