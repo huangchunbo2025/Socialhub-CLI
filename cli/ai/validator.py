@@ -1,6 +1,9 @@
 """Command validator — checks AI-generated commands before execution."""
 
 import importlib
+import json
+import threading
+from pathlib import Path
 from typing import Optional
 
 # Top-level commands mirrored from main.py registrations.
@@ -25,11 +28,14 @@ _MODULE_MAP: dict[str, str] = {
     "heartbeat": "cli.commands.heartbeat",
     "history":   "cli.commands.history",
     "workflow":  "cli.commands.workflow",
+    "session":   "cli.commands.session_cmd",
+    "trace":     "cli.commands.trace_cmd",
 }
 
 # Lazily populated on first validation call
 # cmd_name → None (leaf) | dict (nested group with same structure)
 _CMD_TREE: Optional[dict[str, dict]] = None
+_CMD_TREE_LOCK = threading.Lock()
 
 
 def _build_cmd_tree_for_app(app) -> dict:
@@ -72,14 +78,41 @@ def _build_full_cmd_tree() -> dict[str, dict]:
         except Exception:
             tree[cmd] = {}
 
+    # Dynamically discover installed skills from the local registry so that
+    # AI-generated commands referencing an installed skill name pass validation.
+    try:
+        registry_path = Path.home() / ".socialhub" / "skills" / "registry.json"
+        if registry_path.exists():
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            for skill_name, skill_data in registry.get("skills", {}).items():
+                if skill_data.get("enabled", True):
+                    tree.setdefault("skills", {}).setdefault(skill_name, {})
+                    tree.setdefault("skill", {}).setdefault(skill_name, {})
+    except Exception:
+        pass
+
     return tree
 
 
 def _get_cmd_tree() -> dict[str, dict]:
     global _CMD_TREE
-    if _CMD_TREE is None:
-        _CMD_TREE = _build_full_cmd_tree()
+    if _CMD_TREE is not None:
+        return _CMD_TREE
+    with _CMD_TREE_LOCK:
+        if _CMD_TREE is None:  # double-checked: another thread may have initialized
+            _CMD_TREE = _build_full_cmd_tree()
     return _CMD_TREE
+
+
+def invalidate_cmd_tree() -> None:
+    """Reset the cached command tree so the next validation rebuilds it.
+
+    Call this after installing or uninstalling a skill so that newly available
+    (or removed) skill sub-commands are reflected in AI command validation.
+    """
+    global _CMD_TREE
+    with _CMD_TREE_LOCK:
+        _CMD_TREE = None
 
 
 def _check_tokens(tree: Optional[dict], tokens: list[str], path: str) -> tuple[bool, str]:

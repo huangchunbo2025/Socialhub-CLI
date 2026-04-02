@@ -5,6 +5,7 @@ components (filesystem, network, execution) during skill execution.
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, Set
 
@@ -12,6 +13,14 @@ from ..security import SecurityAuditLogger
 from .filesystem import FileSystemSandbox, FileAccessDeniedError
 from .network import NetworkSandbox, NetworkAccessDeniedError
 from .execute import ExecuteSandbox, CommandExecutionDeniedError
+
+# Global serialization lock: monkey-patch sandboxes are non-reentrant because they
+# overwrite process-global symbols (socket.socket, builtins.open, etc.). Concurrent
+# activation by two threads would corrupt each other's saved originals.
+# All SandboxManager.__enter__/__exit__ pairs acquire/release this lock so that at
+# most one sandbox is active at any time.  Combined with _HANDLER_SEMAPHORE(50) in
+# mcp_server/server.py this serializes skill executions without causing deadlocks.
+_GLOBAL_SANDBOX_LOCK = threading.Lock()
 
 
 class SandboxViolationError(PermissionError):
@@ -135,28 +144,38 @@ class SandboxManager:
         self._active = False
 
     def __enter__(self):
-        """Enter the sandbox context."""
-        self.activate()
+        """Enter the sandbox context.
+
+        Acquires the global sandbox lock first to prevent concurrent monkey-patch
+        races between two simultaneous skill executions.
+        """
+        _GLOBAL_SANDBOX_LOCK.acquire()
+        try:
+            self.activate()
+        except Exception:
+            _GLOBAL_SANDBOX_LOCK.release()
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit the sandbox context.
 
-        Handles sandbox violation exceptions and logs them appropriately.
+        Deactivates sandboxes and releases the global lock regardless of outcome.
         """
-        self.deactivate()
+        try:
+            self.deactivate()
 
-        # Log sandbox violations
-        if exc_type is not None:
-            if issubclass(exc_type, (FileAccessDeniedError, NetworkAccessDeniedError,
-                                     CommandExecutionDeniedError)):
-                self._audit_logger.log_security_violation(
-                    self.skill_name,
-                    exc_type.__name__,
-                    str(exc_val),
-                )
-                # Don't suppress the exception
-                return False
+            # Log sandbox violations
+            if exc_type is not None:
+                if issubclass(exc_type, (FileAccessDeniedError, NetworkAccessDeniedError,
+                                         CommandExecutionDeniedError)):
+                    self._audit_logger.log_security_violation(
+                        self.skill_name,
+                        exc_type.__name__,
+                        str(exc_val),
+                    )
+        finally:
+            _GLOBAL_SANDBOX_LOCK.release()
 
         return False
 

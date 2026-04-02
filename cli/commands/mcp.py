@@ -12,8 +12,33 @@ from rich.syntax import Syntax
 from ..api.mcp_client import MCPClient, MCPConfig, MCPError
 from ..config import load_config
 
+_MAX_SQL_LEN = 10_000
+
 app = typer.Typer(help="MCP analytics database commands")
 console = Console()
+
+
+def _print_mcp_unavailable(err: MCPError) -> None:
+    """Print a degraded-mode hint when the MCP server is unreachable."""
+    console.print(f"[red]MCP error: {err}[/red]")
+    msg = str(err).lower()
+    if "sse connection lost" in msg or "timed out" in msg or "connection" in msg or "configure" in msg:
+        console.print(
+            "[yellow]Hint: MCP server may be unavailable. Check:[/yellow]\n"
+            "  • [dim]sh config get mcp.sse_url[/dim]  — SSE endpoint configured?\n"
+            "  • [dim]MCP_TENANT_ID[/dim] env var set?\n"
+            "  • Network / VPN access to the MCP server\n"
+            "  • [dim]sh mcp connect[/dim] to test connectivity"
+        )
+
+
+def _build_mcp_config(tenant: Optional[str] = None) -> MCPConfig:
+    app_config = load_config()
+    return MCPConfig(
+        sse_url=app_config.mcp.sse_url,
+        post_url=app_config.mcp.post_url,
+        tenant_id=tenant or app_config.mcp.tenant_id,
+    )
 
 
 @app.command("connect")
@@ -21,12 +46,7 @@ def mcp_connect(
     tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """Connect to MCP analytics database and show info."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
 
     console.print(f"\n[cyan]Connecting to MCP...[/cyan]")
     console.print(f"  SSE: {config.sse_url}")
@@ -75,12 +95,11 @@ def mcp_query(
     timeout: int = typer.Option(60, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Execute SQL query via MCP."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
+
+    if len(sql) > _MAX_SQL_LEN:
+        console.print(f"[red]SQL too long (max {_MAX_SQL_LEN:,} chars).[/red]")
+        raise typer.Exit(1)
 
     console.print(f"\n[cyan]Query:[/cyan]")
     console.print(Syntax(sql, "sql"))
@@ -149,7 +168,7 @@ def mcp_query(
                 console.print(result if result else "[yellow]No results[/yellow]")
 
         except MCPError as e:
-            console.print(f"[red]Query failed: {e}[/red]")
+            _print_mcp_unavailable(e)
             raise typer.Exit(1)
 
 
@@ -159,12 +178,7 @@ def mcp_tables(
     database: Optional[str] = typer.Option(None, "--database", "-d", help="Database name"),
 ) -> None:
     """List database tables."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
 
     with MCPClient(config) as client:
         client.initialize()
@@ -190,7 +204,7 @@ def mcp_tables(
                 console.print(result if result else "[yellow]No tables found[/yellow]")
 
         except MCPError as e:
-            console.print(f"[red]Failed: {e}[/red]")
+            _print_mcp_unavailable(e)
 
 
 @app.command("schema")
@@ -200,12 +214,7 @@ def mcp_schema(
     database: Optional[str] = typer.Option(None, "--database", "-d", help="Database name"),
 ) -> None:
     """Show table schema."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
 
     with MCPClient(config) as client:
         client.initialize()
@@ -233,7 +242,7 @@ def mcp_schema(
                 console.print(f"[yellow]Table not found: {table_name}[/yellow]")
 
         except MCPError as e:
-            console.print(f"[red]Failed: {e}[/red]")
+            _print_mcp_unavailable(e)
 
 
 @app.command("databases")
@@ -241,12 +250,7 @@ def mcp_databases(
     tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """List available databases."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
 
     with MCPClient(config) as client:
         client.initialize()
@@ -268,7 +272,7 @@ def mcp_databases(
                 console.print(result if result else "[yellow]No databases found[/yellow]")
 
         except MCPError as e:
-            console.print(f"[red]Failed: {e}[/red]")
+            _print_mcp_unavailable(e)
 
 
 @app.command("stats")
@@ -276,12 +280,7 @@ def mcp_stats(
     tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """Show database statistics."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
 
     with MCPClient(config) as client:
         client.initialize()
@@ -299,7 +298,7 @@ def mcp_stats(
                 console.print("[yellow]No stats available[/yellow]")
 
         except MCPError as e:
-            console.print(f"[red]Failed: {e}[/red]")
+            _print_mcp_unavailable(e)
 
 
 @app.command("sql")
@@ -307,12 +306,7 @@ def mcp_sql(
     tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """Interactive SQL session."""
-    app_config = load_config()
-    config = MCPConfig(
-        sse_url=app_config.mcp.sse_url,
-        post_url=app_config.mcp.post_url,
-        tenant_id=tenant or app_config.mcp.tenant_id,
-    )
+    config = _build_mcp_config(tenant)
 
     console.print(Panel(
         "[cyan]MCP SQL Session[/cyan]\n\n"
@@ -335,6 +329,10 @@ def mcp_sql(
                 if sql.lower() in ("exit", "quit", "q"):
                     break
 
+                if len(sql) > _MAX_SQL_LEN:
+                    console.print(f"[red]SQL too long (max {_MAX_SQL_LEN:,} chars).[/red]")
+                    continue
+
                 if sql.lower() == "tables":
                     sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
 
@@ -356,7 +354,7 @@ def mcp_sql(
                     console.print(result if result else "[yellow]No results[/yellow]")
 
             except MCPError as e:
-                console.print(f"[red]Error: {e}[/red]")
+                _print_mcp_unavailable(e)
             except KeyboardInterrupt:
                 console.print("\n[dim]Use 'exit' to quit[/dim]")
             except EOFError:

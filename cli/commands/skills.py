@@ -1,19 +1,19 @@
 """Skills management commands."""
 
-from typing import Optional
+import json
+import re
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.markdown import Markdown
 
+from ..output.table import print_error, print_info, print_success, print_warning
+from ..skills.loader import SkillLoader, SkillLoadError
 from ..skills.manager import SkillManager, SkillManagerError
 from ..skills.registry import SkillRegistry
-from ..skills.loader import SkillLoader, SkillLoadError
-from ..skills.store_client import SkillsStoreClient, StoreError
 from ..skills.security import SecurityError, SkillHealthChecker
-from ..output.table import print_success, print_error, print_warning, print_info
+from ..skills.store_client import SkillsStoreClient, StoreError
 
 app = typer.Typer(help="Skills Store - Install and manage official skills")
 console = Console()
@@ -21,8 +21,8 @@ console = Console()
 
 @app.command("login")
 def login_store(
-    email: Optional[str] = typer.Option(None, "--email", "-e", help="Account email"),
-    password: Optional[str] = typer.Option(None, "--password", "-p", help="Account password"),
+    email: str | None = typer.Option(None, "--email", "-e", help="Account email"),
+    password: str | None = typer.Option(None, "--password", "-p", help="Account password"),
 ) -> None:
     """Log in to SocialHub.AI Skills Store to sync your skill library."""
     if not email:
@@ -31,11 +31,11 @@ def login_store(
         password = typer.prompt("Password", hide_input=True)
 
     try:
-        client = SkillsStoreClient()
-        user = client.login(email, password)
-        name = user.get("user", {}).get("name") or user.get("name") or email
-        print_success(f"Logged in as {name}")
-        console.print("[dim]Your skill library will now sync between CLI and web.[/dim]")
+        with SkillsStoreClient() as client:
+            user = client.login(email, password)
+            name = user.get("user", {}).get("name") or user.get("name") or email
+            print_success(f"Logged in as {name}")
+            console.print("[dim]Your skill library will now sync between CLI and web.[/dim]")
     except StoreError as e:
         print_error(f"Login failed: {e.message}")
         raise typer.Exit(1)
@@ -51,7 +51,7 @@ def logout_store() -> None:
 
 @app.command("browse")
 def browse_skills(
-    category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category"),
+    category: str | None = typer.Option(None, "--category", "-c", help="Filter by category"),
     limit: int = typer.Option(20, "--limit", "-l", help="Number of results"),
 ) -> None:
     """Browse available skills in the official store."""
@@ -111,7 +111,7 @@ def browse_skills(
 @app.command("search")
 def search_skills(
     query: str = typer.Argument(..., help="Search query"),
-    category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category"),
+    category: str | None = typer.Option(None, "--category", "-c", help="Filter by category"),
 ) -> None:
     """Search for skills in the store."""
     try:
@@ -214,10 +214,22 @@ def skill_info(
 
 @app.command("install")
 def install_skill(
-    name: str = typer.Argument(..., help="Skill name (optionally with @version)"),
+    name: str = typer.Argument(..., help="Skill name or local .zip path (with --dev-mode)"),
     force: bool = typer.Option(False, "--force", "-f", help="Force reinstall"),
+    dev_mode: bool = typer.Option(False, "--dev-mode", help="Install from local .zip file (development use only)"),
 ) -> None:
-    """Install a skill from the official store."""
+    """Install a skill from the official store, or a local .zip (--dev-mode)."""
+    if dev_mode:
+        import os as _os
+        if not _os.getenv("SOCIALHUB_DEV"):
+            print_error(
+                "--dev-mode requires SOCIALHUB_DEV=1 environment variable. "
+                "This flag bypasses signature verification and must not be used in production."
+            )
+            raise typer.Exit(1)
+        _install_local_skill(name, force=force)
+        return
+
     # Parse name@version
     version = None
     if "@" in name:
@@ -232,7 +244,9 @@ def install_skill(
             skill = manager.install(name, version=version, force=force)
 
             print_success(f"Successfully installed {skill.name} v{skill.version}")
-            console.print(f"\n[dim]Use 'skills list' to see installed skills[/dim]")
+            console.print("\n[dim]Use 'skills list' to see installed skills[/dim]")
+            from ..ai.validator import invalidate_cmd_tree
+            invalidate_cmd_tree()
 
     except SkillManagerError as e:
         print_error(str(e))
@@ -243,6 +257,107 @@ def install_skill(
     except StoreError as e:
         print_error(f"Store error: {e.message}")
         raise typer.Exit(1)
+
+
+def _install_local_skill(path_str: str, force: bool = False) -> None:
+    """Install a skill from a local zip file (dev mode only)."""
+    import datetime
+    import shutil
+    import zipfile
+    from pathlib import Path
+
+    from ..skills.models import InstalledSkill, SkillCategory
+    from ..skills.registry import SkillRegistry as _SkillRegistry
+
+    local_path = Path(path_str)
+
+    if not local_path.exists():
+        print_error(f"File not found: {local_path}")
+        raise typer.Exit(1)
+
+    if local_path.suffix != ".zip":
+        print_error("Dev mode only supports .zip files")
+        raise typer.Exit(1)
+
+    if not zipfile.is_zipfile(local_path):
+        print_error(f"Not a valid zip file: {local_path}")
+        raise typer.Exit(1)
+
+    # Read manifest from zip
+    try:
+        with zipfile.ZipFile(local_path, "r") as zf:
+            if "manifest.json" not in zf.namelist():
+                print_error("Missing manifest.json in skill zip")
+                raise typer.Exit(1)
+            manifest_data = json.loads(zf.read("manifest.json").decode("utf-8"))
+    except zipfile.BadZipFile as e:
+        print_error(f"Corrupted zip: {e}")
+        raise typer.Exit(1)
+
+    skill_name = manifest_data.get("name")
+    skill_version = manifest_data.get("version", "0.0.0-dev")
+
+    if not skill_name:
+        print_error("manifest.json missing 'name' field")
+        raise typer.Exit(1)
+
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}", skill_name):
+        print_error(f"Invalid skill name in manifest.json: {skill_name!r}")
+        raise typer.Exit(1)
+
+    registry = _SkillRegistry()
+    if not force and registry.is_installed(skill_name):
+        print_warning(f"Skill '{skill_name}' is already installed. Use --force to reinstall.")
+        raise typer.Exit(0)
+
+    # Extract to skills installed directory
+    skills_dir = registry.get_skill_path(skill_name)
+    if skills_dir.exists() and force:
+        shutil.rmtree(skills_dir)
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate all member paths before extraction (zip-slip prevention)
+    resolved_skills_dir = skills_dir.resolve()
+    try:
+        with zipfile.ZipFile(local_path, "r") as zf:
+            for member in zf.namelist():
+                try:
+                    (resolved_skills_dir / member).resolve().relative_to(resolved_skills_dir)
+                except ValueError:
+                    shutil.rmtree(skills_dir, ignore_errors=True)
+                    print_error(f"Unsafe zip entry detected (zip slip): {member}")
+                    raise typer.Exit(1)
+            zf.extractall(skills_dir)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        shutil.rmtree(skills_dir, ignore_errors=True)
+        print_error(f"Failed to extract zip: {e}")
+        raise typer.Exit(1)
+
+    # Register skill (dev mode — no signature verification)
+    console.print("[yellow][DEV MODE] WARNING: Skipping signature verification — do not use in production.[/yellow]")
+
+    category_str = manifest_data.get("category", "utility")
+    try:
+        category = SkillCategory(category_str)
+    except ValueError:
+        category = SkillCategory.UTILITY
+
+    installed = InstalledSkill(
+        name=skill_name,
+        version=skill_version,
+        display_name=manifest_data.get("display_name", skill_name),
+        description=manifest_data.get("description", ""),
+        path=str(skills_dir),
+        category=category,
+        enabled=True,
+        installed_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    registry.register_skill(installed)
+
+    print_success(f"[DEV MODE] Installed {skill_name} v{skill_version} from {local_path.name}")
+    console.print("[dim]Note: This skill has not been signature-verified. Do not use in production.[/dim]")
 
 
 @app.command("uninstall")
@@ -270,7 +385,7 @@ def uninstall_skill(
 
 @app.command("update")
 def update_skill(
-    name: Optional[str] = typer.Argument(None, help="Skill name (or --all for all)"),
+    name: str | None = typer.Argument(None, help="Skill name (or --all for all)"),
     all_skills: bool = typer.Option(False, "--all", "-a", help="Update all skills"),
 ) -> None:
     """Update installed skill(s)."""
@@ -303,91 +418,90 @@ def list_skills(
     cloud: bool = typer.Option(False, "--cloud", help="Show cloud library (requires login)"),
 ) -> None:
     """List skills. When logged in, shows your personal library synced with web."""
-    client = SkillsStoreClient()
+    with SkillsStoreClient() as client:
+        # If logged in, merge cloud library with local install status
+        if client.is_authenticated():
+            try:
+                cloud_skills = client.get_my_skills()
+            except StoreError:
+                cloud_skills = []
 
-    # If logged in, merge cloud library with local install status
-    if client.is_authenticated():
-        try:
-            cloud_skills = client.get_my_skills()
-        except StoreError:
-            cloud_skills = []
+            if cloud_skills:
+                registry = SkillRegistry()
+                if enabled_only:
+                    cloud_skills = [s for s in cloud_skills if s.get("is_enabled", True)]
 
-        if cloud_skills:
-            registry = SkillRegistry()
-            if enabled_only:
-                cloud_skills = [s for s in cloud_skills if s.get("is_enabled", True)]
+                if not cloud_skills:
+                    print_info("No skills in your library")
+                    console.print("[dim]Use 'skills install <name>' to add skills[/dim]")
+                    return
 
-            if not cloud_skills:
-                print_info("No skills in your library")
-                console.print("[dim]Use 'skills install <name>' to add skills[/dim]")
+                table = Table(title="My Skills Library", show_header=True)
+                table.add_column("Name", style="cyan")
+                table.add_column("Version")
+                table.add_column("Category")
+                table.add_column("Status")
+                table.add_column("Local")
+
+                for s in cloud_skills:
+                    status = "[green]Enabled[/green]" if s.get("is_enabled", True) else "[red]Disabled[/red]"
+                    installed = registry.is_installed(s.get("skill_name", ""))
+                    local_status = "[green]Installed[/green]" if installed else "[dim]Not installed[/dim]"
+                    table.add_row(
+                        s.get("skill_name", ""),
+                        s.get("version", "-"),
+                        s.get("category", "-"),
+                        status,
+                        local_status,
+                    )
+
+                console.print(table)
+                enabled = sum(1 for s in cloud_skills if s.get("is_enabled", True))
+                console.print(f"\n[dim]Total: {len(cloud_skills)} | Enabled: {enabled} | Synced with web[/dim]")
+                return
+            elif cloud_skills is not None:
+                print_info("Your library is empty")
+                console.print("[dim]Use 'skills install <name>' to add skills, or browse the web store[/dim]")
                 return
 
-            table = Table(title="My Skills Library", show_header=True)
-            table.add_column("Name", style="cyan")
-            table.add_column("Version")
-            table.add_column("Category")
-            table.add_column("Status")
-            table.add_column("Local")
+        # Not authenticated or cloud fetch failed — show local registry
+        registry = SkillRegistry()
+        skills = registry.list_installed()
 
-            for s in cloud_skills:
-                status = "[green]Enabled[/green]" if s.get("is_enabled", True) else "[red]Disabled[/red]"
-                installed = registry.is_installed(s.get("skill_name", ""))
-                local_status = "[green]Installed[/green]" if installed else "[dim]Not installed[/dim]"
-                table.add_row(
-                    s.get("skill_name", ""),
-                    s.get("version", "-"),
-                    s.get("category", "-"),
-                    status,
-                    local_status,
-                )
+        if enabled_only:
+            skills = [s for s in skills if s.enabled]
 
-            console.print(table)
-            enabled = sum(1 for s in cloud_skills if s.get("is_enabled", True))
-            console.print(f"\n[dim]Total: {len(cloud_skills)} | Enabled: {enabled} | Synced with web[/dim]")
-            return
-        elif cloud_skills is not None:
-            print_info("Your library is empty")
-            console.print("[dim]Use 'skills install <name>' to add skills, or browse the web store[/dim]")
+        if not skills:
+            print_info("No skills installed")
+            if not client.is_authenticated():
+                console.print("[dim]Tip: Run 'skills login' to sync with web store[/dim]")
+            else:
+                console.print("[dim]Use 'skills browse' to discover skills[/dim]")
             return
 
-    # Not authenticated or cloud fetch failed — show local registry
-    registry = SkillRegistry()
-    skills = registry.list_installed()
+        table = Table(title="Installed Skills", show_header=True)
+        table.add_column("Name", style="cyan")
+        table.add_column("Version")
+        table.add_column("Category")
+        table.add_column("Status")
+        table.add_column("Installed")
 
-    if enabled_only:
-        skills = [s for s in skills if s.enabled]
+        for skill in skills:
+            status = "[green]Enabled[/green]" if skill.enabled else "[red]Disabled[/red]"
+            installed_date = skill.installed_at.strftime("%Y-%m-%d") if skill.installed_at else "-"
+            table.add_row(
+                skill.name,
+                skill.version,
+                skill.category.value if hasattr(skill.category, "value") else str(skill.category),
+                status,
+                installed_date,
+            )
 
-    if not skills:
-        print_info("No skills installed")
+        console.print(table)
+        stats = registry.get_stats()
+        console.print(f"\n[dim]Total: {stats['total_installed']} | Enabled: {stats['enabled']} | Disabled: {stats['disabled']}[/dim]")
         if not client.is_authenticated():
             console.print("[dim]Tip: Run 'skills login' to sync with web store[/dim]")
-        else:
-            console.print("[dim]Use 'skills browse' to discover skills[/dim]")
-        return
-
-    table = Table(title="Installed Skills", show_header=True)
-    table.add_column("Name", style="cyan")
-    table.add_column("Version")
-    table.add_column("Category")
-    table.add_column("Status")
-    table.add_column("Installed")
-
-    for skill in skills:
-        status = "[green]Enabled[/green]" if skill.enabled else "[red]Disabled[/red]"
-        installed_date = skill.installed_at.strftime("%Y-%m-%d") if skill.installed_at else "-"
-        table.add_row(
-            skill.name,
-            skill.version,
-            skill.category.value if hasattr(skill.category, "value") else str(skill.category),
-            status,
-            installed_date,
-        )
-
-    console.print(table)
-    stats = registry.get_stats()
-    console.print(f"\n[dim]Total: {stats['total_installed']} | Enabled: {stats['enabled']} | Disabled: {stats['disabled']}[/dim]")
-    if not client.is_authenticated():
-        console.print("[dim]Tip: Run 'skills login' to sync with web store[/dim]")
 
 
 @app.command("enable")
@@ -477,7 +591,7 @@ def run_skill_command(
 
 @app.command("commands")
 def list_skill_commands(
-    name: Optional[str] = typer.Argument(None, help="Skill name (optional)"),
+    name: str | None = typer.Argument(None, help="Skill name (optional)"),
 ) -> None:
     """List available commands from installed skills."""
     loader = SkillLoader()
@@ -537,7 +651,7 @@ def manage_cache(
 
 @app.command("health")
 def health_check(
-    name: Optional[str] = typer.Argument(None, help="Skill name (optional, checks all if omitted)"),
+    name: str | None = typer.Argument(None, help="Skill name (optional, checks all if omitted)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed results"),
 ) -> None:
     """Check health status of installed skills.

@@ -4,8 +4,10 @@ import json
 import os
 import shutil
 import tempfile
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -305,3 +307,70 @@ class TestFullExecutionFlow:
             # Verify demo content is in the report
             content = Path(output_path).read_text(encoding="utf-8")
             assert "新能源汽车" in content
+
+
+# ---------------------------------------------------------------------------
+# _install_local_skill — dev-mode local zip install
+# ---------------------------------------------------------------------------
+
+
+class TestInstallLocalSkill:
+    """Tests for the _install_local_skill dev-mode installation path."""
+
+    def _make_zip(self, tmp_path: Path, skill_name: str = "my-skill", extra_members: dict | None = None) -> Path:
+        """Build a minimal valid skill zip and return its path."""
+        zip_path = tmp_path / "skill.zip"
+        manifest = {"name": skill_name, "version": "1.0.0", "description": "test skill"}
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("manifest.json", json.dumps(manifest))
+            zf.writestr("main.py", "# entry")
+            for name, content in (extra_members or {}).items():
+                zf.writestr(name, content)
+        return zip_path
+
+    def _mock_registry(self, skills_root: Path, skill_name: str) -> MagicMock:
+        mock = MagicMock()
+        mock.is_installed.return_value = False
+        mock.get_skill_path.return_value = skills_root / skill_name
+        return mock
+
+    def test_zip_slip_entry_is_blocked(self, tmp_path):
+        """A zip containing a path-traversal entry (../) must be rejected before any extraction."""
+        import typer
+        zip_path = self._make_zip(tmp_path, extra_members={"../escape.txt": "evil"})
+        mock_reg = self._mock_registry(tmp_path / "installed", "my-skill")
+
+        from cli.commands.skills import _install_local_skill
+
+        with patch("cli.skills.registry.SkillRegistry", return_value=mock_reg):
+            with pytest.raises((typer.Exit, SystemExit)):
+                _install_local_skill(str(zip_path))
+
+        # The traversal target must not exist outside the skills directory
+        assert not (tmp_path / "escape.txt").exists()
+
+    def test_invalid_skill_name_in_manifest_is_blocked(self, tmp_path):
+        """A manifest with a skill name that fails the allowlist regex must be rejected."""
+        import typer
+        # Name contains a space — fails r"[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}"
+        zip_path = self._make_zip(tmp_path, skill_name="invalid name!")
+        mock_reg = self._mock_registry(tmp_path / "installed", "invalid name!")
+        mock_reg.is_installed.return_value = False  # don't block on already-installed
+
+        from cli.commands.skills import _install_local_skill
+
+        with patch("cli.skills.registry.SkillRegistry", return_value=mock_reg):
+            with pytest.raises((typer.Exit, SystemExit)):
+                _install_local_skill(str(zip_path))
+
+    def test_missing_manifest_json_is_blocked(self, tmp_path):
+        """A zip without manifest.json must be rejected immediately."""
+        import typer
+        zip_path = tmp_path / "no_manifest.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("main.py", "# entry")  # no manifest.json
+
+        from cli.commands.skills import _install_local_skill
+
+        with pytest.raises((typer.Exit, SystemExit)):
+            _install_local_skill(str(zip_path))

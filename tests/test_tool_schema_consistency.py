@@ -35,12 +35,14 @@ def mcp_tools_names() -> list[str]:
 
 @pytest.fixture(scope="module")
 def plugin_allowed_tools() -> list[str]:
-    """从 plugin.json 读取 runtimes[MCPServer].allowed_tools。"""
+    """从 plugin.json 读取 runtimes[RemoteMCPServer].run_for_functions。"""
     path = M365_DIR / "plugin.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     for runtime in data.get("runtimes", []):
-        if runtime.get("type") == "MCPServer":
-            return runtime.get("allowed_tools", [])
+        # plugin.json uses RemoteMCPServer + run_for_functions (schema v2.4)
+        if runtime.get("type") in ("MCPServer", "RemoteMCPServer"):
+            tools = runtime.get("run_for_functions") or runtime.get("allowed_tools", [])
+            return tools
     return []
 
 

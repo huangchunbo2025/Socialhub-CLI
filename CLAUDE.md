@@ -17,11 +17,12 @@
 - 安全: cryptography（Ed25519 签名验证）
 
 ### MCP Server
-- 协议: MCP 1.8+（stdio 默认；HTTP Streamable Transport 可选，兼容 M365 Copilot）
+- 协议: MCP 1.8+（**HTTP Streamable Transport 为生产主路径**，兼容 M365 Copilot；stdio 用于本地调试）
 - 工具数量: 36+ 分析工具（其中 8 个暴露给 M365 Declarative Agent）
-- 缓存: 内存 TTL 缓存（900s），cache key 含 tenant_id 防跨租户泄漏
+- 缓存: 内存 TTL 缓存（900s），cache key 含 tenant_id 防跨租户泄漏；`_inflight` 并发上限 500 请求
 - HTTP 认证: API Key（环境变量 `MCP_API_KEYS=key1:tenant1,key2:tenant2`）
 - HTTP 部署: Render（`pip install -e ".[http]"`，`uvicorn mcp_server.http_app:app`）
+- Analytics 适配层: `cli/analytics/mcp_adapter.py` 是 MCP Server 访问 CLI 分析能力的稳定接口，不得绕过直接 import `cli.commands.analytics`
 
 ### Skills Store 后端
 - 框架: FastAPI + SQLAlchemy
@@ -147,7 +148,8 @@ pip install -e ".[dev]"
 - **自然语言安全执行链**: 所有 AI 生成的命令必须经过 `validator.py` 校验（对照 Typer 命令树），再由 `executor.py` 以 `shell=False` 子进程执行，输出结果后调用 `insights.py` 生成洞察
 - **MCP 优先集成**: 对外集成（Claude Desktop / GitHub Copilot / M365 Copilot）统一走 MCP 协议，不暴露裸 REST
 - **Skills 零信任沙箱**: 第三方 Skills 在 filesystem + network + execute 三层沙箱中运行，安装前必须完成 Ed25519 签名验证 + SHA-256 哈希验证 + CRL 吊销检查
-- **配置分层**: 代码内默认值 → `~/.socialhub/config.json` → 环境变量（最高优先级）
+- **配置分层**: 代码内默认值 → `~/.socialhub/config.json` → 环境变量（最高优先级，由 `_apply_env_overrides()` 统一处理，包括 AI 和 MCP 字段）
+- **Skills 下载强制 TLS**: `store_client.py` 始终以 `verify=True` 请求，忽略全局 `NetworkConfig.ssl_verify`，防止供应链劫持
 - **多租户隔离**: MCP 调用通过 `tenant_id` 隔离数据，禁止跨租户查询
 - **Store URL 硬编码**: `https://skills.socialhub.ai/api/v1` 在代码中硬编码，不允许运行时覆盖，防止供应链劫持
 

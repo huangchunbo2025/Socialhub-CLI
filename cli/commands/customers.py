@@ -15,6 +15,7 @@ from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
 from ..config import load_config
 from ..local.reader import read_customers_csv
 from ..output.export import export_data, format_output, print_export_success
+from ..output.formatter import OutputFormatter
 from ..output.table import print_dataframe, print_dict, print_error, print_list
 
 
@@ -243,6 +244,7 @@ console = Console()
 
 @app.command("search")
 def search_customers(
+    ctx: typer.Context,
     phone: Optional[str] = typer.Option(None, "--phone", "-p", help="Phone number"),
     email: Optional[str] = typer.Option(None, "--email", "-e", help="Email address"),
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Customer name"),
@@ -281,11 +283,18 @@ def search_customers(
             print_error(f"Local data error: {e}")
             raise typer.Exit(1)
 
+    fmt = OutputFormatter.from_context(ctx)
     if isinstance(data, list):
         console.print(f"[dim]Found {len(data)} customer(s)[/dim]")
-        format_output(data, format)
+        if fmt.fmt != "text":
+            fmt.print_table(data, title="Customer Search Results")
+        else:
+            format_output(data, format)
     else:
-        format_output(data, format)
+        if fmt.fmt != "text":
+            fmt.print_record(data, title="Customer Search Results")
+        else:
+            format_output(data, format)
 
 
 @app.command("get")
@@ -415,6 +424,7 @@ def customer_profile(
 
 @app.command("list")
 def list_customers(
+    ctx: typer.Context,
     customer_type: Optional[str] = typer.Option(None, "--type", "-t", help="Customer type (member, registered, visitor)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records to return"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
@@ -451,9 +461,12 @@ def list_customers(
             print_error(f"Local data error: {e}")
             raise typer.Exit(1)
 
+    fmt = OutputFormatter.from_context(ctx)
     if output:
         path = export_data(data, output)
         print_export_success(path)
+    elif fmt.fmt != "text":
+        fmt.print_table(data, title="Customer List")
     else:
         format_output(data, format)
 

@@ -115,25 +115,42 @@ def build_config(
     state_file: str | None,
     sort_by: str | None,
 ) -> SnowflakeSyncConfig:
+    from cli.config import load_config
+    sf = load_config().snowflake
+
     output_path = Path(output_csv).resolve()
     state_path = Path(state_file).resolve() if state_file else output_path.with_suffix(".sync_state.json")
 
+    # Validate required fields (loaded from SnowflakeConfig / env vars via load_config)
+    if not sf.account:
+        raise ValueError("Missing required environment variable: SNOWFLAKE_ACCOUNT")
+    if not sf.user:
+        raise ValueError("Missing required environment variable: SNOWFLAKE_USER")
+    if not sf.warehouse:
+        raise ValueError("Missing required environment variable: SNOWFLAKE_WAREHOUSE")
+    if not sf.database:
+        raise ValueError("Missing required environment variable: SNOWFLAKE_DATABASE")
+    if not sf.schema_name:
+        raise ValueError("Missing required environment variable: SNOWFLAKE_SCHEMA")
+    if not sf.role:
+        raise ValueError("Missing required environment variable: SNOWFLAKE_ROLE")
+
     return SnowflakeSyncConfig(
-        account=required_env("SNOWFLAKE_ACCOUNT"),
-        account_locator=os.getenv("SNOWFLAKE_ACCOUNT_LOCATOR", "").strip() or None,
-        host=os.getenv("SNOWFLAKE_HOST", "").strip() or None,
-        user=required_env("SNOWFLAKE_USER"),
-        password=os.getenv("SNOWFLAKE_PASSWORD", "").strip() or None,
-        authenticator=os.getenv("SNOWFLAKE_AUTHENTICATOR", "").strip() or None,
-        warehouse=required_env("SNOWFLAKE_WAREHOUSE"),
-        database=required_env("SNOWFLAKE_DATABASE"),
-        schema=required_env("SNOWFLAKE_SCHEMA"),
-        table=os.getenv("SNOWFLAKE_SYNC_TABLE", os.getenv("SNOWFLAKE_TABLE", "MEMBERS_MVP")).strip(),
-        role=required_env("SNOWFLAKE_ROLE"),
+        account=sf.account,
+        account_locator=sf.account_locator or None,
+        host=sf.host or None,
+        user=sf.user,
+        password=sf.password or None,
+        authenticator=sf.authenticator or None,
+        warehouse=sf.warehouse,
+        database=sf.database,
+        schema=sf.schema_name,
+        table=sf.table,
+        role=sf.role,
         output_csv=output_path,
         state_file=state_path,
         interval_seconds=max(5, interval_seconds),
-        sort_by=sort_by or os.getenv("SNOWFLAKE_SYNC_SORT_BY", "").strip() or None,
+        sort_by=sort_by or sf.sort_by or None,
     )
 
 

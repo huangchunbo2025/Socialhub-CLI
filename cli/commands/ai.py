@@ -11,6 +11,7 @@ from rich.panel import Panel
 from ..ai.client import call_ai_api
 from ..ai.executor import execute_command, execute_plan, save_scheduled_task
 from ..ai.parser import extract_plan_steps, extract_scheduled_task
+from ..ai.sanitizer import sanitize_user_input, validate_input_length
 
 app = typer.Typer(help="AI assistant for natural language queries")
 console = Console()
@@ -34,7 +35,13 @@ def ai_chat(
     """
     console.print(f"\n[dim]Analyzing: {query}[/dim]\n")
 
-    response = call_ai_api(query, api_key)
+    ok, msg = validate_input_length(query)
+    if not ok:
+        console.print(f"[red]Input too long ({len(query)} chars, limit 2000). Please shorten your query.[/red]")
+        raise typer.Exit(1)
+    query = sanitize_user_input(query)
+
+    response, _ = call_ai_api(query, api_key)
 
     steps = extract_plan_steps(response)
 

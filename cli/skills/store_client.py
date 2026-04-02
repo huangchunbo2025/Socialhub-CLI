@@ -127,7 +127,7 @@ DEMO_SKILLS = [
 class SkillsStoreClient:
     """Client for SocialHub.AI Skills Store API."""
 
-    # Official store URL — override with SOCIALHUB_STORE_URL env var for testing
+    # Official store URL — hardcoded, cannot be overridden at runtime (supply-chain protection)
     OFFICIAL_STORE_URL = "https://skills.socialhub.ai/api/v1"
 
     def __init__(self, base_url: Optional[str] = None, timeout: int = 30, demo_mode: Optional[bool] = None):
@@ -153,6 +153,15 @@ class SkillsStoreClient:
     def _get_client(self) -> httpx.Client:
         """Get or create HTTP client."""
         if self._client is None:
+            from ..config import load_config
+            from ..network import build_httpx_kwargs
+            _net_kwargs = build_httpx_kwargs(load_config().network)
+            # Security: the Skills Store must always use TLS verification regardless
+            # of the global NetworkConfig.ssl_verify setting. Disabling certificate
+            # verification for store downloads would allow a MITM attacker to serve
+            # malicious skill packages. Unconditionally override any ssl_verify=False
+            # that build_httpx_kwargs may have injected.
+            _net_kwargs["verify"] = True
             self._client = httpx.Client(
                 base_url=self.base_url,
                 timeout=self.timeout,
@@ -160,6 +169,7 @@ class SkillsStoreClient:
                     "User-Agent": "SocialHub-CLI/0.1.0",
                     "Accept": "application/json",
                 },
+                **_net_kwargs,
             )
         return self._client
 
@@ -498,7 +508,7 @@ class SkillsStoreClient:
             )
             return data.get("data", {}).get("valid", False)
         except StoreError:
-            return True  # Demo mode: assume valid
+            return False  # Network error during verification — fail closed
 
     def check_updates(
         self,

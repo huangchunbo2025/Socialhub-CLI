@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
+from collections import OrderedDict
 from typing import Any
 
 from mcp.server import Server
@@ -22,7 +24,6 @@ from mcp.types import Tool, TextContent, CallToolResult
 
 from cli.api.mcp_client import MCPError
 from cli.config import load_config
-import threading
 
 _config_cache: Any = None
 _config_lock = threading.Lock()
@@ -40,11 +41,52 @@ def _get_config() -> Any:
 _analytics_loaded = False
 _analytics_ready = threading.Event()
 
+
+class _BoundedTTLCache:
+    """Bounded TTL cache using OrderedDict for LRU eviction. No external dependencies.
+
+    maxsize=200: MCP cache keys are {tenant_id}:{tool_name}:{params_hash}; even in
+    multi-tenant deployments the realistic entry count is well below 200, so LRU
+    eviction is a safety net rather than a hot path.
+    """
+
+    def __init__(self, maxsize: int = 200, ttl: float = 900):
+        self._store: "OrderedDict[str, tuple[list, float]]" = OrderedDict()
+        self._maxsize = maxsize
+        self._ttl = ttl
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> list | None:
+        with self._lock:
+            if key not in self._store:
+                return None
+            value, ts = self._store[key]
+            if time.time() - ts >= self._ttl:
+                del self._store[key]
+                return None
+            self._store.move_to_end(key)  # LRU: mark as recently used
+            return value
+
+    def set(self, key: str, value: list) -> None:
+        with self._lock:
+            if key in self._store:
+                self._store.move_to_end(key)
+            self._store[key] = (value, time.time())
+            if len(self._store) > self._maxsize:
+                self._store.popitem(last=False)  # evict least-recently-used entry
+
+
 # Results cache: key -> (result, timestamp)
-_cache: dict[str, tuple[list, float]] = {}
 _CACHE_TTL = 900  # seconds (15 minutes)
+_cache = _BoundedTTLCache(maxsize=200, ttl=_CACHE_TTL)
 _inflight: dict[str, threading.Event] = {}
 _inflight_lock = threading.Lock()
+# Stores error messages from failed in-flight owners so followers can distinguish
+# owner failure from stale cache after a timeout.
+_inflight_errors: dict[str, str] = {}
+_inflight_errors_lock = threading.Lock()
+# Semaphore: caps concurrent analytics computations regardless of inflight dedup
+_HANDLER_SEMAPHORE = threading.Semaphore(50)
 
 
 def _cache_key(name: str, args: dict, tenant_id: str = "") -> str:
@@ -57,17 +99,10 @@ def _cache_key(name: str, args: dict, tenant_id: str = "") -> str:
     return f"{tenant_id}:{name}:{json.dumps(args, sort_keys=True)}"
 
 
-def _get_cached_result(key: str) -> list | None:
-    cached = _cache.get(key)
-    if cached and time.time() - cached[1] < _CACHE_TTL:
-        return cached[0]
-    return None
-
-
 def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     """Reuse cached or in-flight work for identical tool requests."""
     key = _cache_key(name, args, tenant_id)
-    cached = _get_cached_result(key)
+    cached = _cache.get(key)
     if cached is not None:
         logger.info("MCP tool cache hit: %s", name)
         return cached
@@ -75,6 +110,13 @@ def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     with _inflight_lock:
         event = _inflight.get(key)
         if event is None:
+            if len(_inflight) >= 500:
+                # Evict entries whose events are already set (request completed)
+                stale = [k for k, v in _inflight.items() if v.is_set()]
+                for k in stale:
+                    del _inflight[k]
+                if len(_inflight) >= 500:
+                    raise MCPError("Too many concurrent in-flight requests (limit 500)")
             event = threading.Event()
             _inflight[key] = event
             is_owner = True
@@ -84,16 +126,32 @@ def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     if not is_owner:
         logger.info("MCP tool waiting on in-flight result: %s", name)
         if event.wait(timeout=180):
-            cached = _get_cached_result(key)
+            with _inflight_errors_lock:
+                err_msg = _inflight_errors.pop(key, None)
+            if err_msg is not None:
+                logger.warning("MCP tool in-flight owner failed for %s: %s", name, err_msg)
+                raise MCPError(f"In-flight computation failed: {err_msg}")
+            cached = _cache.get(key)
             if cached is not None:
                 logger.info("MCP tool cache hit after wait: %s", name)
                 return cached
         logger.warning("MCP tool in-flight wait expired or cache missing: %s", name)
+        # Fall through: retry the computation when owner timed out without storing an error
 
     try:
-        result = compute_fn()
-        _cache[key] = (result, time.time())
+        with _HANDLER_SEMAPHORE:
+            result = compute_fn()
+        _cache.set(key, result)
         return result
+    except Exception as exc:
+        if is_owner:
+            with _inflight_errors_lock:
+                if len(_inflight_errors) >= 500:
+                    # Evict oldest entries when the error dict grows too large
+                    oldest = next(iter(_inflight_errors))
+                    del _inflight_errors[oldest]
+                _inflight_errors[key] = str(exc)
+        raise
     finally:
         if is_owner:
             with _inflight_lock:
@@ -126,7 +184,7 @@ def _warm_cache() -> None:
         ]
         def _run_one(item: tuple) -> None:
             # _warm_cache 仅供 stdio 模式调用（__main__.py _run_stdio），HTTP 模式的 lifespan 不调用此函数
-            warm_tid = os.getenv("MCP_TENANT_ID", "")
+            warm_tid = _get_config().mcp.tenant_id
             if not warm_tid:
                 logging.getLogger(__name__).debug("Cache warm skipped: MCP_TENANT_ID not set")
                 return
@@ -157,7 +215,7 @@ def _load_analytics() -> None:
     if _analytics_loaded:
         return
     try:
-        from cli.commands.analytics import (
+        from cli.analytics.mcp_adapter import (
             _get_mcp_overview,
             _get_mcp_customers,
             _get_mcp_customer_source,
@@ -184,8 +242,8 @@ def _load_analytics() -> None:
             _get_mcp_loyalty,
             _get_mcp_repurchase,
             _get_mcp_repurchase_path,
+            _mcp_segment_analyze,
         )
-        from cli.commands.segments import _mcp_segment_analyze
         g = globals()
         for fn in [
             _get_mcp_overview, _get_mcp_customers, _get_mcp_customer_source,
@@ -226,9 +284,11 @@ def probe_upstream_mcp(timeout: int = 15) -> tuple[bool, str]:
             timeout=timeout,
         ))
         client.connect(show_status=False)
-        client.initialize()
-        tools = client.list_tools()
-        client.disconnect()
+        try:
+            client.initialize()
+            tools = client.list_tools()
+        finally:
+            client.disconnect()
         return True, f"upstream reachable, tools={len(tools)}"
     except Exception as e:
         return False, str(e)
@@ -241,12 +301,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_overview",
         description=(
-            "Top-level business KPI dashboard — call this tool for daily/weekly/monthly business reviews, "
-            "operational summaries, or when the user asks 'how is the business doing', 'show me today's numbers', "
-            "'give me a business overview', or any request for a high-level performance snapshot. "
-            "Returns GMV (gross merchandise value), total orders, AOV (average order value), active customers, "
-            "new customers, coupon redemption rate, loyalty points issued and consumed, and message delivery rate. "
-            "Set compare=true to include prior-period delta so you can show growth/decline trends."
+            "业务整体 KPI 概览（GMV、订单量、AOV、活跃客户、新客、积分、优惠券核销率）。"
+            "适用：日/周/月经营汇报、业务整体表现快照、环比增长趋势。"
+            "不要在需要客户明细或单个订单详情时调用。"
+            "参数：period（today/7d/30d/90d/365d/ytd，默认 30d）、compare（是否附环比对比）。"
         ),
         inputSchema={
             "type": "object",
@@ -268,13 +326,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_customers",
         description=(
-            "Customer base and growth metrics — call this tool when the user asks about customer counts, "
-            "member growth, new vs returning customers, how many registered users or buyers there are, "
-            "or where customers come from. "
-            "Returns total registered customers, total buyers (customers who have ordered at least once), "
-            "active buyers in period, member vs non-member split, and new customer acquisitions. "
-            "Set include_source=true to add acquisition channel breakdown (which channels bring the most customers). "
-            "Set include_gender=true to add gender distribution of the customer base."
+            "客户规模与增长汇总（注册数、买家数、新客获取、会员占比、来源渠道、性别分布）。"
+            "适用：客户基数报告、新客增长趋势、会员占比分析。"
+            "不要在需要搜索特定客户时调用；不要在需要 RFM 分层时调用（用 analytics_rfm）。"
+            "参数：period（分析周期）、include_source（来源渠道）、include_gender（性别分布）。"
         ),
         inputSchema={
             "type": "object",
@@ -301,14 +356,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_orders",
         description=(
-            "Order and sales analytics — call this tool when the user asks about sales performance, "
-            "revenue trends, order volume, channel breakdown, regional/province analysis, product rankings, "
-            "repurchase rate, or return/refund rates. "
-            "Returns GMV, order count, AOV, unique customers, new vs returning buyer split, and daily order trend. "
-            "Set group_by='channel' for sales by sales channel (Tmall, JD, WeChat Mini Program, offline, etc.). "
-            "Set group_by='province' for regional/geographic sales breakdown. "
-            "Set group_by='product' for top products by revenue. "
-            "Set include_returns=true to add return and refund order breakdown by channel."
+            "订单与销售趋势分析（GMV、订单量、AOV、渠道/省份/商品分组、退货率）。"
+            "适用：销售业绩报告、渠道对比、区域分析、商品排行、退货分析。"
+            "不要在需要单个订单详情或物流状态时调用。"
+            "参数：period、group_by（channel/province/product）、include_returns（退货数据）。"
         ),
         inputSchema={
             "type": "object",
@@ -335,11 +386,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_retention",
         description=(
-            "Cohort-based customer retention rates — call this tool when the user asks about retention, "
-            "how many customers come back, buyer loyalty over time, or whether customers are returning to purchase again. "
-            "For each specified day window (e.g. 7, 30, 90 days), shows: total customers who bought in that window, "
-            "how many made a second purchase within that window, and the retention rate percentage. "
-            "Use multiple windows (e.g. [7, 30, 90]) to see short-term vs long-term retention patterns."
+            "客户留存率分析（30 天/90 天/180 天复购留存，基于同期队列）。"
+            "适用：留存趋势分析、短期与长期复购对比、买家回流率评估。"
+            "不要在需要实时数据或单个客户复购记录时调用；计算基于历史队列，结果非实时。"
+            "参数：days（留存窗口列表，如 [30, 90, 180]）。"
         ),
         inputSchema={
             "type": "object",
@@ -379,13 +429,10 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_rfm",
         description=(
-            "RFM (Recency, Frequency, Monetary) customer segmentation — call this tool when the user asks "
-            "about RFM analysis, customer segmentation, customer tiers, high-value customers, loyal customers, "
-            "at-risk customers, or customer loyalty scoring. "
-            "Returns live segment distribution (Champions, Loyal Customers, Potential Loyalists, New Customers, "
-            "Cant Lose Them, Need Attention, About to Sleep, Hibernating) with headcount, average spend, "
-            "order frequency, and recency per segment. "
-            "Use segment_filter to drill into one segment; use top_limit to list the top-N customers."
+            "RFM 客户分层（近度 R、频次 F、金额 M），识别高价值/流失风险/沉睡客户群。"
+            "适用：VIP 分层、流失预警、高价值客户识别、精准营销人群圈选。"
+            "不要在只需要简单汇总时调用（用 analytics_overview）；此工具计算较耗时，建议在需要分层明细时才调用。"
+            "参数：segment_filter（分层名过滤，可选）、top_limit（返回 Top-N 客户，0 表示仅汇总）。"
         ),
         inputSchema={
             "type": "object",
@@ -735,6 +782,15 @@ TOOLS: list[Tool] = [
 ]
 
 
+def _get_tool_definitions() -> list[Tool]:
+    """Return the static Tool list for schema consistency testing.
+
+    Must be importable without any running MCP Server instance, database
+    connection, or environment variables — pure in-process access to TOOLS.
+    """
+    return TOOLS
+
+
 # ---------------------------------------------------------------------------
 # Tool name → handler mapping
 # ---------------------------------------------------------------------------
@@ -894,7 +950,9 @@ def _handle_analytics_repurchase(args: dict) -> list[TextContent]:
 
 def _handle_analytics_anomaly(args: dict) -> list[TextContent]:
     config = _get_config()
-    metric = args["metric"]
+    metric = args.get("metric")
+    if not metric:
+        return _err("Missing required argument: metric")
     lookback = args.get("lookback_days", 30)
     detect = args.get("detect_days", 7)
     data = _get_mcp_anomaly(config, metric, lookback, detect)
@@ -903,7 +961,10 @@ def _handle_analytics_anomaly(args: dict) -> list[TextContent]:
 
 def _handle_analytics_segment(args: dict) -> list[TextContent]:
     config = _get_config()
-    group_id = str(args["group_id"])
+    group_id = args.get("group_id")
+    if group_id is None:
+        return _err("Missing required argument: group_id")
+    group_id = str(group_id)
     period = args.get("period", "30d")
     max_members = args.get("max_members", 500)
     data = _mcp_segment_analyze(config, group_id, period, max_members)
@@ -969,27 +1030,39 @@ def create_server() -> Server:
             args = arguments or {}
             loop = asyncio.get_running_loop()
             started = time.time()
-            logger.info("MCP tool call started: %s args=%s", name, json.dumps(args, ensure_ascii=False, sort_keys=True))
+            logger.info("MCP tool call started: %s arg_keys=%s", name, sorted(args.keys()))
 
             def _run():
                 if not _analytics_ready.wait(timeout=120):
                     return _err("Analytics failed to load within 120s")
 
-                # 从 ContextVar 读取 tenant_id（HTTP 模式由 auth 中间件注入）
+                if not _analytics_loaded:
+                    logger.error("Analytics not loaded for tool=%s; check startup logs for import errors", name)
+                    return _err("Analytics failed to initialize. Check server logs.")
+
+                # 从 ContextVar 读取 tenant_id 和 request_id（HTTP 模式由中间件注入）
                 # stdio 模式回退到环境变量 MCP_TENANT_ID（延迟导入避免循环依赖）
-                from mcp_server.auth import _get_tenant_id
+                from mcp_server.auth import _get_tenant_id, _get_request_id
                 tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
+                req_id = _get_request_id()
 
                 if not tid:
-                    logger.warning("tenant_id 未设置，tool=%s", name)
+                    logger.warning("tenant_id 未设置，tool=%s req_id=%s", name, req_id or "-")
                     return _err("Tenant not configured. Contact IT administrator.")
 
+                logger.info(
+                    "MCP tool executing: %s tenant=%s req_id=%s",
+                    name, tid, req_id or "-",
+                )
                 # 静默删除客户端传入的 tenant_id（以 API Key 映射的 tenant_id 为准）
                 safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
                 return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
 
             result = await loop.run_in_executor(None, _run)
-            logger.info("MCP tool call finished: %s elapsed_ms=%s", name, int((time.time() - started) * 1000))
+            logger.info(
+                "MCP tool call finished: %s elapsed_ms=%s",
+                name, int((time.time() - started) * 1000),
+            )
             return result
         except MCPError as e:
             logger.error("MCP database error in %s: %s", name, e)
@@ -998,6 +1071,6 @@ def create_server() -> Server:
             return _err(f"Invalid input: {e}")
         except Exception as e:
             logger.exception("Unexpected error in tool %s", name)
-            return _err(f"Unexpected error: {e}")
+            return _err(f"Unexpected error: {type(e).__name__}")
 
     return server

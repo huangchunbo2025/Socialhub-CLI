@@ -14,6 +14,7 @@ from ..config import load_config
 from ..local.processor import DataProcessor
 from ..local.reader import LocalDataReader, read_customers_csv, read_orders_csv
 from ..output.export import export_data, format_output, print_export_success
+from ..output.formatter import OutputFormatter
 from ..output.table import (
     print_dataframe,
     print_dict,
@@ -149,6 +150,7 @@ _OVERVIEW_EXPLAIN = """[bold dim]── Data Source ─────────�
 
 @app.command("overview")
 def analytics_overview(
+    ctx: typer.Context,
     period: str = typer.Option("7d", "--period", "-p", help="Time period (today, 7d, 30d, 90d, 365d, ytd)"),
     from_date: Optional[str] = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
     to_date: Optional[str] = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
@@ -228,11 +230,12 @@ def analytics_overview(
             raise typer.Exit(1)
 
     # Output
+    fmt = OutputFormatter.from_context(ctx)
     if output:
         path = export_data(data if isinstance(data, list) else [data], output)
         print_export_success(path)
-    elif format == "json":
-        console.print_json(json.dumps(data, default=str))
+    elif fmt.fmt != "text":
+        fmt.print_record(data if isinstance(data, dict) else {"data": data}, title=f"Analytics Overview ({period})")
     else:
         print_overview(data, title=f"Analytics Overview ({period})")
         if explain:
@@ -247,6 +250,7 @@ def analytics_overview(
 
 @app.command("customers")
 def analytics_customers(
+    ctx: typer.Context,
     period: str = typer.Option("30d", "--period", "-p", help="Time period"),
     channel: str = typer.Option("all", "--channel", "-c", help="Channel filter (all, wechat, app, web, tmall)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
@@ -268,7 +272,7 @@ def analytics_customers(
                 print_error(f"Error: {e}")
                 raise typer.Exit(1)
             if output:
-                format_output(rows, "json", output)
+                format_output(rows, format, output)
             else:
                 _print_customer_source(rows, period)
         if gender:
@@ -278,7 +282,7 @@ def analytics_customers(
                 print_error(f"Error: {e}")
                 raise typer.Exit(1)
             if output:
-                format_output(rows, "json", output)
+                format_output(rows, format, output)
             else:
                 _print_customer_gender(rows)
         return
@@ -319,11 +323,19 @@ def analytics_customers(
             print_error(f"Local data error: {e}")
             raise typer.Exit(1)
 
-    format_output(data, format, output)
+    fmt = OutputFormatter.from_context(ctx)
+    if not output and fmt.fmt != "text":
+        if isinstance(data, list):
+            fmt.print_table(data, title=f"Customer Analytics ({period})")
+        else:
+            fmt.print_record(data, title=f"Customer Analytics ({period})")
+    else:
+        format_output(data, format, output)
 
 
 @app.command("retention")
 def analytics_retention(
+    ctx: typer.Context,
     days: str = typer.Option("7,14,30", "--days", "-d", help="Retention periods in days (comma-separated)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
@@ -361,17 +373,24 @@ def analytics_retention(
             print_error(f"Local data error: {e}")
             raise typer.Exit(1)
 
+    fmt = OutputFormatter.from_context(ctx)
     if output:
         path = export_data(data, output)
         print_export_success(path)
+    elif fmt.fmt != "text":
+        if isinstance(data, list):
+            fmt.print_table(data, title="Customer Retention")
+        else:
+            fmt.print_record(data, title="Customer Retention")
     elif format == "json":
-        console.print_json(json.dumps(data, default=str))
+        format_output(data, format, None)
     else:
         print_retention_table(data)
 
 
 @app.command("orders")
 def analytics_orders(
+    ctx: typer.Context,
     period: str = typer.Option("30d", "--period", "-p", help="Time period"),
     metric: str = typer.Option("sales", "--metric", "-m", help="Metric (sales, volume, atv)"),
     repurchase_rate: bool = typer.Option(False, "--repurchase-rate", help="Show repurchase rate"),
@@ -447,7 +466,14 @@ def analytics_orders(
             print_error(f"Local data error: {e}")
             raise typer.Exit(1)
 
-    format_output(data, format, output)
+    fmt = OutputFormatter.from_context(ctx)
+    if not output and fmt.fmt != "text":
+        if isinstance(data, list):
+            fmt.print_table(data, title=f"Order Analytics ({period})")
+        else:
+            fmt.print_record(data, title=f"Order Analytics ({period})")
+    else:
+        format_output(data, format, output)
 
 
 @app.command("campaigns")
@@ -818,12 +844,13 @@ def generate_analytics_report(
         # Generate report using the skill
         console.print("[dim]Generating report...[/dim]")
 
-        # Import and use the report generator
-        sys.path.insert(0, str(Path(__file__).parent.parent / 'skills' / 'store' / 'report-generator'))
-        import importlib
+        # Import the report generator directly via spec to avoid polluting sys.path
+        import importlib.util as _ilu
+        _rg_path = Path(__file__).parent.parent / 'skills' / 'store' / 'report-generator' / 'main.py'
         try:
-            import main as report_main
-            importlib.reload(report_main)
+            _spec = _ilu.spec_from_file_location("_report_generator", _rg_path)
+            report_main = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(report_main)
 
             result = report_main.generate_data_report(
                 topic=topic,
@@ -950,7 +977,7 @@ def analytics_diagnose(
     prompt = _build_diagnose_prompt(ctx)
 
     from .ai import call_ai_api
-    diagnosis = call_ai_api(prompt, show_thinking=True)
+    diagnosis, _ = call_ai_api(prompt, show_thinking=True)
 
     from rich.panel import Panel
     console.print(Panel(diagnosis, title="[bold cyan]AI Business Diagnosis[/bold cyan]",
@@ -1180,9 +1207,9 @@ def analytics_anomaly(
         raise typer.Exit(1)
 
     if output:
-        from datetime import datetime
+        from datetime import datetime, timezone
         meta = {"metric": metric, "lookback": f"{lookback}d", "detect_window": f"{days}d",
-                "generated": datetime.now().strftime("%Y-%m-%d %H:%M")}
+                "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
         format_output(data, "json", output,
                       title=f"Anomaly Detection — {metric}", metadata=meta)
         console.print(f"[green]Exported to {output}[/green]")

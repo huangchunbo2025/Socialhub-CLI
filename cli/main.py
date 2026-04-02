@@ -33,8 +33,10 @@ from .commands import (
     points,
     schema,
     segments,
+    session_cmd,
     skills,
     tags,
+    trace_cmd,
     workflow,
 )
 
@@ -71,6 +73,8 @@ app.add_typer(schema.app, name="schema", help="Warehouse schema explorer - disco
 app.add_typer(heartbeat.app, name="heartbeat", help="Scheduled task management")
 app.add_typer(history.app, name="history", help="Run history: list, inspect, and replay past commands")
 app.add_typer(workflow.app, name="workflow", help="Business workflow shortcuts (daily-brief, etc.)")
+app.add_typer(session_cmd.app, name="session", help="Manage AI conversation sessions")
+app.add_typer(trace_cmd.app, name="trace", help="View and manage AI decision traces")
 
 # Derive valid commands from registered groups — single source of truth
 VALID_COMMANDS = (
@@ -92,6 +96,7 @@ _AUTH_EXEMPT_COMMANDS = {"auth", "config", "--help", "-h", "--version", "-v"}
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         None,
         "--version",
@@ -99,6 +104,20 @@ def main(
         callback=version_callback,
         is_eager=True,
         help="Show version and exit",
+    ),
+    output_format: str = typer.Option(
+        "text",
+        "--output-format",
+        help="Output format",
+        metavar="FORMAT",
+        show_default=True,
+    ),
+    session_id: str = typer.Option(
+        None,
+        "-c",
+        "--session",
+        help="Session ID for conversation continuation",
+        metavar="SESSION_ID",
     ),
 ) -> None:
     """
@@ -114,7 +133,9 @@ def main(
     Use [bold]sh <command> --help[/bold] for more information on a specific command.
     """
     _run_auth_gate()
-    pass
+    obj = ctx.ensure_object(dict)
+    obj["output_format"] = output_format
+    obj["session_id"] = session_id
 
 def _run_auth_gate() -> None:
     """Run OAuth2 auth gate for registered commands (Typer path)."""
@@ -134,7 +155,7 @@ def load_history() -> dict:
     try:
         if HISTORY_FILE.exists():
             return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, IOError):
+    except (json.JSONDecodeError, OSError):
         pass
     return {"last_query": "", "last_commands": []}
 
@@ -148,7 +169,7 @@ def save_history(query: str, commands: list = None) -> None:
         if commands:
             history["last_commands"] = commands
         HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False), encoding="utf-8")
-    except (OSError, IOError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
         pass
 
 
@@ -209,7 +230,21 @@ def cli() -> None:
         app()
         return
 
-    query = " ".join(args)
+    # Extract -c/--session flag from args before building the query string,
+    # so the session flag is not accidentally included in the NL query sent to AI.
+    _session_id_early: str = None
+    clean_args = []
+    _skip_next = False
+    for _i, _a in enumerate(args):
+        if _skip_next:
+            _skip_next = False
+            continue
+        if _a in ("-c", "--session") and _i + 1 < len(args):
+            _session_id_early = args[_i + 1]
+            _skip_next = True
+        else:
+            clean_args.append(_a)
+    query = " ".join(clean_args)
 
     query_lower = query.lower().strip()
     if query_lower in REPEAT_PHRASES or any(p in query_lower for p in REPEAT_PHRASES):
@@ -243,6 +278,7 @@ def cli() -> None:
 
     try:
         import re
+
         from .ai import (
             call_ai_api,
             execute_command,
@@ -251,12 +287,40 @@ def cli() -> None:
             extract_scheduled_task,
             save_scheduled_task,
         )
+        from .ai.sanitizer import sanitize_user_input, validate_input_length
 
-        response = call_ai_api(query)
+        ok, msg = validate_input_length(query)
+        if not ok:
+            console.print(f"[red]Input too long ({len(query)} chars, limit 2000). Please shorten your query.[/red]")
+            return
+        query = sanitize_user_input(query)
+
+        session_history = None
+        session = None
+        _session_id = _session_id_early  # extracted above before query was built
+
+        if _session_id:
+            from .ai.session import SessionStore
+
+            store = SessionStore()
+            session = store.load(_session_id)
+            if session is None:
+                console.print(
+                    f"[yellow]Session '{_session_id}' not found or expired. Starting fresh.[/yellow]"
+                )
+            else:
+                session_history = session.get_history()
+
+        response, _usage = call_ai_api(query, session_history=session_history)
 
         if response.startswith("Error:"):
             console.print(f"[red]{response}[/red]")
             return
+
+        if _session_id and session is not None:
+            from .config import load_config as _load_cfg
+            session.add_turn(query, response, max_history=_load_cfg().session.max_history)
+            store.save(session)
 
         scheduled_task = extract_scheduled_task(response)
         if scheduled_task:
@@ -292,7 +356,13 @@ def cli() -> None:
             if typer.confirm("Execute this plan?", default=True):
                 commands = [step["command"] for step in steps]
                 save_history(query, commands)
-                execute_plan(steps, original_query=query)
+                execute_plan(
+                    steps,
+                    original_query=query,
+                    session_id=_session_id or "",
+                    prompt_tokens=(_usage or {}).get("prompt_tokens", 0),
+                    completion_tokens=(_usage or {}).get("completion_tokens", 0),
+                )
             else:
                 console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
         else:

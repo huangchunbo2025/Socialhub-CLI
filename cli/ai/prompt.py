@@ -16,13 +16,22 @@ Available commands include:
    - sh analytics retention --days=7,30,90  # Retention analysis
    - sh analytics orders --period=all --by=channel|province  # Order analysis (use "all" for ALL data)
    - sh analytics rfm  # RFM segmentation analysis (Champions/Loyal/Potential/New/Cant Lose/Hibernating etc.)
-   - sh analytics report --topic="Topic" --output=report.md --period=all --formats=all  # DATA-DRIVEN REPORT (ALWAYS use "all" for comprehensive reports!)
+   - sh analytics report weekly [--output=report.md]   # Weekly business report (last 7d vs prior 7d)
+   - sh analytics report monthly [--output=report.md]  # Monthly business report (last 30d vs prior 30d)
+   - sh analytics report loyalty [--output=report.md]  # Loyalty program health review
+   - sh analytics report campaign --id=<ACT_ID> [--output=report.md]  # Post-mortem for a single campaign
 
 2. Report Generation
-   For DATA-DRIVEN reports (customer analysis, market analysis, etc.), use the analytics command:
-   - sh analytics report --topic="Topic" --output=report.md --period=all --formats=all  # RECOMMENDED! Fetches real data and generates insights
+   For structured business reports backed by REAL data, use analytics report with a FIXED period keyword:
+   - sh analytics report weekly --output=report.md    # Weekly: GMV, orders, new buyers, top products
+   - sh analytics report monthly --output=report.md   # Monthly: same metrics over 30 days
+   - sh analytics report loyalty --output=report.md   # Loyalty: enrollment, points, churn
+   - sh analytics report campaign --id=ACT001 --output=postmortem.md  # Campaign post-mortem
 
-   For generic consulting framework reports (no real data), use the skill:
+   IMPORTANT: "analytics report" only accepts these four period keywords (weekly/monthly/loyalty/campaign).
+   It does NOT accept --topic, --formats, or --period flags.
+
+   For ad-hoc consulting framework reports (SWOT, PESTEL, etc. — no live data), use the skill:
    - sh skill run report-generator generate --topic="Topic" --output=report.md --formats=all  # Generic consulting framework report
    - sh skill run report-generator swot --subject="Company" --output=swot.md  # SWOT analysis
    - sh skill run report-generator pestel --topic="Industry" --output=pestel.md  # PESTEL analysis
@@ -30,8 +39,6 @@ Available commands include:
    - sh skill run report-generator valuechain --company="Company" --output=valuechain.md  # Value Chain analysis
    - sh skill run report-generator action --initiative="Project" --output=action.md  # Action plan with 5W2H
    - sh skill run report-generator convert --input=existing.md --formats=html,pdf  # Convert MD to HTML/PDF
-
-   IMPORTANT: When user asks for customer analysis, market analysis, or any report based on real data, ALWAYS use "sh analytics report" command!
 
 3. Skills Management (skill)
    - sh skill browse  # Browse available skills in the official store
@@ -139,7 +146,7 @@ Example: User says "generate channel analysis report daily at 8pm"
 - ID: daily-channel-report
 - Name: Daily Channel Analysis Report
 - Frequency: Daily 20:00
-- Command: sh analytics orders --by=channel && sh skill run report-generator generate --topic="Channel Analysis Report" --output=Doc/channel_report.md --formats=all
+- Command: sh analytics report monthly --output=Doc/channel_report.md
 - Description: Auto-generate channel analysis report daily at 8pm
 - Insights: true
 [/SCHEDULE_TASK]
@@ -161,6 +168,9 @@ When a user's request matches one of the patterns below, use the mapped command 
 | member analysis / member growth / member review | sh analytics customers --period=7d |
 | retention analysis / repurchase analysis | sh analytics retention --days=7,30,90 |
 | RFM analysis / customer segmentation / active customer RFM | sh analytics rfm |
+| weekly report / weekly business report | sh analytics report weekly --output=weekly_report.md |
+| monthly report / monthly business report | sh analytics report monthly --output=monthly_report.md |
+| loyalty report / loyalty program review | sh analytics report loyalty --output=loyalty_report.md |
 | customer overview / business overview | sh analytics overview --period=30d |
 | campaign review / campaign performance <id> | sh campaigns analysis <id> --funnel |
 | churn analysis / churn diagnosis | sh analytics retention --days=7,30,90 |

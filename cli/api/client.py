@@ -7,6 +7,7 @@ import httpx
 from rich.console import Console
 
 from ..config import load_config
+from ..network import build_httpx_kwargs
 
 console = Console()
 
@@ -34,10 +35,12 @@ class SocialHubClient:
         self.api_key = api_key or config.api.key
         self.timeout = timeout or config.api.timeout
 
+        net_kwargs = build_httpx_kwargs(config.network)
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=self.timeout,
             headers=self._build_headers(),
+            **net_kwargs,
         )
 
     def _build_headers(self) -> dict[str, str]:

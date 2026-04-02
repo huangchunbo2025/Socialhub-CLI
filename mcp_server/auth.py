@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 # 在 auth 中间件的 dispatch() 中写入，在 call_tool 的 _run() 闭包中通过 _get_tenant_id() 读取
 _tenant_id_var: ContextVar[str] = ContextVar("tenant_id", default="")
 
+# ContextVar：在 executor 线程中可读取当前请求的 X-Request-Id，用于日志链路追踪
+# 由 RequestLoggingMiddleware 写入，在 call_tool 的 _run() 中通过 _get_request_id() 读取
+_request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+
 
 def _extract_tenant_id_from_token(token: str) -> Optional[str]:
     """
@@ -69,6 +73,11 @@ def _extract_tenant_id_from_token(token: str) -> Optional[str]:
 def _get_tenant_id() -> str:
     """从当前请求上下文读取 tenant_id（供 call_tool handler 调用）。"""
     return _tenant_id_var.get()
+
+
+def _get_request_id() -> str:
+    """从当前请求上下文读取 request_id（供 call_tool handler 日志调用）。"""
+    return _request_id_var.get()
 
 
 def _load_api_key_map() -> dict[str, str]:

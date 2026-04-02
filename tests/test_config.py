@@ -9,6 +9,7 @@ import pytest
 
 from cli.config import (
     Config,
+    _apply_env_overrides,
     get_config_value,
     load_config,
     save_config,
@@ -103,3 +104,80 @@ def test_set_config_value(temp_config_dir):
     # Set mode
     assert set_config_value("mode", "local")
     assert get_config_value("mode") == "local"
+
+
+def test_apply_env_overrides_mcp_fields(monkeypatch):
+    """Env vars override MCP config fields at highest priority."""
+    monkeypatch.setenv("MCP_SSE_URL", "https://sse.example.com")
+    monkeypatch.setenv("MCP_POST_URL", "https://post.example.com")
+    monkeypatch.setenv("MCP_TENANT_ID", "tenant-99")
+    monkeypatch.setenv("MCP_DATABASE", "db_override")
+
+    config = Config()
+    result = _apply_env_overrides(config)
+
+    assert result.mcp.sse_url == "https://sse.example.com"
+    assert result.mcp.post_url == "https://post.example.com"
+    assert result.mcp.tenant_id == "tenant-99"
+    assert result.mcp.database == "db_override"
+
+
+def test_apply_env_overrides_no_env_vars(monkeypatch):
+    """When no MCP env vars are set, config is returned unchanged."""
+    for var in ("MCP_SSE_URL", "MCP_POST_URL", "MCP_TENANT_ID", "MCP_DATABASE"):
+        monkeypatch.delenv(var, raising=False)
+
+    config = Config()
+    config.mcp.tenant_id = "original-tenant"
+    result = _apply_env_overrides(config)
+
+    assert result.mcp.tenant_id == "original-tenant"
+
+
+def test_apply_env_overrides_ai_fields(monkeypatch):
+    """Env vars override AI config fields at highest priority."""
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://myendpoint.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-azure-key")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-deploy")
+    monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2025-01-01")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    config = Config()
+    result = _apply_env_overrides(config)
+
+    assert result.ai.provider == "openai"
+    assert result.ai.azure_endpoint == "https://myendpoint.openai.azure.com"
+    assert result.ai.azure_api_key == "test-azure-key"
+    assert result.ai.azure_deployment == "gpt-4o-deploy"
+    assert result.ai.azure_api_version == "2025-01-01"
+    assert result.ai.openai_api_key == "test-openai-key"
+    assert result.ai.openai_model == "gpt-4o-mini"
+
+
+def test_apply_env_overrides_ai_partial(monkeypatch):
+    """Only set AI env vars are overridden; unset fields keep their config values."""
+    for var in ("AI_PROVIDER", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY",
+                "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_API_VERSION",
+                "OPENAI_API_KEY", "OPENAI_MODEL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "partial-key")
+
+    config = Config()
+    config.ai.azure_deployment = "original-deploy"
+    result = _apply_env_overrides(config)
+
+    assert result.ai.openai_api_key == "partial-key"
+    assert result.ai.azure_deployment == "original-deploy"
+
+
+def test_apply_env_overrides_empty_string_ai_ignored(monkeypatch):
+    """Setting an AI env var to empty string does not override config (falsy guard)."""
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+
+    config = Config()
+    config.ai.openai_api_key = "existing-key"
+    result = _apply_env_overrides(config)
+
+    assert result.ai.openai_api_key == "existing-key"

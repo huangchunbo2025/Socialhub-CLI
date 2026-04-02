@@ -4,7 +4,7 @@ import json
 import shlex
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -42,7 +42,7 @@ def save_run(
       exec_time_ms:    wall-clock duration in milliseconds
       output_artifact: absolute path to any exported file
     """
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     run_id = now.strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:6]
     record = {
         "run_id":          run_id,

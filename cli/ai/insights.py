@@ -25,4 +25,5 @@ Please provide concise insight analysis based on the above data:
 
 Output insights directly, no commands. Be concise and professional."""
 
-    return call_ai_api(insight_prompt, show_thinking=False)
+    text, _ = call_ai_api(insight_prompt, show_thinking=False)
+    return text

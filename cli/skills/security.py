@@ -36,7 +36,7 @@ class KeyManager:
 
     # Official SocialHub.AI Ed25519 public key (base64 encoded)
     # This is the production public key for verifying skill signatures
-    OFFICIAL_PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEAK5mPmkJXzWvHxLxV9G6Y8Z3q1fJnRt0vLhQE7YKp2Hw="
+    OFFICIAL_PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEAIvR8munSVGQJIVkhKmV6WQZwwhzUVto6KaSxGrpBAiQ="
 
     # Backup key URL for key rotation
     KEY_UPDATE_URL = "https://keys.socialhub.ai/v1/public_key"
@@ -45,7 +45,7 @@ class KeyManager:
     KEY_CACHE_PATH = Path.home() / ".socialhub" / "security" / "public_key.pem"
 
     # Key fingerprint for verification (SHA256 of the public key)
-    EXPECTED_KEY_FINGERPRINT = "sha256:a1b2c3d4e5f6..."  # placeholder
+    EXPECTED_KEY_FINGERPRINT = "sha256:9e5bd0f4cfcf487341eb582501b04587f62ac62de3303f56a2489f90cdae867b"
 
     def __init__(self):
         self._public_key: Optional[Ed25519PublicKey] = None

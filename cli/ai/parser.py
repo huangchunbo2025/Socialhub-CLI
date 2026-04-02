@@ -1,6 +1,9 @@
 """Response parsers — extract structured data from AI responses."""
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def extract_scheduled_task(response: str) -> dict:
@@ -67,5 +70,11 @@ def extract_plan_steps(response: str) -> list[dict]:
             "description": description.strip(),
             "command": cmd,
         })
+
+    if not steps:
+        logger.warning(
+            "[PLAN_START] marker found but no steps could be parsed — "
+            "the AI response may use an unrecognised step format"
+        )
 
     return steps

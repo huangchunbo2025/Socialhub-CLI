@@ -33,7 +33,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
-from mcp_server.auth import APIKeyMiddleware
+from mcp_server.auth import APIKeyMiddleware, _request_id_var
 from mcp_server.server import create_server
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             request.url.path,
             request.headers.get("user-agent", "-"),
         )
+        token = _request_id_var.set(request_id)
         try:
             response = await call_next(request)
         except Exception:
@@ -63,6 +64,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 int((time.time() - started) * 1000),
             )
             raise
+        finally:
+            _request_id_var.reset(token)
 
         response.headers["X-Request-Id"] = request_id
         logger.info(
