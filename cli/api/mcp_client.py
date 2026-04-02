@@ -28,6 +28,7 @@ class MCPConfig:
     post_url: str = ""  # Required - no hardcoded default
     tenant_id: str = ""  # Required - no hardcoded default
     timeout: int = 120
+    token: str = ""  # SocialHub Bearer token，由 TokenManager 注入（HTTP 模式）
 
 
 class MCPClient:
@@ -35,6 +36,10 @@ class MCPClient:
 
     def __init__(self, config: Optional[MCPConfig] = None):
         self.config = config or MCPConfig()
+        # 如果 config 未传 token，从 thread-local dict 读取（server.py 在进入 executor 前注入）
+        if not self.config.token:
+            import threading as _threading
+            self.config.token = _threading.current_thread().__dict__.get("_sh_mcp_token", "") or ""
         self._session_id: Optional[str] = None
         self._sse_thread: Optional[threading.Thread] = None
         self._running = False
@@ -120,10 +125,13 @@ class MCPClient:
     def _sse_listener(self):
         """Listen for SSE events from MCP server."""
         try:
+            _sse_headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
+            if self.config.token:
+                _sse_headers["Authorization"] = f"Bearer {self.config.token}"
             with httpx.stream(
                 "GET",
                 self.config.sse_url,
-                headers={"tenant_id": self.config.tenant_id},
+                headers=_sse_headers,
                 timeout=httpx.Timeout(connect=self._connect_timeout, read=None, write=self._connect_timeout, pool=self._connect_timeout),
             ) as response:
                 if response.status_code >= 400:
@@ -228,9 +236,15 @@ class MCPClient:
             response = None
             for attempt in range(self._post_retries + 1):
                 try:
+                    _post_headers: dict[str, str] = {
+                        "tenant_id": self.config.tenant_id,
+                        "Content-Type": "application/json",
+                    }
+                    if self.config.token:
+                        _post_headers["Authorization"] = f"Bearer {self.config.token}"
                     response = httpx.post(
                         url,
-                        headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
+                        headers=_post_headers,
                         json=message,
                         timeout=self._post_timeout,
                     )
@@ -328,9 +342,15 @@ class MCPClient:
             url = f"{url}?sessionId={self._session_id}"
 
         try:
+            _notif_headers: dict[str, str] = {
+                "tenant_id": self.config.tenant_id,
+                "Content-Type": "application/json",
+            }
+            if self.config.token:
+                _notif_headers["Authorization"] = f"Bearer {self.config.token}"
             httpx.post(
                 url,
-                headers={"tenant_id": self.config.tenant_id, "Content-Type": "application/json"},
+                headers=_notif_headers,
                 json=message,
                 timeout=5,
             )

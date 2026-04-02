@@ -41,8 +41,8 @@
   .btn-danger { background:var(--danger); color:#fff; }
   .btn-danger:hover:not(:disabled) { background:#b52b20; }
   .btn-copy { background:transparent; border:1px solid var(--border); color:var(--muted);
-    padding:4px 8px; font-size:12px; border-radius:4px; cursor:pointer;
-    display:inline-flex; align-items:center; gap:4px; transition:all .15s; }
+    padding:3px 7px; font-size:12px; border-radius:4px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:3px; transition:all .15s; vertical-align:middle; margin-left:6px; }
   .btn-copy:hover { background:var(--bg); color:var(--text); border-color:#999; }
   .btn-copy.copied { background:#e8f5e9; color:var(--success); border-color:var(--success); }
   .error-msg { color:var(--danger); font-size:13px; margin-top:12px; min-height:20px; }
@@ -78,6 +78,7 @@
   tr:last-child td { border-bottom:none; }
   .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:500; }
   .badge-ok { background:#e8f5e9; color:var(--success); }
+  .badge-type { background:#e8f0fe; color:#1a73e8; }
 
   /* Modal */
   .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4);
@@ -87,12 +88,21 @@
   .modal h3 { font-size:17px; margin-bottom:20px; }
   .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
 
-  /* Newly created key row */
-  .tr-new { background:#fffbdd; }
-  .tr-new td { border-bottom:1px solid #f0e000 !important; }
-  .key-new-wrap { display:flex; align-items:center; gap:8px; }
-  .key-new-val { font-family:monospace; font-size:13px; word-break:break-all; }
-  .key-new-hint { font-size:11px; color:var(--muted); white-space:nowrap; }
+  /* Key reveal area with copy button */
+  .key-reveal-wrap { position:relative; margin:16px 0; }
+  .key-reveal { background:#f6f8fa; border:1px solid var(--border); border-radius:6px;
+    padding:12px 48px 12px 12px; font-family:monospace; font-size:13px;
+    word-break:break-all; line-height:1.5; }
+  .key-copy-btn { position:absolute; top:50%; right:10px; transform:translateY(-50%);
+    background:transparent; border:1px solid var(--border); border-radius:4px;
+    padding:4px 8px; cursor:pointer; font-size:12px; color:var(--muted);
+    display:inline-flex; align-items:center; gap:3px; transition:all .15s; }
+  .key-copy-btn:hover { background:var(--bg); color:var(--text); }
+  .key-copy-btn.copied { background:#e8f5e9; color:var(--success); border-color:var(--success); }
+
+  /* Key masked display in table */
+  .key-cell { display:flex; align-items:center; gap:0; }
+  .key-masked { font-family:monospace; font-size:13px; color:var(--text); }
 
   /* Dropzone */
   .dropzone { border:2px dashed var(--border); border-radius:var(--radius);
@@ -100,6 +110,15 @@
     color:var(--muted); font-size:14px; }
   .dropzone.over { border-color:var(--primary); background:#f0f4ff; }
   .dropzone.has-file { border-color:var(--success); background:#f0faf3; color:var(--text); }
+
+  /* Credential type picker cards */
+  .cred-type-card { border:1px solid var(--border); border-radius:var(--radius);
+    padding:20px 16px; cursor:pointer; transition:border .15s, background .15s; text-align:center; }
+  .cred-type-card:hover:not(.disabled) { border-color:var(--primary); background:#f0f4ff; }
+  .cred-type-card.disabled { opacity:.45; cursor:not-allowed; }
+  .cred-type-icon { font-size:28px; margin-bottom:8px; }
+  .cred-type-name { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .cred-type-desc { font-size:12px; color:var(--muted); }
 
   .spinner { display:inline-block; width:14px; height:14px;
     border:2px solid rgba(255,255,255,.4); border-top-color:#fff;
@@ -161,7 +180,7 @@
       </div>
       <div class="card">
         <table><thead><tr>
-          <th>名称</th><th>Key 前缀</th><th>创建时间</th><th>最后使用</th><th></th>
+          <th>名称</th><th>API Key</th><th>创建时间</th><th>最后使用</th><th></th>
         </tr></thead>
         <tbody id="keys-tbody"></tbody></table>
         <p class="text-muted mt-8 hidden" id="keys-empty">暂无 API Key，点击「新建」创建第一个</p>
@@ -172,7 +191,6 @@
     <div id="page-credentials" class="hidden">
       <div class="page-header">
         <h2>凭证管理</h2>
-        <button class="btn btn-primary btn-sm" onclick="openCredModal()">＋ 新建凭证</button>
       </div>
       <div id="cred-card" class="card"><p class="text-muted">加载中…</p></div>
     </div>
@@ -195,12 +213,86 @@
   </div>
 </div>
 
+<!-- MODAL: Show Key (with inline copy button) -->
+<div class="modal-overlay hidden" id="modal-show-key">
+  <div class="modal">
+    <h3>✅ API Key 已创建</h3>
+    <p class="text-muted">请立即复制并保存，此弹窗关闭后仍可在列表中复制：</p>
+    <div class="key-reveal-wrap">
+      <div class="key-reveal" id="new-key-value"></div>
+      <button class="key-copy-btn" id="key-copy-btn" onclick="copyKey(this)">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+          <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+        </svg>
+        复制
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-show-key');loadApiKeys()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Select Credential Type -->
+<div class="modal-overlay hidden" id="modal-cred-type">
+  <div class="modal" style="width:580px">
+    <h3>选择凭证类型</h3>
+    <p class="text-muted" style="margin-bottom:20px">选择要配置的数据源凭证类型</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:24px">
+      <div class="cred-type-card" onclick="selectCredType('socialhub')" style="position:relative">
+        <div style="position:absolute;top:8px;right:8px;background:#d93025;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px">必填</div>
+        <div class="cred-type-icon">🔐</div>
+        <div class="cred-type-name">SocialHub 凭证</div>
+        <div class="cred-type-desc">app_id / app_secret</div>
+      </div>
+      <div class="cred-type-card" onclick="selectCredType('bigquery_emarsys')">
+        <div class="cred-type-icon">📊</div>
+        <div class="cred-type-name">SAP BigQuery</div>
+        <div class="cred-type-desc">Emarsys Open Data 集成</div>
+      </div>
+      <div class="cred-type-card disabled">
+        <div class="cred-type-icon">🔜</div>
+        <div class="cred-type-name">更多类型</div>
+        <div class="cred-type-desc">即将支持</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-cred-type')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SocialHub Credential -->
+<div class="modal-overlay hidden" id="modal-sh-cred">
+  <div class="modal">
+    <h3 id="sh-cred-title">配置 SocialHub 凭证</h3>
+    <p class="text-muted" style="margin-bottom:16px">用于向上游 MCP Gateway 发起认证，必须先配置此凭证</p>
+    <div class="form-group">
+      <label>Auth URL</label>
+      <input id="sh-auth-url" type="text" placeholder="例：http://host/openapi-uat">
+    </div>
+    <div class="form-group">
+      <label>App ID</label>
+      <input id="sh-app-id" type="text" placeholder="t_tenant_secret.app_id" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>App Secret</label>
+      <input id="sh-app-secret" type="password" placeholder="t_tenant_secret.secret" autocomplete="new-password">
+    </div>
+    <div class="error-msg" id="sh-cred-error"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-sh-cred')">取消</button>
+      <button class="btn btn-primary" id="sh-cred-btn" onclick="saveShCred()">保存</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL: New Credential -->
 <div class="modal-overlay hidden" id="modal-cred">
   <div class="modal">
-    <h3>新建 BigQuery 凭证</h3>
-    <p class="text-muted" style="margin-bottom:16px">SAP Emarsys BigQuery 集成</p>
+    <h3 id="modal-cred-title">配置凭证</h3>
+    <p class="text-muted" id="modal-cred-subtitle" style="margin-bottom:16px"></p>
     <div class="form-group">
       <label>GCP Project ID</label>
       <input id="cred-project" type="text" placeholder="例：sap-emarsys-data-prod">
@@ -233,6 +325,7 @@
 let portalToken = localStorage.getItem('mcp_portal_token') || '';
 let tenantId = localStorage.getItem('mcp_tenant') || '';
 let saJsonData = null;
+let pendingNewKey = '';
 
 const $ = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
@@ -302,6 +395,27 @@ function showPage(name) {
 }
 
 // ── API Keys ──
+function maskKey(raw) {
+  if (!raw) return '—';
+  const start = raw.slice(0, 7);
+  const end = raw.slice(-4);
+  return `${start}****${end}`;
+}
+
+const COPY_ICON = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>`;
+const CHECK_ICON = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>`;
+
+function copyFromBtn(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = CHECK_ICON + ' 已复制';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = COPY_ICON + ' 复制';
+    }, 2000);
+  });
+}
+
 async function loadApiKeys() {
   const { ok, status, data } = await apiFetch('/api-keys', { headers: portalHeaders() });
   if (status === 401) { doLogout(); return; }
@@ -312,12 +426,37 @@ async function loadApiKeys() {
   hide('keys-empty');
   data.keys.forEach(k => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${esc(k.name)}</td>
-      <td><code>${esc(k.key_prefix)}…</code></td>
-      <td>${fmtDate(k.created_at)}</td>
-      <td>${k.last_used_at ? fmtDate(k.last_used_at) : '<span class="text-muted">从未</span>'}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="revokeKey(${k.id},'${esc(k.name)}')">吊销</button></td>`;
+    const keyTd = document.createElement('td');
+    keyTd.innerHTML = `<span class="key-masked">${esc(maskKey(k.key_raw || k.key_prefix))}</span>`;
+    if (k.key_raw) {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'btn-copy';
+      copyBtn.innerHTML = COPY_ICON + ' 复制';
+      copyBtn.onclick = () => copyFromBtn(copyBtn, k.key_raw);
+      keyTd.appendChild(copyBtn);
+    }
+
+    const nameTd = document.createElement('td');
+    nameTd.textContent = k.name;
+
+    const createdTd = document.createElement('td');
+    createdTd.textContent = fmtDate(k.created_at);
+
+    const usedTd = document.createElement('td');
+    usedTd.innerHTML = k.last_used_at ? fmtDate(k.last_used_at) : '<span class="text-muted">从未</span>';
+
+    const actionTd = document.createElement('td');
+    const revokeBtn = document.createElement('button');
+    revokeBtn.className = 'btn btn-danger btn-sm';
+    revokeBtn.textContent = '吊销';
+    revokeBtn.onclick = () => revokeKey(k.id, k.name);
+    actionTd.appendChild(revokeBtn);
+
+    tr.appendChild(nameTd);
+    tr.appendChild(keyTd);
+    tr.appendChild(createdTd);
+    tr.appendChild(usedTd);
+    tr.appendChild(actionTd);
     tbody.appendChild(tr);
   });
 }
@@ -339,38 +478,16 @@ async function doCreateKey() {
   btn.disabled = false; btn.textContent = '创建';
   if (!ok) { $('create-key-error').textContent = data.error || '创建失败'; return; }
   closeModal('modal-create-key');
-  _prependNewKeyRow(data);
+  pendingNewKey = data.key;
+  $('new-key-value').textContent = data.key;
+  const copyBtn = $('key-copy-btn');
+  copyBtn.classList.remove('copied');
+  copyBtn.innerHTML = COPY_ICON + ' 复制';
+  show('modal-show-key');
 }
 
-const _COPY_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>';
-const _CHECK_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>';
-
-function _prependNewKeyRow(data) {
-  hide('keys-empty');
-  const tbody = $('keys-tbody');
-  const tr = document.createElement('tr');
-  tr.className = 'tr-new';
-  tr.innerHTML = `
-    <td>${esc(data.name)}</td>
-    <td>
-      <div class="key-new-wrap">
-        <span class="key-new-val">${esc(data.key)}</span>
-        <button class="btn-copy" onclick="copyInlineKey(this,'${esc(data.key)}')">${_COPY_SVG} 复制</button>
-        <span class="key-new-hint">刷新后不可见</span>
-      </div>
-    </td>
-    <td>${fmtDate(data.created_at)}</td>
-    <td><span class="text-muted">从未</span></td>
-    <td><button class="btn btn-danger btn-sm" onclick="revokeKey(${data.id},'${esc(data.name)}')">吊销</button></td>`;
-  tbody.prepend(tr);
-}
-
-function copyInlineKey(btn, key) {
-  navigator.clipboard.writeText(key).then(() => {
-    btn.classList.add('copied');
-    btn.innerHTML = `${_CHECK_SVG} 已复制`;
-    setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = `${_COPY_SVG} 复制`; }, 2000);
-  });
+function copyKey(btn) {
+  copyFromBtn(btn, pendingNewKey);
 }
 
 async function revokeKey(id, name) {
@@ -383,42 +500,103 @@ async function revokeKey(id, name) {
 }
 
 // ── Credentials ──
+const CRED_TYPE_LABELS = {
+  'bigquery_emarsys': 'SAP BigQuery · Emarsys Open Data',
+  'socialhub': 'SocialHub 凭证',
+};
+
+function credTypeLabel(type) {
+  return CRED_TYPE_LABELS[type] || type || '未知类型';
+}
+
+function _shCredSection(sh) {
+  if (!sh.configured) {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-size:15px;font-weight:600">🔐 SocialHub 凭证</span>
+        <span style="margin-left:8px;background:#fce8e6;color:#d93025;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px">必填</span>
+        <p class="text-muted" style="margin-top:4px;font-size:13px">未配置 — MCP 工具将无法访问上游分析数据</p>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="selectCredType('socialhub')">立即配置</button>
+    </div>`;
+  }
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border)">
+    <div>
+      <span style="font-size:15px;font-weight:600">🔐 SocialHub 凭证</span>
+      <span class="badge badge-ok" style="margin-left:8px">✓ 已配置</span>
+      <p class="text-muted" style="margin-top:4px;font-size:13px">
+        App ID：${esc(sh.app_id)} &nbsp;·&nbsp; Auth URL：${esc(sh.auth_url)}
+        &nbsp;·&nbsp; 更新于 ${fmtDate(sh.updated_at)}
+      </p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="selectCredType('socialhub')">更新</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteShCred()">删除</button>
+    </div>
+  </div>`;
+}
+
+function _bqCredSection(bq) {
+  if (!bq.configured) {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0">
+      <div>
+        <span style="font-size:15px;font-weight:600">📊 SAP BigQuery 凭证</span>
+        <p class="text-muted" style="margin-top:4px;font-size:13px">未配置 — Emarsys Open Data 数据源不可用</p>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="selectCredType('bigquery_emarsys')">配置</button>
+    </div>`;
+  }
+  const datasets = (bq.datasets_found || []).join('、') || '—';
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0">
+    <div>
+      <span style="font-size:15px;font-weight:600">📊 SAP BigQuery 凭证</span>
+      <span class="badge badge-ok" style="margin-left:8px">✓ 已配置</span>
+      <p class="text-muted" style="margin-top:4px;font-size:13px">
+        Project：${esc(bq.gcp_project_id)} &nbsp;·&nbsp; 数据集：${esc(datasets)}
+        &nbsp;·&nbsp; 验证于 ${fmtDate(bq.validated_at)}
+      </p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="updateCred()">更新</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteCred()">删除</button>
+    </div>
+  </div>`;
+}
+
 async function loadCredentials() {
   const card = $('cred-card');
   card.innerHTML = '<p class="text-muted">加载中…</p>';
-  const { ok, status, data } = await apiFetch('/credentials/bigquery', { headers: portalHeaders() });
-  if (status === 401) { doLogout(); return; }
-  if (!ok) { card.innerHTML = '<p class="text-muted">加载失败</p>'; return; }
-  if (!data.configured) {
-    card.innerHTML = `<div style="text-align:center;padding:40px 0">
-      <div style="font-size:48px;margin-bottom:16px">🗄️</div>
-      <p style="font-size:15px;font-weight:600;margin-bottom:8px">尚未配置 BigQuery 凭证</p>
-      <p class="text-muted" style="margin-bottom:24px">配置后 MCP 工具可访问 Emarsys 数据</p>
-      <button class="btn btn-primary" onclick="openCredModal()">＋ 新建凭证</button></div>`;
-    return;
-  }
-  const datasets = (data.datasets_found || []).join('、') || '—';
-  card.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div><span class="badge badge-ok">✓ 已配置</span>
-        <span class="text-muted" style="margin-left:8px;font-size:13px">上次验证：${fmtDate(data.validated_at)}</span>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-outline btn-sm" onclick="openCredModal()">更新</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCred()">删除</button>
-      </div>
-    </div>
-    <table style="width:auto">
-      <tr><td style="padding:6px 24px 6px 0;color:var(--muted);font-size:13px">GCP Project</td>
-          <td><code>${esc(data.gcp_project_id)}</code></td></tr>
-      <tr><td style="padding:6px 24px 6px 0;color:var(--muted);font-size:13px">发现的数据集</td>
-          <td>${esc(datasets)}</td></tr>
-      <tr><td style="padding:6px 24px 6px 0;color:var(--muted);font-size:13px">发现的表</td>
-          <td>${(data.tables_found || []).length} 张</td></tr>
-    </table>`;
+  const [shRes, bqRes] = await Promise.all([
+    apiFetch('/credentials/mcp', { headers: portalHeaders() }),
+    apiFetch('/credentials/bigquery', { headers: portalHeaders() }),
+  ]);
+  if (shRes.status === 401 || bqRes.status === 401) { doLogout(); return; }
+  card.innerHTML = _shCredSection(shRes.data) + _bqCredSection(bqRes.data);
 }
 
 function openCredModal() {
+  show('modal-cred-type');
+}
+
+function updateCred() {
+  selectCredType('bigquery_emarsys');
+}
+
+function selectCredType(type) {
+  closeModal('modal-cred-type');
+  if (type === 'socialhub') {
+    $('sh-app-id').value = ''; $('sh-app-secret').value = '';
+    $('sh-auth-url').value = ''; $('sh-cred-error').textContent = '';
+    show('modal-sh-cred'); setTimeout(() => $('sh-auth-url').focus(), 50);
+    return;
+  }
+  // bigquery_emarsys
+  const labels = {
+    bigquery_emarsys: { title: '配置 BigQuery 凭证', subtitle: 'SAP Emarsys Open Data 集成' },
+  };
+  const lbl = labels[type] || { title: '配置凭证', subtitle: '' };
+  $('modal-cred-title').textContent = lbl.title;
+  $('modal-cred-subtitle').textContent = lbl.subtitle;
   $('cred-project').value = ''; $('cred-dataset').value = '';
   $('cred-error').textContent = ''; saJsonData = null;
   const dz = $('sa-dropzone');
@@ -426,6 +604,35 @@ function openCredModal() {
   dz.classList.remove('has-file','over');
   $('cred-submit-btn').disabled = true;
   show('modal-cred');
+}
+
+// ── SocialHub Credential ──
+async function saveShCred() {
+  $('sh-cred-error').textContent = '';
+  const auth_url = $('sh-auth-url').value.trim();
+  const app_id = $('sh-app-id').value.trim();
+  const app_secret = $('sh-app-secret').value;
+  if (!auth_url || !app_id || !app_secret) {
+    $('sh-cred-error').textContent = '请填写所有字段'; return;
+  }
+  const btn = $('sh-cred-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 保存中…';
+  const { ok, data } = await apiFetch('/credentials/mcp', {
+    method: 'PUT', headers: portalHeaders(),
+    body: JSON.stringify({ auth_url, app_id, app_secret }),
+  });
+  btn.disabled = false; btn.textContent = '保存';
+  if (!ok) { $('sh-cred-error').textContent = data.message || '保存失败'; return; }
+  closeModal('modal-sh-cred'); loadCredentials();
+}
+
+async function deleteShCred() {
+  if (!confirm('确定要删除 SocialHub 凭证吗？删除后 MCP 工具将无法访问上游数据。')) return;
+  const { ok, data } = await apiFetch('/credentials/mcp', {
+    method: 'DELETE', headers: portalHeaders(),
+  });
+  if (!ok) { alert(data.message || '删除失败'); return; }
+  loadCredentials();
 }
 
 function handleDrop(e) {

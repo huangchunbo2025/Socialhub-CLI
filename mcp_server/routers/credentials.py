@@ -148,6 +148,7 @@ async def get_credentials(request: Request) -> JSONResponse:
         content={
             "status": "ok",
             "configured": True,
+            "credential_type": row.credential_type,
             "customer_id": row.customer_id,
             "gcp_project_id": row.gcp_project_id,
             "dataset_id": row.dataset_id,

@@ -16,15 +16,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import uuid
 from contextvars import ContextVar
+from typing import Any
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from starlette.types import ASGIApp
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ _API_KEY_MAP: dict[str, str] = _load_api_key_map()
 # /api-keys* 路由使用独立的 JWT 认证（X-Portal-Token），不走 API Key 中间件
 _AUTH_EXEMPT_PATHS: frozenset[str] = frozenset({
     "/health", "/health/", "/ui", "/ui/", "/auth/login", "/auth/login/",
-    "/api-keys", "/api-keys/",
+    "/api-keys", "/api-keys/", "/favicon.ico",
 })
 
 
@@ -126,33 +127,50 @@ async def _lookup_api_key_in_db(api_key: str) -> str | None:
     return None
 
 
-class APIKeyMiddleware(BaseHTTPMiddleware):
+class APIKeyMiddleware:
     """
-    Starlette 中间件：API Key 认证 + tenant_id 注入。
+    纯 ASGI 中间件：API Key 认证 + tenant_id 注入。
 
-    成功：在 request.state.tenant_id 和 ContextVar _tenant_id_var 中注入 tenant_id
-    失败：返回 401 JSON 响应，不调用 call_next
-    /health：直接放行，不检查 Key
+    使用纯 ASGI 而非 BaseHTTPMiddleware，原因：
+    BaseHTTPMiddleware 内部用 background task 处理请求体，call_next() 返回后
+    finally 立即重置 ContextVar，导致 MCP streaming 工具读不到 tenant_id。
+    纯 ASGI 的 await self.app(scope, receive, send) 等待完整响应（含流式体）
+    结束后才执行 finally，ContextVar 在整个请求生命周期内有效。
+
+    成功：在 scope["state"].tenant_id 和 ContextVar _tenant_id_var 中注入 tenant_id
+    失败：返回 401 JSON 响应
+    /health 等白名单路径：直接放行
     """
 
     def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
-        # 使用进程级映射表（测试中可直接替换 middleware._key_map）
+        self.app = app
         self._key_map = _API_KEY_MAP
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # 白名单路径跳过认证（精确匹配 + /api-keys* 前缀匹配，由路由自身的 JWT 认证处理）
-        path = request.url.path
-        if path in _AUTH_EXEMPT_PATHS or path.startswith("/api-keys"):
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # 带 X-Portal-Token 的请求（门户 UI 访问 /credentials）由 resolve_tenant_id() 处理
+        # 确保 scope["state"] 存在（Starlette Request.state 依赖它）
+        if "state" not in scope:
+            scope["state"] = {}
+
+        request = Request(scope, receive)
+        path = scope["path"]
+
+        # 白名单路径放行
+        if path in _AUTH_EXEMPT_PATHS or path.startswith("/api-keys"):
+            await self.app(scope, receive, send)
+            return
+
+        # 带 X-Portal-Token 的请求由路由层的 JWT 认证处理
         if request.headers.get("X-Portal-Token"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         api_key = _extract_api_key(request)
 
-        # DB-first lookup, fallback to env var (hmac.compare_digest 防止时序攻击)
+        # DB-first lookup，fallback 到环境变量（hmac.compare_digest 防时序攻击）
         tenant_id: str | None = None
         if api_key:
             tenant_id = await _lookup_api_key_in_db(api_key)
@@ -167,11 +185,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             ref_id = str(uuid.uuid4())
             logger.warning(
                 "API Key 认证失败: path=%s ref_id=%s key_prefix=%s",
-                request.url.path,
+                path,
                 ref_id,
                 api_key[:8] if api_key else "<empty>",
             )
-            return JSONResponse(
+            resp = JSONResponse(
                 status_code=401,
                 content={
                     "error": "unauthorized",
@@ -179,24 +197,24 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     "reference_id": ref_id,
                 },
             )
+            await resp(scope, receive, send)
+            return
 
-        # 注入 tenant_id 到请求 state（同步代码可读）和 ContextVar（executor 线程可读）
-        request.state.tenant_id = tenant_id
+        # 注入 tenant_id：scope state（路由层可读）+ ContextVar（MCP tool handler 可读）
+        scope["state"]["tenant_id"] = tenant_id
         logger.info(
             "API Key authentication succeeded: path=%s tenant=%s key_prefix=%s",
-            request.url.path,
+            path,
             tenant_id,
             api_key[:8] if api_key else "<empty>",
         )
         token = _tenant_id_var.set(tenant_id)
 
         try:
-            response = await call_next(request)
+            # 纯 ASGI：等待完整响应（含流式体）发送完毕后才执行 finally
+            await self.app(scope, receive, send)
         finally:
-            # 请求结束后重置 ContextVar，防止线程池复用时值残留（防止跨租户数据污染）
             _tenant_id_var.reset(token)
-
-        return response
 
 
 async def resolve_tenant_id(request: Request) -> str | None:
@@ -211,8 +229,10 @@ async def resolve_tenant_id(request: Request) -> str | None:
     Returns:
         tenant_id string, or None if not authenticated by either method.
     """
-    # API Key path: already injected by APIKeyMiddleware
+    # API Key path: injected by APIKeyMiddleware via scope["state"] or request.state
     tenant_id: str | None = getattr(request.state, "tenant_id", None)
+    if tenant_id is None:
+        tenant_id = request.scope.get("state", {}).get("tenant_id")
     if tenant_id:
         return tenant_id
 

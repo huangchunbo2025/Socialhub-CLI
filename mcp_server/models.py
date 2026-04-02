@@ -43,8 +43,27 @@ class TenantApiKey(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(10), nullable=False)   # first 8 chars, for display
     key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # SHA-256 hex
+    key_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)  # plain-text key for portal copy
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TenantSocialHubCredential(Base):
+    """Stores encrypted SocialHub app_id/app_secret per tenant for upstream MCP gateway auth."""
+
+    __tablename__ = "tenant_socialhub_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    auth_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    app_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    app_secret: Mapped[str] = mapped_column(Text, nullable=False)  # Fernet encrypted
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

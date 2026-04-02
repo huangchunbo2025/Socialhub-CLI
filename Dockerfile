@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e ".[http]" \
+RUN pip install --no-cache-dir -e ".[http,snowflake]" \
     && pip install --no-cache-dir psycopg2-binary
 
 COPY mcp_server/ ./mcp_server/

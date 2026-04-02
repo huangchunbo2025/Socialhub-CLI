@@ -26,16 +26,34 @@ import threading
 
 _config_cache: Any = None
 _config_lock = threading.Lock()
+_thread_local = threading.local()
 
 
 def _get_config() -> Any:
-    """Return cached config — reads disk once per server process."""
+    """Return config, patched with per-request tenant_id/database if set via thread-local.
+
+    HTTP mode: each tool call sets _thread_local.tenant_id = tid (from API Key) before
+    entering the executor thread, so every handler gets a config scoped to that tenant.
+    stdio mode: thread-local is not set, falls back to global config as before.
+    """
     global _config_cache
     if _config_cache is None:
         with _config_lock:
             if _config_cache is None:
                 _config_cache = load_config()
-    return _config_cache
+
+    tid = getattr(_thread_local, "tenant_id", None)
+    if not tid:
+        return _config_cache
+
+    import copy
+    patched = copy.copy(_config_cache)
+    mcp = copy.copy(_config_cache.mcp)
+    mcp.tenant_id = tid
+    if not mcp.database:
+        mcp.database = f"das_{tid}"
+    patched.mcp = mcp
+    return patched
 
 _analytics_loaded = False
 _analytics_ready = threading.Event()
@@ -971,22 +989,46 @@ def create_server() -> Server:
             started = time.time()
             logger.info("MCP tool call started: %s args=%s", name, json.dumps(args, ensure_ascii=False, sort_keys=True))
 
+            # 在 async 上下文中读取 tenant_id（ContextVar 在此处可用）
+            # 必须在 run_in_executor 之前读取，线程池中 ContextVar 可能因 MCP SDK
+            # 创建新 async context 而丢失
+            from mcp_server.auth import _get_tenant_id
+            tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
+
+            if not tid:
+                logger.warning("tenant_id 未设置，tool=%s", name)
+                return _err("Tenant not configured. Contact IT administrator.")
+
+            # 在 async 上下文中获取凭证（DB 查询是异步的），供 _run() 同步使用
+            from mcp_server.token_manager import get_cred, get_cached_token_sync
+            cred = await get_cred(tid)
+
             def _run():
+                import threading as _threading
                 if not _analytics_ready.wait(timeout=120):
                     return _err("Analytics failed to load within 120s")
 
-                # 从 ContextVar 读取 tenant_id（HTTP 模式由 auth 中间件注入）
-                # stdio 模式回退到环境变量 MCP_TENANT_ID（延迟导入避免循环依赖）
-                from mcp_server.auth import _get_tenant_id
-                tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
+                # 将 API Key 映射的 tenant_id 注入 thread-local，
+                # 使 _get_config() 在本线程返回该租户的 mcp 配置
+                _thread_local.tenant_id = tid
+                try:
+                    # 注入 SocialHub token 到当前线程 dict，供 MCPClient 读取
+                    if cred:
+                        try:
+                            token = get_cached_token_sync(tid, cred)
+                            _threading.current_thread().__dict__["_sh_mcp_token"] = token
+                        except Exception as _e:
+                            logger.warning("SocialHub token 获取失败 tenant=%s: %s", tid, _e)
+                            _threading.current_thread().__dict__["_sh_mcp_token"] = ""
+                    else:
+                        logger.warning("tenant=%s 未配置 SocialHub 凭证，upstream 请求将无 token", tid)
+                        _threading.current_thread().__dict__["_sh_mcp_token"] = ""
 
-                if not tid:
-                    logger.warning("tenant_id 未设置，tool=%s", name)
-                    return _err("Tenant not configured. Contact IT administrator.")
-
-                # 静默删除客户端传入的 tenant_id（以 API Key 映射的 tenant_id 为准）
-                safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
-                return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
+                    safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
+                    return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
+                finally:
+                    _thread_local.tenant_id = None
+                    _threading.current_thread().__dict__.pop("_sh_mcp_token", None)
 
             result = await loop.run_in_executor(None, _run)
             logger.info("MCP tool call finished: %s elapsed_ms=%s", name, int((time.time() - started) * 1000))

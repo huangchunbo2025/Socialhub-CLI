@@ -100,6 +100,7 @@ async def create_api_key(request: Request) -> JSONResponse:
             name=req.name,
             key_prefix=key_prefix,
             key_hash=key_hash,
+            key_raw=raw_key,
         )
         session.add(row)
         await session.commit()
@@ -148,6 +149,7 @@ async def list_api_keys(request: Request) -> JSONResponse:
                 "id": row.id,
                 "name": row.name,
                 "key_prefix": row.key_prefix,
+                "key_raw": row.key_raw,
                 "created_at": row.created_at.isoformat(),
                 "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
             }

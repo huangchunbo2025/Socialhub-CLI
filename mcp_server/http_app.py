@@ -42,6 +42,9 @@ from mcp_server.db import close_db, init_db
 from mcp_server.routers.api_keys import create_api_key, list_api_keys, revoke_api_key
 from mcp_server.routers.auth_portal import login
 from mcp_server.routers.credentials import delete_credentials, get_credentials, upload_credentials
+from mcp_server.routers.mcp_credentials import (
+    get_mcp_credentials, upsert_mcp_credentials, delete_mcp_credentials,
+)
 from mcp_server.server import create_server
 
 logger = logging.getLogger(__name__)
@@ -245,6 +248,9 @@ _app = Starlette(
         Route("/health", health, methods=["GET"]),
         Route("/ui", ui, methods=["GET"]),
         Route("/auth/login", login, methods=["POST"]),
+        Route("/credentials/mcp", get_mcp_credentials, methods=["GET"]),
+        Route("/credentials/mcp", upsert_mcp_credentials, methods=["PUT"]),
+        Route("/credentials/mcp", delete_mcp_credentials, methods=["DELETE"]),
         Route("/credentials/bigquery", upload_credentials, methods=["POST"]),
         Route("/credentials/bigquery", get_credentials, methods=["GET"]),
         Route("/credentials/bigquery", delete_credentials, methods=["DELETE"]),
