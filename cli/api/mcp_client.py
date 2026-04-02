@@ -71,18 +71,6 @@ class MCPClient:
         except Exception:
             pass
 
-    def _build_headers(self) -> dict[str, str]:
-        """Build common request headers.
-
-        tenant_id and token are sourced from login cache (oauth_token.json).
-        Falls back to config.tenant_id only if login cache has no tenant_id.
-        """
-        tenant_id = self._auth_tenant_id or self.config.tenant_id
-        headers: dict[str, str] = {"tenant_id": tenant_id}
-        if self._auth_token:
-            headers["Authorization"] = f"Bearer {self._auth_token}"
-        return headers
-
     def _validate_config(self) -> None:
         """Validate that required configuration is provided.
 
@@ -105,10 +93,18 @@ class MCPClient:
     def _auth_headers(self) -> dict[str, str]:
         """Build auth headers shared by every outbound request.
 
-        Always includes tenant_id.  When api_key is configured, also adds
-        Authorization: Bearer <api_key> as required by gateway deployments
-        that enforce token authentication.
+        Prefer OAuth token from login cache when available.
+        Falls back to config.api_key for backward compatibility.
+        Always includes tenant_id from the same source as the token.
         """
+        # Prefer OAuth token from login session
+        if self._auth_token and self._auth_tenant_id:
+            return {
+                "tenant_id": self._auth_tenant_id,
+                "Authorization": f"Bearer {self._auth_token}",
+            }
+        
+        # Fallback to config.api_key (deprecated path)
         headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
