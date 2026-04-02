@@ -29,6 +29,22 @@ _config_lock = threading.Lock()
 _thread_local = threading.local()
 
 
+def _resolve_tenant_db(env_var: str, tenant_id: str, prefix: str) -> str:
+    """Resolve database name for a tenant from env var or default rule.
+
+    Env var format: DAS_DATABASE=uat:das_test,dev:das_dev
+    Default: {prefix}_{tenant_id}
+    """
+    raw = os.getenv(env_var, "")
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            tid, db = entry.split(":", 1)
+            if tid.strip() == tenant_id:
+                return db.strip()
+    return f"{prefix}_{tenant_id}"
+
+
 def _get_config() -> Any:
     """Return config, patched with per-request tenant_id/database if set via thread-local.
 
@@ -50,8 +66,7 @@ def _get_config() -> Any:
     patched = copy.copy(_config_cache)
     mcp = copy.copy(_config_cache.mcp)
     mcp.tenant_id = tid
-    if not mcp.database:
-        mcp.database = f"das_{tid}"
+    mcp.database = ""  # 上游按 tenant_id 自动路由，不传数据库名
     patched.mcp = mcp
     return patched
 
@@ -1024,11 +1039,21 @@ def create_server() -> Server:
                         logger.warning("tenant=%s 未配置 SocialHub 凭证，upstream 请求将无 token", tid)
                         _threading.current_thread().__dict__["_sh_mcp_token"] = ""
 
+                    # 注入数据库名（env var 优先，否则按默认规则 {prefix}_{tenant_id}）
+                    _tl = _threading.current_thread().__dict__
+                    _tl["_sh_das_database"]     = _resolve_tenant_db("DAS_DATABASE", tid, "das")
+                    _tl["_sh_dts_database"]     = _resolve_tenant_db("DTS_DATABASE", tid, "dts")
+                    _tl["_sh_datanow_database"] = _resolve_tenant_db("DATANOW_DATABASE", tid, "datanow")
+
                     safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
                     return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
                 finally:
                     _thread_local.tenant_id = None
-                    _threading.current_thread().__dict__.pop("_sh_mcp_token", None)
+                    _tl = _threading.current_thread().__dict__
+                    _tl.pop("_sh_mcp_token", None)
+                    _tl.pop("_sh_das_database", None)
+                    _tl.pop("_sh_dts_database", None)
+                    _tl.pop("_sh_datanow_database", None)
 
             result = await loop.run_in_executor(None, _run)
             logger.info("MCP tool call finished: %s elapsed_ms=%s", name, int((time.time() - started) * 1000))

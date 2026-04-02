@@ -238,9 +238,92 @@ MCP_SSE_URL       # MCP SSE 端点
 MCP_POST_URL      # MCP 消息端点
 MCP_TENANT_ID     # 租户 ID（stdio 模式必须；HTTP 模式由 API Key 自动映射）
 MCP_API_KEYS      # HTTP 模式 API Key 映射（格式: key1:tenant1,key2:tenant2）
-MCP_DATABASE      # 默认数据库名
+MCP_DATABASE      # 默认数据库名（通常不需要设置，由下面的库路由接管）
+
+# 各租户数据库路由（格式: tenant_id:database，多个用逗号分隔）
+# 不配置时默认值为 das_{tenant_id} / dts_{tenant_id} / datanow_{tenant_id}
+DAS_DATABASE      # DAS 库映射，例: uat:das_test,dev:das_dev
+DTS_DATABASE      # DTS 库映射，例: uat:dts_test
+DATANOW_DATABASE  # DataNow 库映射，例: uat:datanow_test
+
+# SQL 自动库路由规则（MCPClient._rewrite_sql() 实现）：
+# ads_/dwd_/dim_/dws_ 前缀 → DAS_DATABASE
+# vdm_ 前缀               → DTS_DATABASE
+# t_/v_ 前缀              → DATANOW_DATABASE
+# 已含 db.table 格式的 SQL 不重写
+
+# SocialHub App 凭证（优先级低于 Portal DB 配置）
+# 格式: tenant_id:app_id:app_secret
+MCP_TENANT_CREDS  # 示例: uat:your_app_id:your_app_secret
+
+# AI Provider
 AI_PROVIDER       # azure | openai（覆盖 config.json）
 AZURE_OPENAI_ENDPOINT
 AZURE_OPENAI_API_KEY
 AZURE_OPENAI_DEPLOYMENT
 OPENAI_API_KEY
+```
+
+---
+
+## SAP Joule 集成
+
+将 MCP Server 接入 SAP Joule Studio，无需修改服务端代码，纯配置实现。
+
+> 官方文档：[Add MCP Servers to Your Joule Agent](https://help.sap.com/docs/Joule_Studio/45f9d2b8914b4f0ba731570ff9a85313/3d9dfad0bc39468292d508f0808a12fe.html)
+
+### 官方要求
+
+| 要求 | 说明 |
+|------|------|
+| 传输协议 | HTTP Streamable（SSE 不支持）|
+| Destination 类型 | 必须是 Streamable HTTPS-type |
+| 认证方式 | `NoAuthentication`（通过 `URL.headers` 注入静态 Header）|
+| 额外属性 | `sap-joule-studio-mcp-server = true` |
+| URL 限制 | Destination URL 不能以 `/mcp` 结尾（Joule 自动追加）|
+| Path 限制 | MCP path 不能含 `? : = .` |
+
+### 现有服务兼容性
+
+| 检查项 | 现状 | 状态 |
+|--------|------|------|
+| HTTP Streamable 传输 | `StreamableHTTPSessionManager(stateless=True)` | ✅ |
+| `/mcp` 端点 | `Mount("/mcp", ...)` | ✅ |
+| HTTPS | Render 自动提供 | ✅ |
+| API Key 认证 | 支持 `X-API-Key` Header | ✅ 通过 BTP Destination `URL.headers` 注入 |
+
+### BTP Destination 配置
+
+在 SAP BTP Cockpit → Connectivity → Destinations 创建：
+
+```
+Name:           socialhub-mcp
+Type:           HTTP
+URL:            https://socialhub-mcp.onrender.com    ← 基础 URL，不含 /mcp
+Authentication: NoAuthentication
+ProxyType:      Internet
+
+Additional Properties:
+  sap-joule-studio-mcp-server  =  true
+  URL.headers.X-API-Key        =  <your_api_key>
+```
+
+`URL.headers.X-API-Key` 将 API Key 静态注入到每个请求，`auth.py` 中间件识别后映射到对应 `tenant_id`，认证链路完整。
+
+### Joule Studio 操作步骤
+
+1. Joule Studio → Agent → **MCP Servers** tab → **Add MCP Server**
+2. 选择 Destination `socialhub-mcp`
+3. **Path**: `/mcp`（默认值，无需修改）
+4. 填写 Name 和 Description（Description 影响 Joule 决策何时调用此 Server）
+5. 保存 → Joule 自动发起 `POST <base_url>/mcp` 完成 initialize
+
+### Joule vs M365 Copilot 对比
+
+| 项目 | SAP Joule Studio | M365 Declarative Agent |
+|------|-----------------|----------------------|
+| 传输协议 | HTTP Streamable | HTTP Streamable |
+| 认证 | BTP Destination NoAuth + `URL.headers` | ApiKeyPluginVault |
+| SSE | 不支持 | 不支持 |
+| 配置入口 | BTP Cockpit + Joule Studio | Teams Developer Portal |
+| 工具暴露 | 所有工具（Namespace 隔离）| 8 个精选工具（mcp-tools.json）|

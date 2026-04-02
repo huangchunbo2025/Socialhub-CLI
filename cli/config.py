@@ -68,6 +68,9 @@ class MCPConfig(BaseModel):
         default_factory=lambda: os.environ.get("MCP_DATABASE", ""),
         description="Default database name (or set MCP_DATABASE env var)"
     )
+    das_database: str = Field(default="", description="DAS database name for current tenant (dwd/ads/dws/dim tables)")
+    dts_database: str = Field(default="", description="DTS database name for current tenant (vdm tables)")
+    datanow_database: str = Field(default="", description="DataNow database name for current tenant")
 
 
 class OAuthConfig(BaseModel):

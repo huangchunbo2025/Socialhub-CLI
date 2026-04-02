@@ -29,6 +29,9 @@ class MCPConfig:
     tenant_id: str = ""  # Required - no hardcoded default
     timeout: int = 120
     token: str = ""  # SocialHub Bearer token，由 TokenManager 注入（HTTP 模式）
+    das_database: str = ""  # dwd/ads/dws/dim 表所在库，由 server.py 按租户注入
+    dts_database: str = ""  # vdm_ 表所在库
+    datanow_database: str = ""  # t_/v_ 表所在库
 
 
 class MCPClient:
@@ -36,10 +39,17 @@ class MCPClient:
 
     def __init__(self, config: Optional[MCPConfig] = None):
         self.config = config or MCPConfig()
-        # 如果 config 未传 token，从 thread-local dict 读取（server.py 在进入 executor 前注入）
+        # 从 thread-local 读取 token / 数据库名（server.py 在进入 executor 前注入）
+        import threading as _threading
+        _tl = _threading.current_thread().__dict__
         if not self.config.token:
-            import threading as _threading
-            self.config.token = _threading.current_thread().__dict__.get("_sh_mcp_token", "") or ""
+            self.config.token = _tl.get("_sh_mcp_token", "") or ""
+        if not self.config.das_database:
+            self.config.das_database = _tl.get("_sh_das_database", "") or ""
+        if not self.config.dts_database:
+            self.config.dts_database = _tl.get("_sh_dts_database", "") or ""
+        if not self.config.datanow_database:
+            self.config.datanow_database = _tl.get("_sh_datanow_database", "") or ""
         self._session_id: Optional[str] = None
         self._sse_thread: Optional[threading.Thread] = None
         self._running = False
@@ -459,9 +469,76 @@ class MCPClient:
 
         return result if result else None
 
+    def _rewrite_sql(self, sql: str) -> str:
+        """Prefix bare table names with the correct database based on table name rules.
+
+        Priority:
+        1. Already has db.table format → skip
+        2. DAS_TABLES / DTS_TABLES / DATANOW_TABLES env var (explicit list, supports * wildcard prefix)
+        3. Prefix rules: ads_/dwd_/dim_/dws_ → das_database; vdm_ → dts_database; t_/v_ → datanow_database
+        """
+        import re
+        import os
+        das_db = self.config.das_database
+        dts_db = self.config.dts_database
+        datanow_db = self.config.datanow_database
+
+        if not any([das_db, dts_db, datanow_db]):
+            return sql
+
+        # Build explicit table → db lookup from env vars
+        _explicit: dict[str, str] = {}
+        _wildcard: list[tuple[str, str]] = []  # (prefix, db)
+        for env_var, db in [("DAS_TABLES", das_db), ("DTS_TABLES", dts_db), ("DATANOW_TABLES", datanow_db)]:
+            if not db:
+                continue
+            for entry in os.getenv(env_var, "").split(","):
+                entry = entry.strip()
+                if not entry:
+                    continue
+                if entry.endswith("*"):
+                    _wildcard.append((entry[:-1].lower(), db))
+                else:
+                    _explicit[entry.lower()] = db
+
+        def _lookup(table: str) -> str:
+            lower = table.lower()
+            # explicit match
+            if lower in _explicit:
+                return _explicit[lower]
+            # wildcard match
+            for prefix, db in _wildcard:
+                if lower.startswith(prefix):
+                    return db
+            # prefix rules
+            if das_db and lower.startswith(("ads_", "dwd_", "dim_", "dws_")):
+                return das_db
+            if dts_db and lower.startswith("vdm_"):
+                return dts_db
+            if datanow_db and lower.startswith(("t_", "v_")):
+                return datanow_db
+            return ""
+
+        def _replace(m: re.Match) -> str:
+            # Skip if already prefixed with a database (preceded by a dot or word char)
+            start = m.start()
+            if start > 0 and sql[start - 1] == ".":
+                return m.group(0)
+            table = m.group(0)
+            db = _lookup(table)
+            return f"{db}.{table}" if db else table
+
+        return re.sub(
+            r"\b(?:ads|dwd|dim|dws|vdm|t|v)_\w+",
+            _replace,
+            sql,
+            flags=re.IGNORECASE,
+        )
+
     def query(self, sql: str, timeout: int = 60, database: Optional[str] = None) -> Any:
         """Execute SQL query via analytics_executeQuery tool."""
-        args = {"sql": sql}  # Note: parameter name is 'sql', not 'query'
+        sql = self._rewrite_sql(sql)
+        args = {"sql": sql}
         if database:
             args["database"] = database
         return self.call_tool("analytics_executeQuery", args, timeout=timeout)

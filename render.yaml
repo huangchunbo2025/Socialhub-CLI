@@ -57,6 +57,49 @@ services:
         sync: false
         # JWT 签名密钥（建议设置，否则重启后所有门户会话失效）
 
+      - key: DAS_DATABASE
+        sync: false
+        # 各租户 DAS 库映射，格式：tenant_id:database，多个用逗号分隔
+        # 例：uat:das_test,prod:das_prod
+        # 不设置则默认 das_{tenant_id}
+        # 对应 ads_/dwd_/dim_/dws_ 前缀表的查询库
+
+      - key: DTS_DATABASE
+        sync: false
+        # 各租户 DTS 库映射，格式同 DAS_DATABASE
+        # 不设置则默认 dts_{tenant_id}
+        # 对应 vdm_ 前缀表的查询库
+
+      - key: DATANOW_DATABASE
+        sync: false
+        # 各租户 DataNow 库映射，格式同 DAS_DATABASE
+        # 不设置则默认 datanow_{tenant_id}
+        # 对应 t_/v_ 前缀表的查询库
+
+      - key: MCP_TENANT_CREDS
+        sync: false
+        # SocialHub App 凭证 fallback（优先级低于 Portal DB 配置）
+        # 格式：tenant_id:app_id:app_secret，多个用逗号分隔
+
+      - key: MCP_AUTH_URL
+        sync: false
+        # 覆盖 token_manager 使用的 auth_url，优先级高于 SOCIALHUB_AUTH_URL
+        # 不设置则自动 fallback 到 SOCIALHUB_AUTH_URL
+
+      - key: DAS_TABLES
+        sync: false
+        # SQL 显式表路由（优先级高于前缀规则）
+        # 格式：table1,table2,prefix_*（支持通配符）
+        # 不设置则完全走前缀规则
+
+      - key: DTS_TABLES
+        sync: false
+        # 同 DAS_TABLES，适用于 DTS 库中不符合 vdm_ 规则的表
+
+      - key: DATANOW_TABLES
+        sync: false
+        # 同 DAS_TABLES，适用于 DataNow 库中不符合 t_/v_ 规则的表
+
       # -----------------------------------------------------------------------
       # 非敏感配置：直接写入 render.yaml
       # -----------------------------------------------------------------------
