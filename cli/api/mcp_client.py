@@ -62,6 +62,33 @@ class MCPClient:
         self._connect_timeout = 10.0
         self._post_timeout = 5.0
         self._post_retries = 1
+        self._auth_token: Optional[str] = None
+        self._auth_tenant_id: Optional[str] = None
+        self._load_auth_credentials()
+
+    def _load_auth_credentials(self) -> None:
+        """Load token and tenant_id from OAuth2 cache."""
+        try:
+            from ..auth.token_store import load_oauth_token
+
+            cached = load_oauth_token()
+            if cached:
+                self._auth_token = cached.get("token") or None
+                self._auth_tenant_id = cached.get("tenant_id") or None
+        except Exception:
+            pass
+
+    def _build_headers(self) -> dict[str, str]:
+        """Build common request headers.
+
+        tenant_id and token are sourced from login cache (oauth_token.json).
+        Falls back to config.tenant_id only if login cache has no tenant_id.
+        """
+        tenant_id = self._auth_tenant_id or self.config.tenant_id
+        headers: dict[str, str] = {"tenant_id": tenant_id}
+        if self._auth_token:
+            headers["Authorization"] = f"Bearer {self._auth_token}"
+        return headers
 
     def _validate_config(self) -> None:
         """Validate that required configuration is provided.
@@ -141,7 +168,7 @@ class MCPClient:
             with httpx.stream(
                 "GET",
                 self.config.sse_url,
-                headers=_sse_headers,
+                headers=self._build_headers(),
                 timeout=httpx.Timeout(connect=self._connect_timeout, read=None, write=self._connect_timeout, pool=self._connect_timeout),
             ) as response:
                 if response.status_code >= 400:
@@ -246,15 +273,11 @@ class MCPClient:
             response = None
             for attempt in range(self._post_retries + 1):
                 try:
-                    _post_headers: dict[str, str] = {
-                        "tenant_id": self.config.tenant_id,
-                        "Content-Type": "application/json",
-                    }
-                    if self.config.token:
-                        _post_headers["Authorization"] = f"Bearer {self.config.token}"
+                    post_headers = self._build_headers()
+                    post_headers["Content-Type"] = "application/json"
                     response = httpx.post(
                         url,
-                        headers=_post_headers,
+                        headers=post_headers,
                         json=message,
                         timeout=self._post_timeout,
                     )
@@ -352,15 +375,11 @@ class MCPClient:
             url = f"{url}?sessionId={self._session_id}"
 
         try:
-            _notif_headers: dict[str, str] = {
-                "tenant_id": self.config.tenant_id,
-                "Content-Type": "application/json",
-            }
-            if self.config.token:
-                _notif_headers["Authorization"] = f"Bearer {self.config.token}"
+            notify_headers = self._build_headers()
+            notify_headers["Content-Type"] = "application/json"
             httpx.post(
                 url,
-                headers=_notif_headers,
+                headers=notify_headers,
                 json=message,
                 timeout=5,
             )
