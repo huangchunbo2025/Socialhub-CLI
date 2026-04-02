@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import re
 import time
 import uuid
 import threading
@@ -499,8 +501,6 @@ class MCPClient:
         2. DAS_TABLES / DTS_TABLES / DATANOW_TABLES env var (explicit list, supports * wildcard prefix)
         3. Prefix rules: ads_/dwd_/dim_/dws_ → das_database; vdm_ → dts_database; t_/v_ → datanow_database
         """
-        import re
-        import os
         das_db = self.config.das_database
         dts_db = self.config.dts_database
         datanow_db = self.config.datanow_database
@@ -525,14 +525,11 @@ class MCPClient:
 
         def _lookup(table: str) -> str:
             lower = table.lower()
-            # explicit match
             if lower in _explicit:
                 return _explicit[lower]
-            # wildcard match
             for prefix, db in _wildcard:
                 if lower.startswith(prefix):
                     return db
-            # prefix rules
             if das_db and lower.startswith(("ads_", "dwd_", "dim_", "dws_")):
                 return das_db
             if dts_db and lower.startswith("vdm_"):

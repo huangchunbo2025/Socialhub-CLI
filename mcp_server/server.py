@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+from functools import lru_cache
 from typing import Any
 
 from mcp.server import Server
@@ -29,6 +30,7 @@ _config_lock = threading.Lock()
 _thread_local = threading.local()
 
 
+@lru_cache(maxsize=256)
 def _resolve_tenant_db(env_var: str, tenant_id: str, prefix: str) -> str:
     """Resolve database name for a tenant from env var or default rule.
 
