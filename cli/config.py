@@ -4,7 +4,7 @@ import json
 import os
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from rich.console import Console
@@ -199,6 +199,13 @@ class SnowflakeConfig(BaseModel):
     )
 
 
+class OAuthConfig(BaseModel):
+    """SocialHub OAuth2 authentication configuration."""
+
+    enabled: bool = Field(default=False, description="Enable OAuth2 auth gate")
+    auth_url: str = Field(default="", description="Auth API base URL")
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -214,6 +221,7 @@ class Config(BaseModel):
     local: LocalConfig = Field(default_factory=LocalConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    oauth: OAuthConfig = Field(default_factory=OAuthConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     trace: TraceConfig = Field(default_factory=TraceConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
@@ -373,3 +381,12 @@ def set_config_value(key: str, value: str) -> bool:
     except Exception as e:
         console.print(f"[red]Error setting config: {e}[/red]")
         return False
+
+
+def get_env_config() -> dict:
+    """Get configuration from environment variables."""
+    return {
+        "api_url": os.getenv("SOCIALHUB_API_URL"),
+        "api_key": os.getenv("SOCIALHUB_API_KEY"),
+        "mode": os.getenv("SOCIALHUB_MODE"),
+    }
