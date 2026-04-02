@@ -81,13 +81,16 @@ class MCPClient:
     def _build_headers(self) -> dict[str, str]:
         """Build common request headers.
 
-        tenant_id and token are sourced from login cache (oauth_token.json).
-        Falls back to config.tenant_id only if login cache has no tenant_id.
+        Token priority:
+        1. self._auth_token  — CLI 模式：从 oauth_token.json 缓存读取
+        2. self.config.token — Server 模式：server.py 通过 thread-local 注入
+        两种模式互不干扰，任一有值即可。
         """
         tenant_id = self._auth_tenant_id or self.config.tenant_id
         headers: dict[str, str] = {"tenant_id": tenant_id}
-        if self._auth_token:
-            headers["Authorization"] = f"Bearer {self._auth_token}"
+        token = self._auth_token or self.config.token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         return headers
 
     def _validate_config(self) -> None:
