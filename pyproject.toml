@@ -97,3 +97,4 @@ disallow_untyped_defs = true
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=cli --cov-report=term-missing"
+asyncio_mode = "auto"
