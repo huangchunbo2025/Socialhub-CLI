@@ -101,6 +101,24 @@ if table_name == "engagement_events":
     query += f" AND partitiontime = DATE('{watermark_date}')"
 ```
 
+### Watermark 持久化
+
+watermark 状态保存在 **PostgreSQL `emarsys_sync_state` 表**（复用现有 `DATABASE_URL`），容器重启不丢失：
+
+```sql
+CREATE TABLE emarsys_sync_state (
+    tenant_id         VARCHAR(64)   NOT NULL,
+    dataset_id        VARCHAR(128)  NOT NULL,
+    table_name        VARCHAR(128)  NOT NULL,
+    last_sync_time    TIMESTAMPTZ,
+    rows_synced_total BIGINT        NOT NULL DEFAULT 0,
+    last_synced_at    TIMESTAMPTZ,
+    PRIMARY KEY (tenant_id, dataset_id, table_name)
+);
+```
+
+`SyncStateStore` 从原 JSON 文件改为读写此表（asyncpg），`mcp_server/sync/models.py` 中原文件实现废弃。
+
 ---
 
 ## 视图管理
@@ -139,15 +157,9 @@ mapping 代码变更后，下一次 sync 自动生效。
 
 ---
 
-## 状态文件
+## 运行汇总
 
-```
-$SYNC_STATE_PATH/
-├── state.json          # 每张表的 watermark（SyncStateStore）
-└── run_summary.json    # 每次运行汇总
-```
-
-`run_summary.json` 结构：
+每次 sync 完成后写入 `$SYNC_STATE_PATH/run_summary.json`（仅汇总统计，非关键状态，容器重启可丢弃）：
 
 ```json
 {
