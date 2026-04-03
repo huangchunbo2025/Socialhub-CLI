@@ -278,6 +278,65 @@ class TestExecutePlanGuards:
 # ---------------------------------------------------------------------------
 
 
+class TestExecutePlanBudgetAndMemory:
+    """Tests for wall-clock budget messaging and memory_manager forwarding."""
+
+    def _make_steps(self, n: int) -> list[dict]:
+        return [
+            {"number": i + 1, "description": f"Step {i + 1}", "command": f"sh analytics overview --step {i}"}
+            for i in range(n)
+        ]
+
+    def test_wall_clock_abort_does_not_print_all_steps_completed(self, capsys):
+        """When budget is exhausted and remaining steps are aborted,
+        'All steps completed!' must NOT be printed.
+
+        This test documents the current behavior: if it fails, the message is
+        wrongly emitted on a partial-execution run.
+        """
+        steps = self._make_steps(5)
+
+        real_time = time.time()
+        call_count = [0]
+
+        def fake_time():
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return real_time
+            return real_time + PLAN_WALL_CLOCK + 1
+
+        with patch("cli.ai.executor.execute_command", return_value=(True, "ok")):
+            with patch("cli.ai.executor.time") as mock_time:
+                mock_time.time.side_effect = fake_time
+                execute_plan(steps)
+
+        captured = capsys.readouterr()
+        assert "All steps completed!" not in captured.out
+
+    def test_execute_plan_passes_memory_manager_to_insights(self, capsys):
+        """When memory_manager is provided, it must be forwarded through to
+        generate_insights rather than a fresh MemoryManager being created."""
+        steps = [{"number": 1, "description": "Analyze", "command": "sh analytics overview"}]
+        mm = MagicMock()
+        mm.load.return_value = MagicMock()
+        mm.build_system_prompt.return_value = "custom system prompt"
+        mm.save_insight_from_ai = MagicMock()
+
+        with patch("cli.ai.executor.execute_command", return_value=(True, "output")):
+            with patch("cli.ai.insights.call_ai_api", return_value=("AI insights text", {})):
+                with patch("cli.ai.executor.get_tracer", return_value=MagicMock(log_plan_start=MagicMock(return_value="t1"), log_step=MagicMock(), log_plan_end=MagicMock())):
+                    with patch("cli.ai.executor.load_config") as mock_cfg:
+                        mock_cfg.return_value.ai.provider = "azure"
+                        mock_cfg.return_value.ai.azure_deployment = "gpt-4o"
+                        mock_cfg.return_value.ai.openai_model = "gpt-4o-mini"
+                        mock_cfg.return_value.trace = MagicMock()
+                        execute_plan(steps, original_query="analyze sales", memory_manager=mm)
+
+        # The provided memory_manager.save_insight_from_ai() should have been called,
+        # meaning the same instance was reused (not a newly created MemoryManager).
+        mm.save_insight_from_ai.assert_called()
+
+
 class TestExecutePlanTracing:
     """Verify TraceLogger wiring in execute_plan."""
 
@@ -299,7 +358,7 @@ class TestExecutePlanTracing:
         mock_tracer = MagicMock()
         mock_tracer.log_plan_start.return_value = "trace-abc"
 
-        with patch("cli.ai.executor._get_tracer", return_value=mock_tracer):
+        with patch("cli.ai.executor.get_tracer", return_value=mock_tracer):
             with patch("cli.ai.executor.load_config") as mock_cfg:
                 self._mock_config(mock_cfg)
                 with patch("cli.ai.executor.execute_command", return_value=(True, "ok")):
@@ -327,7 +386,7 @@ class TestExecutePlanTracing:
         mock_tracer = MagicMock()
         mock_tracer.log_plan_start.return_value = "trace-cancel"
 
-        with patch("cli.ai.executor._get_tracer", return_value=mock_tracer):
+        with patch("cli.ai.executor.get_tracer", return_value=mock_tracer):
             with patch("cli.ai.executor.load_config") as mock_cfg:
                 self._mock_config(mock_cfg, provider="openai")
                 with patch("cli.ai.executor.execute_command", return_value=(False, "fail")):
@@ -342,7 +401,7 @@ class TestExecutePlanTracing:
         mock_tracer = MagicMock()
         mock_tracer.log_plan_start.return_value = "trace-steps"
 
-        with patch("cli.ai.executor._get_tracer", return_value=mock_tracer):
+        with patch("cli.ai.executor.get_tracer", return_value=mock_tracer):
             with patch("cli.ai.executor.load_config") as mock_cfg:
                 self._mock_config(mock_cfg)
                 with patch("cli.ai.executor.execute_command", return_value=(True, "output")):
@@ -361,7 +420,7 @@ class TestExecutePlanTracing:
         mock_tracer = MagicMock()
         mock_tracer.log_plan_start.return_value = "trace-x"
 
-        with patch("cli.ai.executor._get_tracer", return_value=mock_tracer):
+        with patch("cli.ai.executor.get_tracer", return_value=mock_tracer):
             with patch("cli.ai.executor.load_config") as mock_cfg:
                 self._mock_config(mock_cfg)
                 with patch("cli.ai.executor.execute_command", return_value=(True, "ok")):

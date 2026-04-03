@@ -2,7 +2,8 @@
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..output.export import format_output
 from .common import (
     _compute_date_range,
@@ -131,9 +132,9 @@ def _get_mcp_coupons(config, period: str, roi: bool = False) -> dict:
 
 def _print_coupons_mcp(data: dict, show_roi: bool = False) -> None:
     """Rich output for MCP coupon analytics."""
+    from rich import box as rich_box
     from rich.panel import Panel
     from rich.table import Table
-    from rich import box as rich_box
 
     issued   = int(data.get("total_issued") or 0)
     used     = int(data.get("total_used") or 0)
@@ -345,9 +346,9 @@ def _get_mcp_coupon_lift(config, period: str) -> dict:
 
 def _print_coupon_lift(data: dict) -> None:
     """Rich display for coupon lift analysis."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     period = data.get("period", "-")
     coupon_users = data.get("coupon_user_count", 0)
@@ -489,8 +490,8 @@ def _get_mcp_coupons_by_rule(config, period: str, limit: int) -> list:
 
 
 def _print_coupons_by_rule(rows: list, period: str, output: str = None) -> None:
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if output:
         format_output(rows, "json", output)
@@ -613,9 +614,9 @@ def _get_mcp_coupon_anomaly(config, lookback: int = 30, detect_days: int = 7) ->
 
 
 def _print_coupon_anomaly(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     if "error" in data:
         console.print(f"[red]{data['error']}[/red]")

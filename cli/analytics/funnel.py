@@ -2,7 +2,8 @@
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from .common import _compute_date_range
 from .overview import _fmt_cny
 
@@ -104,9 +105,9 @@ def _get_mcp_funnel(config, period: str = "30d") -> dict:
 
 def _print_funnel(data: dict) -> None:
     """Rich display of the customer lifecycle funnel."""
-    from rich.table import Table
     from rich import box
     from rich.panel import Panel
+    from rich.table import Table
 
     period = data["period"]
     total = data["total_customers"]

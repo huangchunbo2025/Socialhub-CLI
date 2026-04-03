@@ -567,7 +567,7 @@ When AI detects a scheduling intent, `ai.py` saves the task to `Heartbeat.md`:
 from .heartbeat import HEARTBEAT_FILE  # Shared constant for path consistency
 
 def save_scheduled_task(task: dict) -> None:
-    heartbeat_path = HEARTBEAT_FILE  # ~/socialhub/Heartbeat.md
+    heartbeat_path = HEARTBEAT_FILE  # ~/.socialhub/Heartbeat.md
     # Append task section to Heartbeat.md
 ```
 
@@ -640,7 +640,7 @@ def _execute_single_sh_command(cmd: str) -> tuple[bool, str]:
 
     args = shlex.split(cli_args)
     python_exe = sys.executable
-    full_cmd = [python_exe, "-m", "socialhub.cli.main"] + args
+    full_cmd = [python_exe, "-m", "cli.main"] + args
 
     result = subprocess.run(
         full_cmd,
@@ -972,7 +972,7 @@ class FileSystemSandbox:
         builtins.open = self._original_open
 ```
 
-Allowed write paths: `Doc/`, `~/socialhub/`, `~/.socialhub/skills/`
+Allowed write paths: `Doc/`, `~/.socialhub/`, `~/.socialhub/skills/`
 
 ### 10.3 NetworkSandbox
 
@@ -1052,7 +1052,7 @@ The heartbeat scheduler uses `shell=False` with argument list construction, prev
 
 ```python
 # SAFE: shell=False with explicit argument list
-full_cmd = [python_exe, "-m", "socialhub.cli.main"] + shlex.split(cli_args)
+full_cmd = [python_exe, "-m", "cli.main"] + shlex.split(cli_args)
 subprocess.run(full_cmd, shell=False, ...)
 
 # BLOCKED: dangerous characters rejected before reaching subprocess
@@ -1091,7 +1091,7 @@ User Machine
 │           └── report-generator/
 │               ├── skill.yaml
 │               └── main.py
-├── ~/socialhub/
+├── ~/.socialhub/
 │   ├── Memory.md                # Project memory
 │   ├── Heartbeat.md             # Scheduled tasks
 │   ├── User.md                  # User profile

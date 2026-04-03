@@ -1,9 +1,9 @@
 """AI API client — handles Azure OpenAI and OpenAI calls."""
 
 import json
+import logging
 import threading
 import time
-from typing import Optional
 
 import httpx
 from rich.console import Console
@@ -15,34 +15,42 @@ from ..network import build_httpx_kwargs
 from .prompt import SYSTEM_PROMPT
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 _AI_REQUEST_TIMEOUT = 60  # seconds; thread join uses +5s headroom
 
 
-def get_ai_config() -> dict:
-    """Get AI configuration from config file and environment variables.
+def get_ai_config(config=None) -> dict:
+    """Return AI config as a plain dict.
 
-    Environment variable overrides are applied by _apply_env_overrides() inside
-    load_config(), so this function simply reads the already-merged config.
-    Single source of truth for env overrides: cli/config.py::_apply_env_overrides().
+    Pass a pre-loaded config to avoid a redundant load_config() call (e.g. when
+    the caller also needs network config).  Omit to let this function load it.
     """
-    config = load_config()
-    ai_config = config.ai
-
+    if config is None:
+        config = load_config()
+    ai = config.ai
     return {
-        "provider": ai_config.provider,
-        "azure_endpoint": ai_config.azure_endpoint,
-        "azure_api_key": ai_config.azure_api_key,
-        "azure_deployment": ai_config.azure_deployment,
-        "azure_api_version": ai_config.azure_api_version,
-        "openai_api_key": ai_config.openai_api_key,
-        "openai_model": ai_config.openai_model,
+        "provider": ai.provider,
+        "azure_endpoint": ai.azure_endpoint,
+        "azure_api_key": ai.azure_api_key,
+        "azure_deployment": ai.azure_deployment,
+        "azure_api_version": ai.azure_api_version,
+        "openai_api_key": ai.openai_api_key,
+        "openai_model": ai.openai_model,
+        "max_tokens": ai.max_tokens,
+        "temperature": ai.temperature,
+        "ai_timeout_s": ai.ai_timeout_s,
     }
 
 
-def _build_messages(history: Optional[list], user_msg: str) -> list[dict]:
+def _build_messages(
+    history: list | None,
+    user_msg: str,
+    system_prompt: str | None = None,  # None → falls back to static SYSTEM_PROMPT
+) -> list[dict]:
     """Build the messages list for the AI API call."""
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    effective_prompt = system_prompt if system_prompt is not None else SYSTEM_PROMPT
+    messages: list[dict] = [{"role": "system", "content": effective_prompt}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": user_msg})
@@ -51,11 +59,12 @@ def _build_messages(history: Optional[list], user_msg: str) -> list[dict]:
 
 def call_ai_api(
     user_message: str,
-    api_key: Optional[str] = None,
+    api_key: str | None = None,
     max_retries: int = 3,
     show_thinking: bool = True,
-    session_history: Optional[list] = None,
-) -> tuple[str, Optional[dict]]:
+    session_history: list | None = None,
+    system_prompt: str | None = None,
+) -> tuple[str, dict | None]:
     """Call AI API to process natural language (supports Azure OpenAI and OpenAI).
 
     Args:
@@ -64,21 +73,27 @@ def call_ai_api(
         max_retries: Maximum number of retry attempts for timeout errors (default: 3)
         show_thinking: Whether to show "Thinking..." with elapsed time (default: True)
         session_history: Optional list of prior conversation messages to inject for multi-turn context
+        system_prompt: Optional pre-built system prompt string. Build via
+                       MemoryManager.build_system_prompt() before calling.
+                       Pass None to use the static BASE_SYSTEM_PROMPT (backward-compatible default).
 
     Returns:
         Tuple of (response_text, usage_dict). usage_dict contains prompt_tokens,
         completion_tokens, total_tokens (or None on error).
     """
-    ai_config = get_ai_config()
+    _loaded_config = load_config()
+    ai_config = get_ai_config(_loaded_config)
     provider = ai_config["provider"]
-    _net_kwargs = build_httpx_kwargs(load_config().network)
+    _timeout = ai_config.get("ai_timeout_s", 60)
+    _net_kwargs = build_httpx_kwargs(_loaded_config.network)
 
     last_error = None
+    _prev_thread: threading.Thread | None = None
 
-    def make_api_request(provider: str, ai_config: dict, api_key: Optional[str], result_holder: dict):
+    def make_api_request(provider: str, ai_config: dict, api_key: str | None, result_holder: dict):
         """Make the actual API request in a separate thread."""
         try:
-            messages = _build_messages(session_history, user_message)
+            messages = _build_messages(session_history, user_message, system_prompt)
             if provider == "azure":
                 key = api_key or ai_config["azure_api_key"]
                 if not key:
@@ -90,7 +105,7 @@ def call_ai_api(
                 api_version = ai_config["azure_api_version"]
                 url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
                 headers = {"api-key": key, "Content-Type": "application/json"}
-                body: dict = {"messages": messages, "temperature": 0.7, "max_tokens": 1000}
+                body: dict = {"messages": messages, "temperature": ai_config.get("temperature", 0.7), "max_tokens": ai_config.get("max_tokens", 1000)}
             else:
                 key = api_key or ai_config["openai_api_key"]
                 if not key:
@@ -99,9 +114,14 @@ def call_ai_api(
 
                 url = "https://api.openai.com/v1/chat/completions"
                 headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-                body = {"model": ai_config["openai_model"], "messages": messages, "temperature": 0.7, "max_tokens": 1000}
+                body = {
+                    "model": ai_config["openai_model"],
+                    "messages": messages,
+                    "temperature": ai_config.get("temperature", 0.7),
+                    "max_tokens": ai_config.get("max_tokens", 1000),
+                }
 
-            with httpx.Client(timeout=_AI_REQUEST_TIMEOUT, **_net_kwargs) as client:
+            with httpx.Client(timeout=_timeout, **_net_kwargs) as client:
                 response = client.post(url, headers=headers, json=body)
 
             result_holder["response"] = response
@@ -110,9 +130,17 @@ def call_ai_api(
         except httpx.ConnectError:
             result_holder["connect_error"] = True
         except Exception as e:
-            result_holder["error"] = f"Error: {type(e).__name__}: {e}"
+            logger.debug("AI request exception: %s: %s", type(e).__name__, e)
+            result_holder["error"] = f"Error: {type(e).__name__} (see debug log)"
 
     for attempt in range(max_retries):
+        # Wait briefly for any previous attempt's thread before creating a new one.
+        # httpx respects its timeout in normal operation, so this join usually
+        # completes immediately.  The extra wait prevents multiple concurrent
+        # abandoned threads when the underlying network stack is unresponsive.
+        if _prev_thread is not None and _prev_thread.is_alive():
+            _prev_thread.join(timeout=2)
+
         result_holder = {}
         start_time = time.time()
 
@@ -121,6 +149,7 @@ def call_ai_api(
             args=(provider, ai_config, api_key, result_holder),
             daemon=True,  # won't block process exit on SIGINT
         )
+        _prev_thread = api_thread
         api_thread.start()
 
         if show_thinking:
@@ -139,34 +168,40 @@ def call_ai_api(
                         live.update(text)
                         spinner_idx += 1
                         time.sleep(0.25)
-            except Exception:
+            except Exception as _live_err:
+                logger.debug("Spinner display failed (non-fatal): %s", _live_err)
                 console.print("[dim]Thinking...[/dim]")
             finally:
-                api_thread.join(timeout=_AI_REQUEST_TIMEOUT + 5)
+                api_thread.join(timeout=_timeout + 5)
         else:
-            api_thread.join(timeout=_AI_REQUEST_TIMEOUT + 5)
+            api_thread.join(timeout=_timeout + 5)
         elapsed_time = time.time() - start_time
 
         if api_thread.is_alive():
             result_holder["timeout"] = True
+            logger.debug(
+                "API thread still alive after join timeout (attempt %d/%d); "
+                "daemon thread will be abandoned on retry",
+                attempt + 1, max_retries,
+            )
 
         if "error" in result_holder:
             return result_holder["error"], None
 
+        _backoff_s = (attempt + 1) * 2
+
         if "timeout" in result_holder:
             last_error = "API request timeout"
             if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 2
-                console.print(f"[yellow]API request timeout, retrying in {wait_time}s ({attempt + 1}/{max_retries})...[/yellow]")
-                time.sleep(wait_time)
+                console.print(f"[yellow]API request timeout, retrying in {_backoff_s}s ({attempt + 1}/{max_retries})...[/yellow]")
+                time.sleep(_backoff_s)
             continue
 
         if "connect_error" in result_holder:
             last_error = "Network connection failed"
             if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 2
-                console.print(f"[yellow]Network connection failed, retrying in {wait_time}s ({attempt + 1}/{max_retries})...[/yellow]")
-                time.sleep(wait_time)
+                console.print(f"[yellow]Network connection failed, retrying in {_backoff_s}s ({attempt + 1}/{max_retries})...[/yellow]")
+                time.sleep(_backoff_s)
             continue
 
         if "response" in result_holder:
@@ -175,19 +210,20 @@ def call_ai_api(
                 last_error = f"API rate-limited or unavailable ({response.status_code})"
                 if attempt < max_retries - 1:
                     try:
-                        retry_after = int(response.headers.get("Retry-After", (attempt + 1) * 2))
+                        retry_after = int(response.headers.get("Retry-After", _backoff_s))
                     except (ValueError, TypeError):
-                        retry_after = (attempt + 1) * 2
+                        retry_after = _backoff_s
                     wait_time = min(retry_after, 30)
                     console.print(f"[yellow]API rate-limited ({response.status_code}), retrying in {wait_time}s ({attempt + 1}/{max_retries})...[/yellow]")
                     time.sleep(wait_time)
                 continue
             if response.status_code != 200:
                 try:
-                    err_msg = response.json().get("error", {}).get("message", "") or response.text[:200]
+                    err_msg = response.json().get("error", {}).get("message", "")
                 except Exception:
-                    err_msg = response.text[:200]
-                return f"API Error: {response.status_code} - {err_msg}", None
+                    err_msg = ""
+                logger.debug("API error response body: %s", response.text[:500])
+                return f"API Error: {response.status_code}" + (f" - {err_msg}" if err_msg else ""), None
 
             try:
                 result = response.json()
@@ -195,7 +231,7 @@ def call_ai_api(
                 content = result["choices"][0]["message"]["content"]
                 usage = result.get("usage")  # {"prompt_tokens": N, "completion_tokens": M, "total_tokens": K}
                 return content, usage
-            except (KeyError, json.JSONDecodeError) as e:
+            except (KeyError, IndexError, json.JSONDecodeError) as e:
                 return f"Error parsing API response: {e}", None
 
     return f"Error: {last_error or 'Unknown error'}, retried {max_retries} times.", None

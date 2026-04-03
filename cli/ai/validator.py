@@ -4,7 +4,6 @@ import importlib
 import json
 import threading
 from pathlib import Path
-from typing import Optional
 
 # Top-level commands mirrored from main.py registrations.
 # Kept in sync via the module map below (no separate VALID_COMMANDS import
@@ -30,11 +29,13 @@ _MODULE_MAP: dict[str, str] = {
     "workflow":  "cli.commands.workflow",
     "session":   "cli.commands.session_cmd",
     "trace":     "cli.commands.trace_cmd",
+    "auth":      "cli.commands.auth",
+    "memory":    "cli.commands.memory",
 }
 
 # Lazily populated on first validation call
 # cmd_name → None (leaf) | dict (nested group with same structure)
-_CMD_TREE: Optional[dict[str, dict]] = None
+_CMD_TREE: dict[str, dict] | None = None
 _CMD_TREE_LOCK = threading.Lock()
 
 
@@ -115,7 +116,7 @@ def invalidate_cmd_tree() -> None:
         _CMD_TREE = None
 
 
-def _check_tokens(tree: Optional[dict], tokens: list[str], path: str) -> tuple[bool, str]:
+def _check_tokens(tree: dict | None, tokens: list[str], path: str) -> tuple[bool, str]:
     """Recursively validate remaining tokens against the command tree.
 
     tokens: non-flag words remaining after the current level.

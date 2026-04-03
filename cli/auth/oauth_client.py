@@ -3,11 +3,12 @@
 Login:   POST {auth_url}/v1/user/auth/token
          Body: {"tenantId": "...", "account": "...", "pwd": "..."}
 
-Refresh: GET  {auth_url}/v1/user/auth/refreshToken?refreshToken=...
+Refresh: POST {auth_url}/v1/user/auth/refreshToken
+         Body: {"refreshToken": "..."}
          Header: Authorization: {current_token}
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -15,7 +16,7 @@ import httpx
 class OAuthError(Exception):
     """Authentication error."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None):
+    def __init__(self, message: str, status_code: int | None = None):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
@@ -56,17 +57,18 @@ class OAuthClient:
     def refresh_token(self, current_token: str, refresh_token: str) -> dict[str, Any]:
         """Refresh an expired access token.
 
-        GET /v1/user/auth/refreshToken?refreshToken=...
+        POST /v1/user/auth/refreshToken
+        Body: {"refreshToken": "..."}
         Header: Authorization: {current_token}
 
         Returns the full ``data`` dict from the response.
         """
         url = f"{self.auth_url}/v1/user/auth/refreshToken"
         return self._request_token(
-            lambda: httpx.get(
+            lambda: httpx.post(
                 url,
-                params={"refreshToken": refresh_token},
-                headers={"Authorization": current_token},
+                json={"refreshToken": refresh_token},
+                headers={"Authorization": current_token, "Content-Type": "application/json"},
                 timeout=15,
             )
         )

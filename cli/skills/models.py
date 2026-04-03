@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -67,11 +67,11 @@ class SkillDependencies(BaseModel):
 class SkillCertification(BaseModel):
     """Skill certification information."""
 
-    certified_at: Optional[datetime] = None
+    certified_at: datetime | None = None
     certified_by: str = "SocialHub.AI"
     signature: str = ""
     certificate_id: str = ""
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class SkillManifest(BaseModel):
@@ -104,7 +104,7 @@ class SkillManifest(BaseModel):
     commands: list[SkillCommand] = Field(default_factory=list)
 
     # Certification
-    certification: Optional[SkillCertification] = None
+    certification: SkillCertification | None = None
 
 
 class InstalledSkill(BaseModel):
@@ -118,7 +118,7 @@ class InstalledSkill(BaseModel):
     installed_at: datetime = Field(default_factory=datetime.now)
     path: str = ""
     enabled: bool = True
-    manifest: Optional[SkillManifest] = None
+    manifest: SkillManifest | None = None
 
 
 class SkillSearchResult(BaseModel):
@@ -155,6 +155,6 @@ class SkillDetail(BaseModel):
     commands: list[SkillCommand] = Field(default_factory=list)
     versions: list[str] = Field(default_factory=list)
     certified: bool = True
-    certification: Optional[SkillCertification] = None
+    certification: SkillCertification | None = None
     readme: str = ""
     changelog: str = ""

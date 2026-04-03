@@ -61,7 +61,16 @@ cli/                    # CLI 主包（入口: cli/main.py:cli()）
     parser.py           # 从 AI 响应提取 [PLAN_START]...[PLAN_END] 等标记
     validator.py        # 命令合法性校验（对照 Typer 命令树）
     executor.py         # 多步计划执行（subprocess, shell=False）
-    insights.py         # 执行完成后生成 AI 洞察摘要
+    insights.py         # 执行完成后生成 AI 洞察摘要（兼调用 memory.save_insight_from_ai）
+    prompt.py           # BASE_SYSTEM_PROMPT（SYSTEM_PROMPT 为兼容别名）
+  memory/               # 持久化记忆系统（4层：L4偏好/L3洞察/L2摘要/L4业务上下文）
+    manager.py          # MemoryManager 统一入口（非单例，每次 CLI 调用新建）
+    store.py            # 文件 CRUD（原子写入 0o600，TTL+数量裁剪）
+    injector.py         # 动态 SYSTEM_PROMPT 拼装（tiktoken budget，切割顺序 L3→L2）
+    extractor.py        # 会话结束 LLM 提取（daemon thread + 30s timeout）
+    pii.py              # PII 扫描：手机/身份证/邮箱/订单号
+    models.py           # Pydantic v2 数据模型（MemoryContext/Insight/Campaign 等）
+    存储位置: ~/.socialhub/memory/  # user_profile.yaml / analysis_insights/ / session_summaries/
   skills/               # Skills 插件系统
     manager.py          # 10步安装流水线（下载→哈希→签名→权限→解压）
     loader.py           # 动态 importlib 加载 + sandbox 激活
@@ -115,6 +124,17 @@ tests/                  # pytest 测试套件
 ```bash
 socialhub          # CLI 主命令（cli/main.py:cli）
 socialhub-mcp      # MCP Server（mcp_server/__main__.py:main）
+
+# 记忆管理子命令
+sh memory status          # 查看记忆状态
+sh memory list [--type]   # 列出记忆（profile/insights/summaries/campaigns）
+sh memory show <id>       # 查看单条记忆详情
+sh memory set <key> <val> # 设置偏好（key格式：analysis.default_period）
+sh memory delete <id>     # 删除记忆条目
+sh memory clear           # 清空记忆层
+sh memory init            # 交互式初始化（非TTY模式返回默认值）
+sh memory add-campaign    # 添加活动（--id/--name/--start/--end）
+sh memory update-campaign # 更新活动效果摘要
 ```
 
 ---
@@ -162,6 +182,12 @@ pip install -e ".[dev]"
 - **危险字符必须过滤**: AI 生成参数中的 `;` `&&` `||` `|` `` ` `` `$` 必须被 `executor.py` 拦截，不得透传给子进程
 - **AI 命令必须通过 validator**: `call_ai_api()` 的输出在执行前必须经过 `validate_command()`，严禁直接 `eval` 或 `exec`
 
+### 记忆系统
+- **PII 写入前必须扫描**: 任何调用 `store.save_insight()` 或 `store.save_summary()` 之前必须经过 `pii.scan_and_mask()`，检测到 PII 则跳过写入
+- **`call_ai_api()` 不持有 MemoryManager**: 系统 prompt 由调用方（`main.py`/`commands/ai.py`）通过 `mm.build_system_prompt(ctx)` 预构建后以 `system_prompt=` 参数传入，禁止在 `call_ai_api()` 内部创建 MemoryManager
+- **Skills 不得访问 `.socialhub/memory`**: `filesystem.py` 的 `PROTECTED_PATHS` 已包含该路径，不可删除此保护
+- **记忆失败不阻塞 AI 调用**: MemoryManager 所有 public 方法必须内部 catch 异常、优雅降级，严禁向上抛出影响主流程
+
 ### Skills 安全
 - **签名验证不可跳过**: `manager.py` 安装流水线中 Ed25519 签名验证和 SHA-256 哈希验证是强制步骤，不允许添加 `--skip-verify` 类参数
 - **Store URL 不可覆盖**: `store_client.py` 中官方 Store 地址是硬编码常量，禁止从配置或参数读取
@@ -175,6 +201,48 @@ pip install -e ".[dev]"
 - **账户表严格隔离**: `developers` 表（技能开发者/管理员）和 `users` 表（Store 用户）绝对不能混用；开发者 JWT 不能访问 `/api/v1/users/me/*`，用户 JWT 不能访问开发者/管理员端点
 - **密码哈希**: 所有密码必须使用 PBKDF2 哈希存储，禁止明文或可逆加密
 - **权限检查在后端**: 前端不作为任何权限决策的依据
+
+---
+
+## 异常策略层次
+
+不同层使用不同的异常处理策略，新代码应遵守所在层的约定：
+
+| 层次 | 策略 | 示例 |
+|---|---|---|
+| Commands 层（`cli/commands/`） | **fail-fast** — 向用户打印错误并 `raise typer.Exit(1)` | 参数缺失、配置不合法 |
+| AI 执行层（`cli/ai/executor.py`） | **fail-fast + 可选继续** — 非交互模式直接中止；交互模式提示用户是否继续 | plan 步骤失败 |
+| AI 客户端（`cli/ai/client.py`） | **retry with backoff** — 最多重试 3 次，指数退避 | 网络超时、API 限流 |
+| Memory 层（`cli/memory/`） | **graceful degrade** — 所有 public 方法内部 catch，返回默认值，**绝不向上抛出** | 文件读写失败、TTL 裁剪异常 |
+| MCP Server（`mcp_server/`） | **返回错误 TextContent** — handler 不抛异常，通过 `list[TextContent]` 返回错误信息 | 工具参数非法、后端不可达 |
+
+## 环境变量清单
+
+所有环境变量由 `cli/config.py::_apply_env_overrides()` 统一处理（最高优先级，覆盖 config.json）：
+
+| 变量 | 说明 | 示例 |
+|---|---|---|
+| `AI_PROVIDER` | AI Provider：azure / openai | `azure` |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI 端点 | `https://xxx.openai.azure.com` |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API Key | — |
+| `AZURE_OPENAI_DEPLOYMENT` | Azure 部署名称 | `gpt-4o` |
+| `AZURE_OPENAI_API_VERSION` | Azure API 版本 | `2024-08-01-preview` |
+| `OPENAI_API_KEY` | OpenAI API Key | — |
+| `OPENAI_MODEL` | OpenAI 模型名称 | `gpt-4o-mini` |
+| `MCP_SSE_URL` | MCP SSE 端点 | `http://host:port/sse` |
+| `MCP_POST_URL` | MCP 消息端点 | `http://host:port/message` |
+| `MCP_TENANT_ID` | 租户 ID（stdio 模式必须） | `demoen` |
+| `MCP_DATABASE` | 默认数据库名 | `das_demoen` |
+| `MCP_API_KEY` | MCP API Key（HTTP 模式） | — |
+| `SOCIALHUB_OAUTH_ENABLED` | 启用 OAuth2 gate（1/true/yes） | `false` |
+| `SOCIALHUB_OAUTH_AUTH_URL` | Auth API 地址 | — |
+| `SOCIALHUB_TRACE_ENABLED` | 启用 AI 决策追踪（1/true/yes） | `true` |
+| `SOCIALHUB_TRACE_DIR` | trace 日志目录 | `~/.socialhub` |
+| `SOCIALHUB_CA_BUNDLE` | 自定义 CA 证书路径 | `/etc/ssl/custom.pem` |
+| `SOCIALHUB_SSL_VERIFY` | SSL 验证开关（1/true/yes） | `true` |
+| `HTTP_PROXY` / `HTTPS_PROXY` | 代理设置（标准 env） | — |
+
+> 新增环境变量时，必须同步更新 `_apply_env_overrides()` 中的 env map，不要在字段 `default_factory` 中读取 env（避免双重读取）。
 
 ---
 

@@ -181,3 +181,67 @@ def test_apply_env_overrides_empty_string_ai_ignored(monkeypatch):
     result = _apply_env_overrides(config)
 
     assert result.ai.openai_api_key == "existing-key"
+
+
+def test_apply_env_overrides_mcp_api_key(monkeypatch):
+    """MCP_API_KEY env var must override mcp.api_key via _apply_env_overrides."""
+    monkeypatch.setenv("MCP_API_KEY", "test-api-key-from-env")
+    for var in ("MCP_SSE_URL", "MCP_POST_URL", "MCP_TENANT_ID", "MCP_DATABASE"):
+        monkeypatch.delenv(var, raising=False)
+
+    config = Config()
+    config.mcp.api_key = "original-key"
+    result = _apply_env_overrides(config)
+
+    assert result.mcp.api_key == "test-api-key-from-env"
+
+
+def test_apply_env_overrides_mcp_api_key_empty_ignored(monkeypatch):
+    """Empty MCP_API_KEY must not overwrite an existing key (falsy guard)."""
+    monkeypatch.setenv("MCP_API_KEY", "")
+    for var in ("MCP_SSE_URL", "MCP_POST_URL", "MCP_TENANT_ID", "MCP_DATABASE"):
+        monkeypatch.delenv(var, raising=False)
+
+    config = Config()
+    config.mcp.api_key = "keep-this-key"
+    result = _apply_env_overrides(config)
+
+    assert result.mcp.api_key == "keep-this-key"
+
+
+# ---------------------------------------------------------------------------
+# set_config_value — numeric parsing edge cases (R8.4)
+# ---------------------------------------------------------------------------
+
+class TestSetConfigValueNumericParsing:
+    def test_negative_integer_does_not_crash(self, temp_config_dir):
+        """set_config_value with a negative int string must not raise (isdigit is False).
+
+        isdigit() returns False for "-5", so the value is passed as a string to Pydantic,
+        which then coerces it to int -5 for the page_size field. No crash expected.
+        """
+        config_dir, config_file = temp_config_dir
+        config_file.write_text("{}", encoding="utf-8")
+
+        result = set_config_value("page_size", "-5")
+        # Must not raise; True means Pydantic accepted the coerced value, False means
+        # Pydantic rejected it — either way, no unhandled exception.
+        assert isinstance(result, bool)
+
+    def test_float_string_does_not_crash(self, temp_config_dir):
+        """set_config_value with a float string must not crash (isdigit is False).
+
+        "1.5" passes isdigit() as False, so Pydantic receives the string and coerces it
+        to float for the ai.temperature field.
+        """
+        import json
+
+        config_dir, config_file = temp_config_dir
+        config_file.write_text("{}", encoding="utf-8")
+
+        result = set_config_value("ai.temperature", "1.5")
+        assert result is True
+
+        data = json.loads(config_file.read_text(encoding="utf-8"))
+        # Pydantic v2 coerces "1.5" -> 1.5 (float)
+        assert data.get("ai", {}).get("temperature") == 1.5

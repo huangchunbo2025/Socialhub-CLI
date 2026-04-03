@@ -4,6 +4,12 @@ Called before any CLI command to ensure the user is authenticated.
 If oauth.enabled is False (default), the gate is a no-op for backward compatibility.
 """
 
+import logging
+import os
+import sys
+
+logger = logging.getLogger(__name__)
+
 import typer
 from rich.console import Console
 
@@ -24,6 +30,12 @@ def ensure_authenticated() -> None:
     4. No token at all          -> prompt account/password -> fetch & save
     5. All attempts fail        -> raise typer.Exit(1)
     """
+    # ── 0. Subprocess skip (set by executor.py when spawning sub-CLI) ────
+    # This env var is set only by our own executor, never exported to user shells.
+    from cli.ai.executor import _SUBPROCESS_AUTH_SKIP_ENV
+    if os.environ.get(_SUBPROCESS_AUTH_SKIP_ENV):
+        return
+
     config = load_config()
     oauth = config.oauth
 
@@ -57,10 +69,18 @@ def ensure_authenticated() -> None:
             save_oauth_token(data)
             console.print("[dim]Token refreshed.[/dim]")
             return
-        except OAuthError:
-            pass  # Refresh failed, fall through to credential prompt
+        except OAuthError as e:
+            logger.debug("Token refresh failed, falling through to credential prompt: %s", e)
 
     # ── 4. Prompt for credentials ───────────────────────────────────
+    if not sys.stdin.isatty():
+        console.print(
+            "[red]Authentication required but running in non-interactive mode.[/red]\n"
+            "Set [cyan]SOCIALHUB_OAUTH_ENABLED=false[/cyan] or pre-configure credentials "
+            "via [cyan]sh config set oauth.auth_url ...[/cyan] and log in interactively first."
+        )
+        raise typer.Exit(1)
+
     console.print("[yellow]Authentication required. Please log in.[/yellow]")
     tenant_id = typer.prompt("Tenant ID")
     account = typer.prompt("Account")

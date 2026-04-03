@@ -4,12 +4,11 @@ import re
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..output.export import format_output
 from .common import (
     _compute_date_range,
-    _mcp_query_timeout,
-    _safe_date_filter,
 )
 
 console = Console()
@@ -129,8 +128,8 @@ def _get_mcp_campaigns(config, period: str, campaign_id: str = None, name: str =
 
 def _print_campaigns_mcp(rows: list, export_path: str = None) -> None:
     """Rich table output for MCP campaign results (funnel + reward metrics)."""
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No campaign data found[/yellow]")
@@ -282,10 +281,9 @@ def _get_mcp_campaign_detail(config, campaign_id: str) -> dict:
 
 def _print_campaign_detail(data: dict) -> None:
     """Rich display for single campaign deep analysis."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
-    from rich.columns import Columns
+    from rich.table import Table
 
     if not data:
         console.print("[yellow]No data found for this campaign[/yellow]")
@@ -437,9 +435,9 @@ def _get_mcp_campaign_audience(config, campaign_id: str) -> list:
 
 def _print_campaign_audience(rows: list, campaign_id: str) -> None:
     """Rich display for campaign × tier audience breakdown."""
+    from rich import box as rich_box
     from rich.panel import Panel
     from rich.table import Table
-    from rich import box as rich_box
 
     if not rows:
         console.print("[yellow]No audience data found (campaign may have no participants yet)[/yellow]")
@@ -568,8 +566,8 @@ def _get_mcp_campaign_roi(config, period: str, window_days: int) -> list:
 
 
 def _print_campaign_roi(rows: list, period: str, window_days: int) -> None:
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No campaign ROI data found[/yellow]")
@@ -704,37 +702,37 @@ def _build_postmortem_markdown(data: dict) -> str:
 
     lines = [
         f"# Campaign Post-Mortem: {name}",
-        f"",
+        "",
         f"_ID: {cid}_  |  _Period: {start} ~ {end}_  |  _Generated: {gen}_",
-        f"",
-        f"---",
-        f"",
-        f"## Participation Funnel",
-        f"",
-        f"| Stage | Count | Rate |",
-        f"| --- | --- | --- |",
+        "",
+        "---",
+        "",
+        "## Participation Funnel",
+        "",
+        "| Stage | Count | Rate |",
+        "| --- | --- | --- |",
         f"| Target Audience | {target:,} | 100% |",
         f"| Joined | {joined:,} | {join_rate:.1f}% |",
         f"| Finished | {finished:,} | {fin_rate:.1f}% of joined |",
         f"| Rewarded | {rewarded:,} | {rewarded/joined*100:.1f}% of joined |" if joined else f"| Rewarded | {rewarded:,} | - |",
-        f"",
-        f"## Purchase Attribution (30-day window)",
-        f"",
-        f"| Metric | Value |",
-        f"| --- | --- |",
+        "",
+        "## Purchase Attribution (30-day window)",
+        "",
+        "| Metric | Value |",
+        "| --- | --- |",
         f"| Attributed Buyers | {buyers:,} |",
         f"| Attributed Orders | {orders:,} |",
         f"| Attributed GMV (¥) | {gmv_raw:,.0f} |",
-        f"| Conv Rate (buyers/joined) | {buyers/joined*100:.1f}% |" if joined else f"| Conv Rate | - |",
-        f"",
+        f"| Conv Rate (buyers/joined) | {buyers/joined*100:.1f}% |" if joined else "| Conv Rate | - |",
+        "",
     ]
 
     if tiers:
         lines += [
-            f"## Audience Tier Breakdown",
-            f"",
-            f"| Tier | Members |",
-            f"| --- | --- |",
+            "## Audience Tier Breakdown",
+            "",
+            "| Tier | Members |",
+            "| --- | --- |",
         ]
         for t in tiers:
             lines.append(f"| {t.get('tier_name', '-')} | {int(t.get('members') or 0):,} |")
@@ -742,10 +740,10 @@ def _build_postmortem_markdown(data: dict) -> str:
 
     if trend:
         lines += [
-            f"## Daily Participation Trend",
-            f"",
-            f"| Date | Joined | Finished | Rewarded |",
-            f"| --- | --- | --- | --- |",
+            "## Daily Participation Trend",
+            "",
+            "| Date | Joined | Finished | Rewarded |",
+            "| --- | --- | --- | --- |",
         ]
         for r in trend:
             lines.append(
@@ -755,8 +753,8 @@ def _build_postmortem_markdown(data: dict) -> str:
         lines.append("")
 
     lines += [
-        f"---",
-        f"",
-        f"_Source: SocialHub.AI CLI — Campaign Post-Mortem Report_",
+        "---",
+        "",
+        "_Source: SocialHub.AI CLI — Campaign Post-Mortem Report_",
     ]
     return "\n".join(lines)

@@ -1,5 +1,6 @@
 """Integration tests for the Skills system with report-generator skill."""
 
+import io
 import json
 import os
 import shutil
@@ -7,7 +8,7 @@ import tempfile
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 import pytest
 import yaml
@@ -374,3 +375,117 @@ class TestInstallLocalSkill:
 
         with pytest.raises((typer.Exit, SystemExit)):
             _install_local_skill(str(zip_path))
+
+
+class TestSkillManagerHashGate:
+    """Tests for the mandatory hash-verification gate in SkillManager.install().
+
+    CLAUDE.md: "签名验证不可跳过" — this class verifies the hash gate cannot
+    be silently bypassed when the store fails to return integrity metadata.
+    """
+
+    @pytest.fixture
+    def patched_manager(self, tmp_path):
+        """SkillManager with all filesystem/network IO mocked."""
+        from cli.skills.manager import SkillManager
+
+        # Use MagicMock() instances (not the MagicMock class) so that calling
+        # them inside __init__ (e.g. PermissionPrompter(console)) returns a plain
+        # MagicMock rather than one spec'd to the constructor argument.
+        with patch.multiple(
+            "cli.skills.manager",
+            SkillRegistry=MagicMock(),
+            SignatureVerifier=MagicMock(),
+            HashVerifier=MagicMock(),
+            PermissionChecker=MagicMock(),
+            PermissionStore=MagicMock(),
+            PermissionPrompter=MagicMock(),
+            RevocationListManager=MagicMock(),
+            SecurityAuditLogger=MagicMock(),
+        ):
+            mgr = SkillManager()
+            # Skill not yet installed — prevent early-exit in install()
+            mgr.registry.get_installed.return_value = None
+            mgr._store_client = MagicMock()
+            skill_info = MagicMock()
+            skill_info.version = "1.0.0"
+            mgr._store_client.get_skill.return_value = skill_info
+
+            # registry helpers return tmp_path locations
+            mgr.registry.get_cache_path.return_value = tmp_path / "pkg.zip"
+            skill_dir = tmp_path / "skills" / "test-skill"
+            mgr.registry.get_skill_path.return_value = skill_dir
+            yield mgr, tmp_path
+
+    def test_install_aborts_when_download_info_raises_store_error(self, patched_manager):
+        """If get_download_info raises StoreError, install() must raise SkillManagerError.
+
+        This test documents the P0 security issue: when download_info is
+        unavailable the code silently sets expected_hash="" and continues,
+        effectively skipping the mandatory hash check.  The test SHOULD FAIL
+        until the bug is fixed (raises SkillManagerError).
+        """
+        from cli.skills.manager import SkillManagerError
+        from cli.skills.store_client import StoreError
+
+        mgr, tmp_path = patched_manager
+        mgr._store_client.get_download_info.side_effect = StoreError("Network unavailable")
+
+        with pytest.raises(SkillManagerError, match="(?i)hash|integrity|download info|verification"):
+            mgr.install("test-skill")
+
+    def test_install_invalidates_validator_cache_after_success(self, patched_manager, tmp_path):
+        """invalidate_cmd_tree() must be called after a successful install so the
+        AI validator accepts commands for the newly installed skill immediately."""
+        import io as _io
+        from cli.skills.manager import SkillManagerError
+
+        mgr, tmp_path = patched_manager
+
+        # Provide valid download_info
+        mgr._store_client.get_download_info.return_value = {
+            "hash": "abc123",
+            "signature": "sig",
+        }
+
+        # Build a minimal zip so the extraction step doesn't fail
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("skill.yaml", "name: test-skill\nversion: 1.0.0")
+        pkg_bytes = buf.getvalue()
+        mgr._store_client.download.return_value = pkg_bytes
+
+        # hash_verifier and signature verifier succeed
+        mgr.hash_verifier.verify_hash.return_value = True
+        mgr.verifier.verify_manifest_signature.return_value = None
+        mgr.revocation_manager.is_revoked.return_value = False
+        # permission_prompter is MagicMock().return_value — no permissions needed
+        mgr.permission_prompter.request_permissions.return_value = (True, [])
+
+        # Write pkg bytes to cache path so zipfile can open it
+        cache_path = tmp_path / "pkg.zip"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(pkg_bytes)
+        mgr.registry.get_cache_path.return_value = cache_path
+
+        skill_dir = tmp_path / "skills" / "test-skill"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        mgr.registry.get_skill_path.return_value = skill_dir
+
+        # Write a valid skill.yaml into the extracted dir so manifest loading works
+        manifest_data = {
+            "name": "test-skill",
+            "version": "1.0.0",
+            "description": "Test",
+            "entrypoint": "main.py",
+            "permissions": [],
+            "dependencies": {"python": []},
+        }
+        (skill_dir / "skill.yaml").write_text(yaml.dump(manifest_data), encoding="utf-8")
+
+        with patch("cli.ai.validator.invalidate_cmd_tree") as mock_invalidate:
+            try:
+                mgr.install("test-skill")
+            except Exception:
+                pass  # manifest parsing may fail for unrelated reasons
+            mock_invalidate.assert_called_once()

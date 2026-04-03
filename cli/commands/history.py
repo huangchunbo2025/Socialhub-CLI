@@ -1,19 +1,21 @@
 """CLI run history — record, list, show, and rerun past commands."""
 
 import json
+import logging
 import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
+logger = logging.getLogger(__name__)
+
 import typer
+from rich import box as rich_box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box as rich_box
 
 app = typer.Typer(help="Run history: record and replay past CLI commands")
 console = Console()
@@ -60,7 +62,7 @@ def save_run(
     return run_id
 
 
-def _load_run(run_id: str) -> Optional[dict]:
+def _load_run(run_id: str) -> dict | None:
     runs = _runs_dir()
     path = runs / f"{run_id}.json"
     try:
@@ -85,15 +87,15 @@ def _all_runs(limit: int = 50) -> list[dict]:
     for f in files:
         try:
             records.append(json.loads(f.read_text(encoding="utf-8")))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Skipping corrupt history file %s: %s", f, e)
     return records
 
 
 @app.command("list")
 def history_list(
     limit: int = typer.Option(20, "--limit", "-n", help="Number of recent runs to show"),
-    status: Optional[str] = typer.Option(None, "--status", "-s",
+    status: str | None = typer.Option(None, "--status", "-s",
                                           help="Filter by status: ok / error"),
 ) -> None:
     """List recent CLI run history."""
@@ -131,8 +133,8 @@ def history_list(
 
     console.print(tbl)
     console.print(
-        f"\n[dim]Run [bold]sh history show <run_id>[/bold] for details, "
-        f"[bold]sh history rerun <run_id>[/bold] to replay.[/dim]"
+        "\n[dim]Run [bold]sh history show <run_id>[/bold] for details, "
+        "[bold]sh history rerun <run_id>[/bold] to replay.[/dim]"
     )
 
 

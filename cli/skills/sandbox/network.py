@@ -6,7 +6,6 @@ restricting connections to authorized hosts and ports.
 
 import logging
 import socket
-from typing import Any, Callable, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 from ..security import SecurityAuditLogger
@@ -45,8 +44,8 @@ class NetworkSandbox:
         skill_name: str,
         allow_local: bool = False,
         allow_internet: bool = False,
-        allowed_hosts: Optional[Set[str]] = None,
-        allowed_ports: Optional[Set[int]] = None,
+        allowed_hosts: set[str] | None = None,
+        allowed_ports: set[int] | None = None,
     ):
         """Initialize the network sandbox.
 
@@ -66,7 +65,7 @@ class NetworkSandbox:
         self._audit_logger = SecurityAuditLogger()
 
         # Store original socket class
-        self._original_socket: Optional[type] = None
+        self._original_socket: type | None = None
         self._active = False
 
     def is_local_address(self, host: str) -> bool:
@@ -127,7 +126,7 @@ class NetworkSandbox:
         class GuardedSocket(original_socket):
             """Socket class with connection guards."""
 
-            def connect(self, address: Tuple[str, int]) -> None:
+            def connect(self, address: tuple[str, int]) -> None:
                 """Guarded connect method."""
                 try:
                     host = address[0]
@@ -146,7 +145,7 @@ class NetworkSandbox:
 
                 return super().connect(address)
 
-            def connect_ex(self, address: Tuple[str, int]) -> int:
+            def connect_ex(self, address: tuple[str, int]) -> int:
                 """Guarded connect_ex method."""
                 try:
                     host = address[0]
@@ -178,7 +177,7 @@ class NetworkSandbox:
         self._original_socket = socket.socket
         socket.socket = self._create_guarded_socket()
         self._active = True
-        self._logger.debug(f"Network sandbox activated for {self.skill_name}")
+        self._logger.debug("Network sandbox activated for %s", self.skill_name)
 
     def deactivate(self) -> None:
         """Deactivate the network sandbox.
@@ -193,7 +192,7 @@ class NetworkSandbox:
             self._original_socket = None
 
         self._active = False
-        self._logger.debug(f"Network sandbox deactivated for {self.skill_name}")
+        self._logger.debug("Network sandbox deactivated for %s", self.skill_name)
 
     def __enter__(self):
         """Enter the sandbox context."""
@@ -236,7 +235,7 @@ class NetworkSandbox:
         return self._active
 
     @staticmethod
-    def parse_url_host(url: str) -> Tuple[str, int]:
+    def parse_url_host(url: str) -> tuple[str, int]:
         """Parse host and port from a URL.
 
         Args:

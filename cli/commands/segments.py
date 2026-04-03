@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich import box as rich_box
@@ -11,11 +10,12 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..api.client import APIError, SocialHubClient
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
-from ..local.reader import LocalDataReader, read_customers_csv
+from ..local.reader import LocalDataReader
 from ..output.export import export_data, format_output, print_export_success
-from ..output.table import print_dict, print_error, print_list, print_success
+from ..output.table import print_dict, print_error, print_success
 
 app = typer.Typer(help="Customer segment management commands")
 console = Console()
@@ -23,7 +23,7 @@ console = Console()
 
 @app.command("list")
 def list_segments(
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Status filter (enabled, disabled, draft)"),
+    status: str | None = typer.Option(None, "--status", "-s", help="Status filter (enabled, disabled, draft)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
@@ -102,8 +102,8 @@ def preview_segment(
 @app.command("create")
 def create_segment(
     name: str = typer.Option(..., "--name", "-n", help="Segment name"),
-    rules: Optional[str] = typer.Option(None, "--rules", "-r", help="Rules as JSON string or file path"),
-    description: Optional[str] = typer.Option(None, "--description", "-d", help="Segment description"),
+    rules: str | None = typer.Option(None, "--rules", "-r", help="Rules as JSON string or file path"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Segment description"),
 ) -> None:
     """Create a new customer segment."""
     config = load_config()
@@ -117,7 +117,7 @@ def create_segment(
     if rules:
         if Path(rules).exists():
             # Load from file
-            with open(rules, "r", encoding="utf-8") as f:
+            with open(rules, encoding="utf-8") as f:
                 rules_dict = json.load(f)
         else:
             # Parse as JSON string
@@ -147,7 +147,7 @@ def create_segment(
 def create_segment_from_file(
     file: str = typer.Option(..., "--file", "-f", help="Customer list file (CSV)"),
     name: str = typer.Option(..., "--name", "-n", help="Segment name"),
-    description: Optional[str] = typer.Option(None, "--description", "-d", help="Segment description"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Segment description"),
 ) -> None:
     """Create a segment from a customer list file."""
     config = load_config()
@@ -311,7 +311,7 @@ def _mcp_segment_performance(config, limit: int = 30) -> list:
     return rows if isinstance(rows, list) else []
 
 
-def _print_segment_performance(rows: list, output: Optional[str] = None) -> None:
+def _print_segment_performance(rows: list, output: str | None = None) -> None:
     """Rich table display for segment performance."""
     if not rows:
         console.print("[yellow]No segment data found[/yellow]")
@@ -365,7 +365,7 @@ def _print_segment_performance(rows: list, output: Optional[str] = None) -> None
 @app.command("performance")
 def segment_performance(
     limit: int = typer.Option(30, "--limit", "-l", help="Max segments to show"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON file"),
 ) -> None:
     """Analyze customer segment sizes and types (MCP mode).
 
@@ -508,7 +508,7 @@ def _mcp_segment_overlap(config, id1: int, id2: int) -> dict:
     }
 
 
-def _print_segment_overlap(data: dict, output: Optional[str] = None) -> None:
+def _print_segment_overlap(data: dict, output: str | None = None) -> None:
     """Rich display for segment overlap analysis."""
     if output:
         format_output(data, "json", output)
@@ -572,7 +572,7 @@ def _print_segment_overlap(data: dict, output: Optional[str] = None) -> None:
 def segment_overlap(
     id1: int = typer.Option(..., "--id1", help="First segment group ID"),
     id2: int = typer.Option(..., "--id2", help="Second segment group ID"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export result to JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export result to JSON"),
 ) -> None:
     """Compute overlap between two customer segments (MCP mode).
 
@@ -675,9 +675,9 @@ def _mcp_segment_growth(config, group_id: str, period: str) -> dict:
 
 
 def _print_segment_growth(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     rows = data["rows"]
     if not rows:
@@ -763,7 +763,8 @@ def _mcp_segment_analyze(config, group_id: str, period: str, max_members: int = 
 
     _period_map = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
     days = _period_map.get(period, 30)
-    from datetime import datetime as _dt, timedelta as _td
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
     start_date = (_dt.now() - _td(days=days)).strftime("%Y-%m-%d")
 
     mcp_config = MCPClientConfig(
@@ -888,9 +889,9 @@ def _mcp_segment_analyze(config, group_id: str, period: str, max_members: int = 
 
 def _print_segment_analyze(data: dict) -> None:
     """Rich display for segment purchase behavior analysis."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     gid    = data.get("group_id")
     gname  = data.get("group_name", gid)
@@ -947,7 +948,7 @@ def _print_segment_analyze(data: dict) -> None:
         console.print(tt)
 
     console.print(
-        f"[dim]Sources: datanow_demoen.t_customer_group_detail → das_demoen.dwd_v_order[/dim]"
+        "[dim]Sources: datanow_demoen.t_customer_group_detail → das_demoen.dwd_v_order[/dim]"
     )
 
 
@@ -956,7 +957,7 @@ def segment_analyze(
     group_id: str = typer.Argument(..., help="Segment / customer group ID"),
     period: str   = typer.Option("30d", "--period", "-p", help="Purchase analysis period (7d/30d/90d/365d)"),
     max_members: int = typer.Option(500, "--max-members", help="Max members to sample for cross-DB join (default 500)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
 ) -> None:
     """Purchase behavior analysis for customers in a segment (MCP).
 

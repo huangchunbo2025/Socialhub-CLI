@@ -2,12 +2,13 @@
 
 import importlib.util
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import yaml
 
-from .models import InstalledSkill, SkillCommand, SkillManifest
+from .models import SkillCommand, SkillManifest
 from .registry import SkillRegistry
 from .sandbox import SandboxManager
 from .security import (
@@ -78,7 +79,7 @@ class SkillLoader:
                 raise SkillLoadError(f"Skill manifest not found: {manifest_path}")
 
         try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
+            with open(manifest_path, encoding="utf-8") as f:
                 manifest_data = yaml.safe_load(f)
             manifest = SkillManifest(**manifest_data)
         except Exception as e:
@@ -146,7 +147,7 @@ class SkillLoader:
 
         return skill_info
 
-    def get_command(self, skill_name: str, command_name: str) -> Optional[Callable]:
+    def get_command(self, skill_name: str, command_name: str) -> Callable | None:
         """Get a command function from a skill.
 
         Args:
@@ -217,7 +218,7 @@ class SkillLoader:
             with sandbox:
                 return func(*args, **kwargs)
 
-    def get_permission_context(self, skill_name: str) -> Optional[PermissionContext]:
+    def get_permission_context(self, skill_name: str) -> PermissionContext | None:
         """Get the permission context for a skill.
 
         Args:
@@ -292,7 +293,6 @@ def create_skill_typer_commands(loader: SkillLoader):
 
     This function dynamically creates CLI commands from skill definitions.
     """
-    import typer
 
     commands = {}
 

@@ -12,14 +12,14 @@ Stored fields mirror SocialHub API response:
 import json
 import stat
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from ..config import CONFIG_DIR
 
 _TOKEN_FILE = CONFIG_DIR / "oauth_token.json"
 
 
-def load_oauth_token() -> Optional[dict[str, Any]]:
+def load_oauth_token() -> dict[str, Any] | None:
     """Load cached token from disk.
 
     Returns the full token dict if the access token is still valid,
@@ -78,7 +78,7 @@ def delete_oauth_token() -> None:
         _TOKEN_FILE.unlink()
 
 
-def get_stored_token() -> Optional[dict[str, Any]]:
+def get_stored_token() -> dict[str, Any] | None:
     """Return stored token data even if access token is expired.
 
     Useful for getting the refresh_token and expired access token

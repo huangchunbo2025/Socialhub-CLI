@@ -4,7 +4,8 @@ import re
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..output.export import format_output
 from .common import (
     _compute_date_range,
@@ -12,7 +13,7 @@ from .common import (
     _safe_date_filter,
     _validate_group_by,
 )
-from .overview import _fmt_cny, _pct_delta, _color_delta, _print_compare_row
+from .overview import _fmt_cny, _print_compare_row
 
 console = Console()
 
@@ -266,9 +267,9 @@ def _get_mcp_order_returns(config, period: str) -> dict:
 
 def _print_order_returns(data: dict) -> None:
     """Rich display for order return/exchange analysis."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     period = data.get("period", "-")
     breakdown = data.get("breakdown", [])
@@ -334,8 +335,8 @@ def _print_order_returns(data: dict) -> None:
 
 def _print_orders_by_product(rows: list, period: str, output: str = None) -> None:
     """Rich table for top-product order breakdown."""
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No product data found[/yellow]")
@@ -484,8 +485,8 @@ def _get_mcp_orders_tool_payload(config, period: str, group_by: str = None, incl
 
 def _print_orders_compare(cur: dict, prev: dict, period: str) -> None:
     """Side-by-side period-over-period orders table."""
-    from rich.table import Table
     from rich import box
+    from rich.table import Table
 
     title = (
         f"Orders Compare — Current ({cur['start']} → {cur['end']}) "

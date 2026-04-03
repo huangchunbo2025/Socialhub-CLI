@@ -1,28 +1,94 @@
 """Heartbeat - Scheduled task execution engine."""
 
+import logging
 import os
 import re
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
+
+from ..ai.executor import DANGEROUS_CHARS as _DANGEROUS_CHARS, _SUBPROCESS_AUTH_SKIP_ENV
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="Scheduled task management (Heartbeat)")
 console = Console()
 
-# Heartbeat file location
-HEARTBEAT_FILE = Path.home() / "socialhub" / "Heartbeat.md"
+# Heartbeat file location — stored alongside other .socialhub data
+HEARTBEAT_FILE = Path.home() / ".socialhub" / "Heartbeat.md"
 
 # Process-level lock: prevents two concurrent `heartbeat check` calls in the same process
 _CHECK_LOCK = threading.Lock()
+
+
+def _heartbeat_tmp_path() -> Path:
+    """Return a unique per-process temp path for atomic Heartbeat.md writes."""
+    return HEARTBEAT_FILE.with_name(f"Heartbeat.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")
+
+
+def _escape_note(note: str) -> str:
+    """Escape pipe characters so they don't break Markdown table cells."""
+    return note.replace("|", "\\|")
+
+
+def _resolve_marker(content: str, en: str, cn: str) -> str:
+    """Return the English marker if present in content, otherwise the Chinese fallback."""
+    return en if en in content else cn
+
+
+def _patch_heartbeat_content(
+    content: str,
+    task_id: str,
+    status: str,
+    note_safe: str,
+    now: str,
+    update_status: bool = False,
+) -> str:
+    """Apply all in-memory mutations to a Heartbeat.md content string.
+
+    Handles execution-log table, next-check regex, check-record table, and
+    (when update_status=True) the task's own Status field — all in a single
+    split/join pass to avoid redundant string allocations.
+    """
+    content = re.sub(r"\*Next check: .+?\*", "*Next check: Waiting for trigger*", content)
+    lines = content.split("\n")
+
+    log_marker = _resolve_marker(
+        content,
+        "| Time | Task ID | Status | Note |",
+        "| 时间 | 任务ID | 状态 | 备注 |",
+    )
+
+    in_target_task = False
+    for i, line in enumerate(lines):
+        if log_marker in line and i + 2 < len(lines) and lines[i + 1].startswith("|---"):
+            lines.insert(i + 2, f"| {now} | {task_id} | {status} | {note_safe} |")
+            continue
+        if "| - | - | - | No records |" in line or "| - | - | - | 暂无执行记录 |" in line:
+            lines[i] = f"| {now} | {task_id} | {status} | {note_safe} |"
+            continue
+        if "| - | - | - | Waiting for first check |" in line or "| - | - | - | 等待首次检查 |" in line:
+            lines[i] = f"| {now} | - | 1 | Task: {task_id} |"
+            continue
+        if update_status:
+            if f"- **ID**: {task_id}" in line:
+                in_target_task = True
+            elif in_target_task and line.startswith("### "):
+                in_target_task = False
+            elif in_target_task and "- **Status**:" in line:
+                lines[i] = f"- **Status**: `{status}`"
+                in_target_task = False
+
+    return "\n".join(lines)
 
 
 def _safe_field(value: str) -> str:
@@ -32,7 +98,7 @@ def _safe_field(value: str) -> str:
     would create a second task section that ``parse_heartbeat_tasks()`` would
     later parse and ``execute_task()`` would execute.
     """
-    return value.replace("\n", " ").replace("\r", " ").replace("`", "'")
+    return value.replace("\n", " ").replace("\r", " ").replace("`", "'").replace("#", "")
 
 
 def parse_heartbeat_tasks() -> list[dict]:
@@ -92,8 +158,49 @@ def parse_heartbeat_tasks() -> list[dict]:
     return tasks
 
 
+_CN_WEEKDAY_MAP = {
+    "周一": 0, "星期一": 0, "一": 0,
+    "周二": 1, "星期二": 1, "二": 1,
+    "周三": 2, "星期三": 2, "三": 2,
+    "周四": 3, "星期四": 3, "四": 3,
+    "周五": 4, "星期五": 4, "五": 4,
+    "周六": 5, "星期六": 5, "六": 5,
+    "周日": 6, "星期日": 6, "周天": 6, "日": 6,
+}
+
+
+def normalize_frequency(raw: str) -> str:
+    """Convert Chinese/natural-language schedule strings to canonical form.
+
+    Examples:
+        "每周五 15:00"   → "Weekly Fri 15:00"
+        "每天 08:30"     → "Daily 08:30"
+        "每小时"         → "hourly"
+        "每周一 09:00"   → "Weekly Mon 09:00"
+    """
+    en_weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    # 每周<中文星期> HH:MM
+    for cn, idx in _CN_WEEKDAY_MAP.items():
+        m = re.search(rf"每{cn}\s*(\d{{1,2}}):(\d{{2}})", raw)
+        if m:
+            return f"Weekly {en_weekday[idx]} {int(m.group(1)):02d}:{m.group(2)}"
+
+    # 每天 / 每日 HH:MM
+    m = re.search(r"每[天日]\s*(\d{1,2}):(\d{2})", raw)
+    if m:
+        return f"Daily {int(m.group(1)):02d}:{m.group(2)}"
+
+    # 每小时 / 每1小时
+    if "每小时" in raw or "每1小时" in raw:
+        return "hourly"
+
+    return raw  # already in English or unrecognised — pass through
+
+
 def parse_frequency(frequency: str) -> dict:
     """Parse frequency string to schedule info."""
+    frequency = normalize_frequency(frequency)
     schedule = {"type": None, "hour": None, "minute": 0, "weekday": None}
 
     # Daily HH:MM (English)
@@ -122,7 +229,7 @@ def parse_frequency(frequency: str) -> dict:
     return schedule
 
 
-def should_run_task(task: dict, now: datetime, last_check: Optional[datetime] = None) -> bool:
+def should_run_task(task: dict, now: datetime) -> bool:
     """Check if task should run based on current time.
 
     Schedules are expressed in local wall-clock time (operators write "Daily 08:00"
@@ -174,8 +281,7 @@ def _execute_single_sh_command(cmd: str) -> tuple[bool, str]:
     cli_args = cmd[3:].strip()
 
     # SECURITY: Block dangerous shell characters
-    dangerous_chars = [';', '&&', '||', '|', '`', '$', '>', '<', '\n', '\r']
-    for char in dangerous_chars:
+    for char in _DANGEROUS_CHARS:
         if char in cli_args:
             return False, f"Invalid command: contains disallowed character '{char}'"
 
@@ -187,9 +293,13 @@ def _execute_single_sh_command(cmd: str) -> tuple[bool, str]:
     python_exe = sys.executable
     full_cmd = [python_exe, "-m", "cli.main"] + args
 
+    _env = os.environ.copy()
+    _env[_SUBPROCESS_AUTH_SKIP_ENV] = "1"
+
     try:
         result = subprocess.run(
             full_cmd,
+            env=_env,
             shell=False,  # SECURITY: Never use shell=True
             capture_output=True,
             text=True,
@@ -240,61 +350,75 @@ def execute_task(task: dict) -> tuple[bool, str]:
 
 
 def update_execution_log(task_id: str, status: str, note: str = "") -> None:
-    """Update execution log in Heartbeat.md."""
+    """Update execution log in Heartbeat.md (used by manual runs)."""
     if not HEARTBEAT_FILE.exists():
         return
-
-    content = HEARTBEAT_FILE.read_text(encoding="utf-8")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-    # Find the execution log table and add new entry (support both English and Chinese)
-    log_marker = "| Time | Task ID | Status | Note |"
-    if log_marker not in content:
-        log_marker = "| 时间 | 任务ID | 状态 | 备注 |"
-
-    if log_marker in content:
-        # Find the line after the header separator
-        lines = content.split("\n")
-        for i, line in enumerate(lines):
-            if "| - | - | - | No records |" in line or "| - | - | - | 暂无执行记录 |" in line:
-                # Replace placeholder with actual log
-                lines[i] = f"| {now} | {task_id} | {status} | {note} |"
-                break
-            elif log_marker in line and i + 2 < len(lines):
-                # Insert new log entry after header
-                if lines[i + 1].startswith("|---"):
-                    new_entry = f"| {now} | {task_id} | {status} | {note} |"
-                    lines.insert(i + 2, new_entry)
-                    break
-
-        content = "\n".join(lines)
-
-    # Update last check time
-    content = re.sub(
-        r"\*Next check: .+?\*",
-        f"*Next check: Waiting for trigger*",
-        content
+    content = _patch_heartbeat_content(
+        HEARTBEAT_FILE.read_text(encoding="utf-8"),
+        task_id, status, _escape_note(note), now,
     )
-
-    # Update heartbeat check record (support both English and Chinese)
-    check_marker = "| Check Time | Pending | Executed | Note |"
-    if check_marker not in content:
-        check_marker = "| 检查时间 | 待执行任务数 | 执行任务数 | 备注 |"
-
-    if check_marker in content:
-        lines = content.split("\n")
-        for i, line in enumerate(lines):
-            if "| - | - | - | Waiting for first check |" in line or "| - | - | - | 等待首次检查 |" in line:
-                lines[i] = f"| {now} | - | 1 | Task: {task_id} |"
-                break
-        content = "\n".join(lines)
-
-    tmp = HEARTBEAT_FILE.with_name(f"Heartbeat.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")
+    tmp = _heartbeat_tmp_path()
     try:
         tmp.write_text(content, encoding="utf-8")
         tmp.replace(HEARTBEAT_FILE)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def update_task_after_execution(task_id: str, status: str, note: str = "") -> None:
+    """Write execution log entry AND update task Status in a single atomic read-write."""
+    if not HEARTBEAT_FILE.exists():
+        return
+    try:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        content = _patch_heartbeat_content(
+            HEARTBEAT_FILE.read_text(encoding="utf-8"),
+            task_id, status, _escape_note(note), now,
+            update_status=True,
+        )
+        tmp = _heartbeat_tmp_path()
+        try:
+            tmp.write_text(content, encoding="utf-8")
+            tmp.replace(HEARTBEAT_FILE)
+        finally:
+            tmp.unlink(missing_ok=True)
+    except Exception as _e:
+        logger.warning("Failed to update task record for %s: %s", task_id, _e)
+
+
+def _acquire_task_lock(lock_file: Path) -> bool:
+    """Try to acquire a per-task lock file for idempotent execution.
+
+    Returns True if the lock was acquired (caller must unlink when done).
+    Returns False if another live process holds the lock.
+    Stale locks (dead PID) are removed and one retry is attempted.
+    """
+    def _try_create() -> bool:
+        try:
+            fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            return False
+
+    if _try_create():
+        return True
+
+    # Lock file exists — check if owning PID is still alive
+    stale = False
+    try:
+        owner_pid = int(lock_file.read_text(encoding="utf-8").strip())
+        os.kill(owner_pid, 0)  # signal 0 = existence check only
+    except (ValueError, OSError):
+        stale = True
+
+    if stale:
+        lock_file.unlink(missing_ok=True)
+        return _try_create()
+
+    return False
 
 
 @app.command("check")
@@ -317,9 +441,11 @@ def check_tasks(
 
     try:
         tasks = parse_heartbeat_tasks()
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to parse Heartbeat.md, skipping this check: %s", exc)
+        console.print(f"[red]Failed to parse Heartbeat.md: {exc}[/red]")
         _CHECK_LOCK.release()
-        raise
+        return
 
     now = datetime.now(timezone.utc)
 
@@ -340,6 +466,13 @@ def check_tasks(
 
     console.print(f"[yellow]Tasks due: {len(due_tasks)}[/yellow]\n")
 
+    _tracer = None
+    try:
+        from ..ai.trace import get_tracer
+        _tracer = get_tracer()
+    except Exception as _e:
+        logger.debug("Tracer unavailable, skipping: %s", _e)
+
     lock_dir = Path.home() / ".socialhub" / "locks"
     lock_dir.mkdir(parents=True, exist_ok=True)
 
@@ -353,37 +486,14 @@ def check_tasks(
                 console.print("  [dim]-- Dry run, skipping execution --[/dim]\n")
                 continue
 
-            # Idempotency: skip if another process is already executing this task.
-            # Lock file contains the PID of the owner so stale locks (dead process) can be detected.
             lock_file = lock_dir / f"{task['id']}.lock"
-            try:
-                fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                os.write(fd, str(os.getpid()).encode())
-                os.close(fd)
-            except FileExistsError:
-                # Check whether the owning PID is still alive
-                stale = False
-                try:
-                    owner_pid = int(lock_file.read_text(encoding="utf-8").strip())
-                    os.kill(owner_pid, 0)  # signal 0 = existence check only
-                except (ValueError, OSError):
-                    stale = True
-                if stale:
-                    lock_file.unlink(missing_ok=True)
-                    # Retry once after removing stale lock
-                    try:
-                        fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                        os.write(fd, str(os.getpid()).encode())
-                        os.close(fd)
-                    except FileExistsError:
-                        console.print(f"  [yellow]Skipped: lock file exists (task may already be running)[/yellow]\n")
-                        continue
-                else:
-                    console.print(f"  [yellow]Skipped: lock file exists (task may already be running)[/yellow]\n")
-                    continue
+            if not _acquire_task_lock(lock_file):
+                console.print("  [yellow]Skipped: lock file exists (task may already be running)[/yellow]\n")
+                continue
 
             try:
                 # Execute the task
+                step_start = time.time()
                 success, output = execute_task(task)
             finally:
                 try:
@@ -392,12 +502,24 @@ def check_tasks(
                     pass
 
             if success:
-                console.print(f"  [green][OK] Task completed[/green]")
-                update_execution_log(task["id"], "done", "Success")
+                console.print("  [green][OK] Task completed[/green]")
+                update_task_after_execution(task["id"], "done", "Success")
             else:
-                console.print(f"  [red][FAIL] Task failed[/red]")
+                console.print("  [red][FAIL] Task failed[/red]")
                 console.print(f"  Error: {output[:200]}")
-                update_execution_log(task["id"], "failed", output[:50])
+                update_task_after_execution(task["id"], "failed", output[:50])
+
+            if _tracer is not None:
+                try:
+                    _tracer.log_heartbeat_execution(
+                        task_id=task["id"],
+                        task_name=task["name"],
+                        success=success,
+                        duration_ms=int((time.time() - step_start) * 1000),
+                        error_msg="" if success else output[:200],
+                    )
+                except Exception as _e:
+                    logger.warning("Tracer log_heartbeat_execution failed for %s: %s", task["id"], _e)
 
             if output:
                 console.print(output)
@@ -466,12 +588,12 @@ def run_task(
 
     if success:
         console.print("\n[green][OK] Task completed successfully[/green]")
-        update_execution_log(task_id, "done", "Manual run")
+        update_task_after_execution(task_id, "done", "Manual run")
     else:
-        console.print(f"\n[red][FAIL] Task failed[/red]")
+        console.print("\n[red][FAIL] Task failed[/red]")
         if output:
             console.print(f"[dim]{output[:200]}[/dim]")
-        update_execution_log(task_id, "failed", "Manual run failed")
+        update_task_after_execution(task_id, "failed", "Manual run failed")
 
     if success and output:
         console.print(output, markup=False)
@@ -524,6 +646,107 @@ Register-ScheduledTask -TaskName "SocialHub Heartbeat" -Action $action -Trigger 
     console.print(Panel(instructions, title="Setup Instructions", border_style="blue"))
 
 
+_HEARTBEAT_TEMPLATE = """\
+<!-- schema: v1 -->
+# SocialHub Heartbeat
+
+自动化定时任务调度中心。在下方 "Scheduled Tasks" 区块添加任务，
+运行 `sh heartbeat check` 或通过 Windows Task Scheduler 定时触发检查。
+
+---
+
+## Scheduled Tasks
+
+<!-- Tasks are inserted here automatically via `sh heartbeat add` or AI. -->
+
+## Execution Log
+
+| Time | Task ID | Status | Note |
+|------|---------|--------|------|
+| - | - | - | No records |
+
+## Heartbeat Check Record
+
+| Check Time | Pending | Executed | Note |
+|------------|---------|----------|------|
+| - | - | - | Waiting for first check |
+"""
+
+
+def _init_heartbeat_file() -> None:
+    """Create Heartbeat.md with default template if it does not exist."""
+    HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if not HEARTBEAT_FILE.exists():
+        tmp = _heartbeat_tmp_path()
+        try:
+            tmp.write_text(_HEARTBEAT_TEMPLATE, encoding="utf-8")
+            tmp.replace(HEARTBEAT_FILE)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+
+@app.command("init")
+def init_heartbeat() -> None:
+    """Initialize ~/socialhub/Heartbeat.md with default template."""
+    if HEARTBEAT_FILE.exists():
+        console.print(f"[yellow]Heartbeat file already exists: {HEARTBEAT_FILE}[/yellow]")
+        console.print("Use [cyan]sh heartbeat list[/cyan] to see existing tasks.")
+        return
+
+    _init_heartbeat_file()
+    console.print(f"[green][OK] Created {HEARTBEAT_FILE}[/green]")
+    console.print("\nNext steps:")
+    console.print("  [cyan]sh heartbeat add --name '周报分析' --schedule '每周五 15:00' --command 'sh analytics overview'[/cyan]")
+    console.print("  [cyan]sh heartbeat setup[/cyan]  — register Windows Task Scheduler trigger")
+
+
+@app.command("add")
+def add_task(
+    name: str = typer.Option(..., "--name", "-n", help="Task name"),
+    schedule: str = typer.Option(..., "--schedule", "-s", help="Schedule (e.g. '每周五 15:00', 'Daily 08:30', 'Weekly Fri 15:00')"),
+    command: str = typer.Option(..., "--command", "-c", help="sh command to run (must start with 'sh ')"),
+    description: str = typer.Option("", "--description", "-d", help="Optional description"),
+    insights: bool = typer.Option(False, "--insights", help="Generate AI insights after execution"),
+) -> None:
+    """Add a new scheduled task to Heartbeat.md."""
+    if not command.startswith("sh "):
+        console.print("[red]Command must start with 'sh ' (SocialHub CLI commands only)[/red]")
+        raise typer.Exit(1)
+
+    # Normalise schedule so we show the canonical form in the file
+    canonical = normalize_frequency(schedule)
+    parsed = parse_frequency(canonical)
+    if parsed["type"] is None:
+        console.print(f"[red]Unrecognised schedule format: {schedule!r}[/red]")
+        console.print("Examples: '每周五 15:00', '每天 08:30', 'Weekly Fri 15:00', 'Daily 08:30'")
+        raise typer.Exit(1)
+
+    if not HEARTBEAT_FILE.exists():
+        _init_heartbeat_file()
+        console.print(f"[dim]Created {HEARTBEAT_FILE}[/dim]")
+
+    task_id = "task-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    task = {
+        "id": task_id,
+        "name": name,
+        "frequency": canonical,
+        "command": command,
+        "description": description,
+        "insights": str(insights).lower(),
+    }
+
+    if save_task_to_heartbeat(task):
+        console.print("[green][OK] Task added[/green]")
+        console.print(f"  ID:       [cyan]{task_id}[/cyan]")
+        console.print(f"  Name:     {name}")
+        console.print(f"  Schedule: {canonical}")
+        console.print(f"  Command:  {command}")
+        console.print("\nRun [cyan]sh heartbeat list[/cyan] to verify.")
+    else:
+        console.print("[red]Failed to add task.[/red]")
+        raise typer.Exit(1)
+
+
 def save_task_to_heartbeat(task: dict) -> bool:
     """Save a new scheduled task entry to Heartbeat.md.
 
@@ -532,7 +755,7 @@ def save_task_to_heartbeat(task: dict) -> bool:
     format knowledge lives only in this module.
     """
     if not HEARTBEAT_FILE.exists():
-        return False
+        _init_heartbeat_file()
 
     try:
         content = HEARTBEAT_FILE.read_text(encoding="utf-8")
@@ -573,9 +796,12 @@ def save_task_to_heartbeat(task: dict) -> bool:
         else:
             content += task_entry
 
-        tmp = HEARTBEAT_FILE.with_suffix(".tmp")
-        tmp.write_text(content, encoding="utf-8")
-        tmp.replace(HEARTBEAT_FILE)
+        tmp = _heartbeat_tmp_path()
+        try:
+            tmp.write_text(content, encoding="utf-8")
+            tmp.replace(HEARTBEAT_FILE)
+        finally:
+            tmp.unlink(missing_ok=True)
         return True
 
     except Exception as e:

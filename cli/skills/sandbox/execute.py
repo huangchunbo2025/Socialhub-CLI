@@ -7,9 +7,8 @@ restricting which external commands can be executed.
 import logging
 import os
 import subprocess
-import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Set, Union
 
 from ..security import SecurityAuditLogger
 
@@ -76,8 +75,8 @@ class ExecuteSandbox:
         self,
         skill_name: str,
         allow_execute: bool = False,
-        allowed_commands: Optional[Set[str]] = None,
-        blocked_commands: Optional[Set[str]] = None,
+        allowed_commands: set[str] | None = None,
+        blocked_commands: set[str] | None = None,
     ):
         """Initialize the execution sandbox.
 
@@ -95,15 +94,15 @@ class ExecuteSandbox:
         self._audit_logger = SecurityAuditLogger()
 
         # Store original functions
-        self._original_run: Optional[Callable] = None
-        self._original_popen: Optional[type] = None
-        self._original_call: Optional[Callable] = None
-        self._original_check_call: Optional[Callable] = None
-        self._original_check_output: Optional[Callable] = None
-        self._original_system: Optional[Callable] = None
+        self._original_run: Callable | None = None
+        self._original_popen: type | None = None
+        self._original_call: Callable | None = None
+        self._original_check_call: Callable | None = None
+        self._original_check_output: Callable | None = None
+        self._original_system: Callable | None = None
         self._active = False
 
-    def _extract_command_name(self, args: Union[str, List[str]]) -> str:
+    def _extract_command_name(self, args: str | list[str]) -> str:
         """Extract the command name from arguments.
 
         Args:
@@ -127,7 +126,7 @@ class ExecuteSandbox:
         # Get just the command name without path
         return Path(cmd).stem.lower()
 
-    def is_command_allowed(self, args: Union[str, List[str]]) -> tuple[bool, str]:
+    def is_command_allowed(self, args: str | list[str]) -> tuple[bool, str]:
         """Check if a command is allowed to execute.
 
         Args:
@@ -174,7 +173,7 @@ class ExecuteSandbox:
         sandbox = self
 
         def guarded_run(
-            args: Union[str, List[str]],
+            args: str | list[str],
             *a,
             **kwargs,
         ) -> subprocess.CompletedProcess:
@@ -270,7 +269,7 @@ class ExecuteSandbox:
         os.system = self._create_guarded_system()
 
         self._active = True
-        self._logger.debug(f"Execution sandbox activated for {self.skill_name}")
+        self._logger.debug("Execution sandbox activated for %s", self.skill_name)
 
     def deactivate(self) -> None:
         """Deactivate the execution sandbox.
@@ -303,7 +302,7 @@ class ExecuteSandbox:
         self._original_system = None
 
         self._active = False
-        self._logger.debug(f"Execution sandbox deactivated for {self.skill_name}")
+        self._logger.debug("Execution sandbox deactivated for %s", self.skill_name)
 
     def __enter__(self):
         """Enter the sandbox context."""

@@ -19,7 +19,6 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from cli.config import TraceConfig
 
@@ -76,14 +75,13 @@ class TraceLogger:
     """
 
     TRACE_FILENAME = "ai_trace.jsonl"
-    TRACE_BACKUP_FILENAME = "ai_trace.jsonl.1"
 
     def __init__(self, config: TraceConfig) -> None:
         self._config = config
         self._trace_path = Path(config.trace_dir) / self.TRACE_FILENAME
-        self._backup_path = Path(config.trace_dir) / self.TRACE_BACKUP_FILENAME
+        self._backup_count = config.backup_count
         self._max_bytes = config.max_file_size_mb * 1024 * 1024
-        self._pii_patterns: Optional[list[tuple[re.Pattern, str]]] = (
+        self._pii_patterns: list[tuple[re.Pattern, str]] | None = (
             _build_pii_patterns(config.order_id_min_digits)
             if config.pii_masking
             else None
@@ -144,6 +142,108 @@ class TraceLogger:
         }
         if not success and error_msg:
             event["error_msg"] = error_msg[:500]  # cap at 500 chars to avoid huge logs
+        self._write(event)
+
+    def log_memory_write(
+        self,
+        memory_type: str,
+        file_path: str,
+        content_hash: str,
+        pii_masked: bool,
+        session_id: str = "",
+        trace_id: str = "",
+        skipped: bool = False,
+        skip_reason: str = "",
+    ) -> None:
+        """Record a memory write (or skip) event for audit purposes.
+
+        Args:
+            memory_type: "insight" | "summary" | "preference"
+            file_path:   Relative path within ~/.socialhub/memory/
+            content_hash: SHA-256 hex digest of the written content (not the content itself)
+            pii_masked:  True if the content went through PII masking before write
+            session_id:  Source session ID
+            trace_id:    Source trace ID (links back to plan_start event)
+            skipped:     True when write was intentionally skipped (e.g. extractor timeout)
+            skip_reason: Human-readable reason when skipped=True
+        """
+        if not self._config.enabled:
+            return
+
+        event: dict = {
+            "ts": _utcnow(),
+            "type": "memory_write",
+            "memory_type": memory_type,
+            "file_path": file_path,
+            "content_hash": content_hash,
+            "pii_masked": pii_masked,
+            "skipped": skipped,
+        }
+        if session_id:
+            event["session_id"] = session_id
+        if trace_id:
+            event["trace_id"] = trace_id
+        if skip_reason:
+            event["skip_reason"] = skip_reason
+        self._write(event)
+
+    def log_memory_injection(
+        self,
+        session_id: str,
+        trace_id: str,
+        injected_layers: list[str],
+        token_count: int,
+        insight_ids: list[str],
+        summary_ids: list[str],
+    ) -> None:
+        """Record which memory items were injected into a specific SYSTEM_PROMPT build.
+
+        This enables "which memory caused this AI response?" audit queries.
+
+        Args:
+            session_id:     Current session ID
+            trace_id:       Current trace ID
+            injected_layers: e.g. ["L4_profile", "L4_context", "L3_insights", "L2_summaries"]
+            token_count:    Total tokens consumed by injected memory
+            insight_ids:    IDs of injected L3 insights
+            summary_ids:    Session IDs of injected L2 summaries
+        """
+        if not self._config.enabled:
+            return
+
+        event: dict = {
+            "ts": _utcnow(),
+            "type": "memory_injection",
+            "session_id": session_id,
+            "trace_id": trace_id,
+            "injected_layers": injected_layers,
+            "token_count": token_count,
+            "insight_ids": insight_ids,
+            "summary_ids": summary_ids,
+        }
+        self._write(event)
+
+    def log_heartbeat_execution(
+        self,
+        task_id: str,
+        task_name: str,
+        success: bool,
+        duration_ms: int,
+        error_msg: str = "",
+    ) -> None:
+        """Record a heartbeat task execution event."""
+        if not self._config.enabled:
+            return
+        event: dict = {
+            "ts": _utcnow(),
+            "type": "heartbeat_execution",
+            "task_id": task_id,
+            "task_name": task_name,
+            "success": success,
+            "duration_ms": duration_ms,
+        }
+        if not success and error_msg:
+            event["error_msg"] = error_msg[:500]
         self._write(event)
 
     def log_plan_end(
@@ -209,15 +309,28 @@ class TraceLogger:
             logger.debug("Trace write failed (non-fatal): %s", exc)
 
     def _rotate_if_needed(self) -> None:
-        """文件超出 max_file_size_mb 时轮转：backup 覆盖旧 backup，当前文件改名为 backup。
+        """文件超出 max_file_size_mb 时轮转，保留最多 backup_count 个备份。
 
+        轮转逻辑：.N-1 → .N, ..., .1 → .2, current → .1。
         轮转后 _write() 会用 O_CREAT 创建新的 ai_trace.jsonl（权限 600）。
         """
         try:
-            if self._trace_path.exists() and self._trace_path.stat().st_size >= self._max_bytes:
-                if self._backup_path.exists():
-                    self._backup_path.unlink()
-                self._trace_path.rename(self._backup_path)
+            if not (self._trace_path.exists() and self._trace_path.stat().st_size >= self._max_bytes):
+                return
+            base = self._trace_path
+            # Shift existing backups: .{n-1} → .{n}, dropping any beyond backup_count
+            for i in range(self._backup_count - 1, 0, -1):
+                src = base.with_name(base.name + f".{i}")
+                dst = base.with_name(base.name + f".{i + 1}")
+                if src.exists():
+                    if dst.exists():
+                        dst.unlink()
+                    src.rename(dst)
+            # Current file → .1
+            dst1 = base.with_name(base.name + ".1")
+            if dst1.exists():
+                dst1.unlink()
+            self._trace_path.rename(dst1)
         except Exception as exc:
             logger.debug("Trace rotate failed (non-fatal): %s", exc)
 
@@ -230,3 +343,28 @@ class TraceLogger:
 def _utcnow() -> str:
     """返回当前 UTC 时间的 ISO 8601 字符串（秒精度，不含微秒）。"""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+# ---------------------------------------------------------------------------
+# 模块级 tracer 缓存（供 main.py / heartbeat.py 共享使用）
+# ---------------------------------------------------------------------------
+
+_global_tracer: "TraceLogger | None" = None
+_global_tracer_lock = threading.Lock()
+
+
+def get_tracer() -> "TraceLogger":
+    """Return the process-level TraceLogger singleton.
+
+    Creates it on first call using the current config.
+    Callers that need a fresh tracer (e.g., after config change) should
+    use TraceLogger(load_config().trace) directly.
+    """
+    global _global_tracer
+    if _global_tracer is not None:
+        return _global_tracer
+    with _global_tracer_lock:
+        if _global_tracer is None:
+            from cli.config import load_config
+            _global_tracer = TraceLogger(load_config().trace)
+    return _global_tracer

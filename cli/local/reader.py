@@ -1,7 +1,7 @@
 """Local file reader for CSV and Excel files."""
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 from rich.console import Console
@@ -52,7 +52,7 @@ class LocalDataReader:
     def read_excel(
         self,
         filename: str,
-        sheet_name: Optional[str | int] = 0,
+        sheet_name: str | int | None = 0,
         **kwargs: Any,
     ) -> pd.DataFrame:
         """Read Excel file."""

@@ -2,7 +2,8 @@
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from .common import (
     _compute_date_range,
     _mcp_query_timeout,
@@ -112,8 +113,8 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
 
 def _get_mcp_retention(config, days_list: list) -> list:
     """Get retention analytics from MCP database."""
-    from datetime import datetime, timedelta
     import re
+    from datetime import datetime, timedelta
 
     # Validate days_list
     days_list = _validate_days_list(days_list)
@@ -227,9 +228,8 @@ def _get_mcp_customer_source(config, period: str) -> list:
 
 def _print_customer_source(rows: list, period: str) -> None:
     """Rich table for customer acquisition source breakdown."""
-    from rich.table import Table
     from rich import box as rich_box
-    from rich.panel import Panel
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No source data found in ads_das_custs_source_analysis_d[/yellow]")
@@ -304,8 +304,8 @@ def _get_mcp_customer_gender(config) -> list:
 
 def _print_customer_gender(rows: list) -> None:
     """Rich table for gender distribution."""
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No gender data found in ads_das_custs_gender_distribution_d[/yellow]")

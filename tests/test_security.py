@@ -346,19 +346,24 @@ class TestRevocationListManager:
     def manager(self):
         return RevocationListManager()
 
-    def test_empty_list_not_revoked(self, manager):
-        """Test that empty list means nothing is revoked."""
-        assert manager.is_revoked("any-skill") is False
+    def test_empty_list_raises_when_no_data(self, manager):
+        """When CRL data has never been loaded, is_revoked must raise SecurityError
+        rather than silently returning False (which would bypass revocation checks)."""
+        from cli.skills.security import SecurityError
+        with pytest.raises(SecurityError, match="CRL data unavailable"):
+            manager.is_revoked("any-skill")
 
     def test_revoked_skill_detected(self, manager):
         """Test that revoked skills are detected."""
         manager._revoked_skills = {"malicious-skill"}
+        manager._data_loaded = True
         assert manager.is_revoked("malicious-skill") is True
         assert manager.is_revoked("safe-skill") is False
 
     def test_revoked_certificate_detected(self, manager):
         """Test that revoked certificates are detected."""
         manager._revoked_certificates = {"CERT-REVOKED-001"}
+        manager._data_loaded = True
         assert manager.is_revoked("any-skill", "CERT-REVOKED-001") is True
         assert manager.is_revoked("any-skill", "CERT-VALID-001") is False
 
@@ -614,6 +619,7 @@ class TestSecurityIntegration:
 
         # Later, skill gets revoked
         revocation._revoked_skills = {"test-skill"}
+        revocation._data_loaded = True
 
         # Permission check still passes (separate from revocation)
         granted, _ = checker.check_permissions("test-skill", ["network:internet"])

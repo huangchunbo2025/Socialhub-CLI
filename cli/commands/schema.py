@@ -9,13 +9,12 @@ Three databases:
   datanow_demoen — real-time layer   (t_* tables)
 """
 
-from typing import Optional
 
 import typer
+from rich import box as rich_box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box as rich_box
 
 app = typer.Typer(help="Warehouse schema explorer — discover tables and field meanings")
 console = Console()
@@ -779,7 +778,7 @@ def schema_show(
     # Bitmap columns
     bitmaps = meta.get("bitmap_cols", [])
     if bitmaps:
-        console.print(f"\n[bold]Bitmap Columns[/bold] [dim](use BITMAP_COUNT(BITMAP_UNION(...)))[/dim]:")
+        console.print("\n[bold]Bitmap Columns[/bold] [dim](use BITMAP_COUNT(BITMAP_UNION(...)))[/dim]:")
         for b in bitmaps:
             console.print(f"  [magenta]*[/magenta] {b}")
 
@@ -1051,7 +1050,7 @@ METRICS: dict[str, dict] = {
 
 @app.command("metrics")
 def schema_metrics(
-    name: Optional[str] = typer.Argument(None, help="Metric name (omit to list all)"),
+    name: str | None = typer.Argument(None, help="Metric name (omit to list all)"),
 ) -> None:
     """Standardized metric definitions — governance layer (F2).
 

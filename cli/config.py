@@ -1,15 +1,15 @@
 """Configuration management for SocialHub CLI."""
 
 import json
+import logging as _logging
 import os
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from rich.console import Console
 
-console = Console()
+_cfg_logger = _logging.getLogger(__name__)
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".socialhub"
@@ -59,7 +59,17 @@ class AIConfig(BaseModel):
     azure_deployment: str = Field(default="gpt-4o", description="Azure deployment name")
     azure_api_version: str = Field(default="2024-08-01-preview", description="Azure API version")
     openai_api_key: str = Field(default="", description="OpenAI API key (if using OpenAI)")
-    openai_model: str = Field(default="gpt-3.5-turbo", description="OpenAI model name")
+    openai_model: str = Field(default="gpt-4o-mini", description="OpenAI model name")
+    max_tokens: int = Field(default=2048, ge=1, description="Max tokens per AI response")
+    temperature: float = Field(default=0.7, description="Sampling temperature (0.0–2.0)")
+    ai_timeout_s: int = Field(default=60, description="AI API request timeout in seconds")
+
+    @field_validator("temperature")
+    @classmethod
+    def _validate_temperature(cls, v: float) -> float:
+        if not 0.0 <= v <= 2.0:
+            raise ValueError(f"temperature must be between 0.0 and 2.0, got {v}")
+        return v
 
 
 class MCPConfig(BaseModel):
@@ -118,6 +128,7 @@ class TraceConfig(BaseModel):
     pii_masking: bool = Field(default=True, description="Mask PII (phone, email, ID) in trace logs")
     order_id_min_digits: int = Field(default=16, description="Minimum digit length to treat as order ID for masking")
     max_file_size_mb: int = Field(default=10, description="Max trace file size before rotation (MB)")
+    backup_count: int = Field(default=3, description="Number of rotated trace log backups to keep")
     trace_dir: str = Field(
         default_factory=lambda: str(Path.home() / ".socialhub"),
         description="Directory for trace log files",
@@ -205,6 +216,29 @@ class OAuthConfig(BaseModel):
     enabled: bool = Field(default=False, description="Enable OAuth2 auth gate")
     auth_url: str = Field(default="", description="Auth API base URL")
 
+    @field_validator("auth_url")
+    @classmethod
+    def _validate_auth_url(cls, v: str) -> str:
+        return _validate_http_url(v)
+
+
+class MemoryConfig(BaseModel):
+    """Memory system configuration."""
+
+    enabled: bool = Field(default=True, description="Enable persistent memory system")
+    memory_dir: str = Field(
+        default_factory=lambda: str(Path.home() / ".socialhub" / "memory"),
+        description="Root directory for memory files",
+    )
+    max_insights: int = Field(default=200, description="Max stored insights")
+    max_summaries: int = Field(default=60, description="Max stored session summaries")
+    insight_ttl_days: int = Field(default=90, description="Insight TTL in days")
+    summary_ttl_days: int = Field(default=30, description="Session summary TTL in days")
+    inject_max_tokens: int = Field(default=4000, description="Max token budget for memory injection")
+    inject_recent_insights: int = Field(default=5, description="Max recent insights to inject")
+    inject_recent_summaries: int = Field(default=3, description="Max recent summaries to inject")
+    extractor_timeout_s: int = Field(default=30, description="LLM extractor timeout in seconds")
+
 
 class Config(BaseModel):
     """Main configuration model."""
@@ -224,6 +258,7 @@ class Config(BaseModel):
     oauth: OAuthConfig = Field(default_factory=OAuthConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     trace: TraceConfig = Field(default_factory=TraceConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     snowflake: SnowflakeConfig = Field(default_factory=SnowflakeConfig)
     default_format: str = Field(default="table", description="Default output format")
@@ -273,6 +308,7 @@ def _apply_env_overrides(config: Config) -> Config:
         "MCP_POST_URL": "post_url",
         "MCP_TENANT_ID": "tenant_id",
         "MCP_DATABASE": "database",
+        "MCP_API_KEY": "api_key",
     }
     mcp_overrides = {
         field: os.environ[env_var]
@@ -296,7 +332,31 @@ def _apply_env_overrides(config: Config) -> Config:
         if os.environ.get(env_var)
     }
 
-    if not mcp_overrides and not ai_overrides:
+    # OAuth fields
+    oauth_overrides: dict = {}
+    if os.environ.get("SOCIALHUB_OAUTH_ENABLED"):
+        val = os.environ["SOCIALHUB_OAUTH_ENABLED"].lower()
+        oauth_overrides["enabled"] = val in ("1", "true", "yes")
+    if os.environ.get("SOCIALHUB_OAUTH_AUTH_URL"):
+        oauth_overrides["auth_url"] = os.environ["SOCIALHUB_OAUTH_AUTH_URL"]
+
+    # Trace fields
+    trace_overrides: dict = {}
+    if os.environ.get("SOCIALHUB_TRACE_ENABLED"):
+        val = os.environ["SOCIALHUB_TRACE_ENABLED"].lower()
+        trace_overrides["enabled"] = val in ("1", "true", "yes")
+    if os.environ.get("SOCIALHUB_TRACE_DIR"):
+        trace_overrides["trace_dir"] = os.environ["SOCIALHUB_TRACE_DIR"]
+
+    # Network fields
+    network_overrides: dict = {}
+    if os.environ.get("SOCIALHUB_CA_BUNDLE"):
+        network_overrides["ca_bundle"] = os.environ["SOCIALHUB_CA_BUNDLE"]
+    if os.environ.get("SOCIALHUB_SSL_VERIFY"):
+        val = os.environ["SOCIALHUB_SSL_VERIFY"].lower()
+        network_overrides["ssl_verify"] = val in ("1", "true", "yes")
+
+    if not any([mcp_overrides, ai_overrides, oauth_overrides, trace_overrides, network_overrides]):
         return config
 
     base = config.model_dump()
@@ -304,6 +364,12 @@ def _apply_env_overrides(config: Config) -> Config:
         base["mcp"].update(mcp_overrides)
     if ai_overrides:
         base["ai"].update(ai_overrides)
+    if oauth_overrides:
+        base["oauth"].update(oauth_overrides)
+    if trace_overrides:
+        base["trace"].update(trace_overrides)
+    if network_overrides:
+        base["network"].update(network_overrides)
     return Config(**base)
 
 
@@ -318,11 +384,11 @@ def load_config() -> Config:
         return _apply_env_overrides(config)
 
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
             data = json.load(f)
         return _apply_env_overrides(Config(**data))
     except Exception as e:
-        console.print(f"[yellow]Warning: Failed to load config: {e}[/yellow]")
+        _cfg_logger.warning("Failed to load config: %s", e)
         defaults = _load_bundled_defaults()
         config = Config(**defaults) if defaults else Config()
         return _apply_env_overrides(config)
@@ -379,14 +445,7 @@ def set_config_value(key: str, value: str) -> bool:
         save_config(new_config)
         return True
     except Exception as e:
-        console.print(f"[red]Error setting config: {e}[/red]")
+        _cfg_logger.error("Error setting config: %s", e)
         return False
 
 
-def get_env_config() -> dict:
-    """Get configuration from environment variables."""
-    return {
-        "api_url": os.getenv("SOCIALHUB_API_URL"),
-        "api_key": os.getenv("SOCIALHUB_API_KEY"),
-        "mode": os.getenv("SOCIALHUB_MODE"),
-    }

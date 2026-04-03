@@ -1,13 +1,12 @@
 """Enterprise network utilities — proxy and CA certificate support."""
 
-from typing import Optional
 
 import httpx
 
 from .config import NetworkConfig, load_config
 
 
-def build_httpx_kwargs(config: Optional[NetworkConfig] = None) -> dict:
+def build_httpx_kwargs(config: NetworkConfig | None = None) -> dict:
     """Build httpx client kwargs from NetworkConfig.
 
     Returns a dict that can be unpacked into httpx.Client() or httpx.AsyncClient().
@@ -41,7 +40,7 @@ def build_httpx_kwargs(config: Optional[NetworkConfig] = None) -> dict:
 
 
 def build_httpx_client(
-    config: Optional[NetworkConfig] = None,
+    config: NetworkConfig | None = None,
     **extra_kwargs,
 ) -> httpx.Client:
     """Create an httpx.Client with proxy/CA/timeout settings applied.

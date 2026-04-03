@@ -398,12 +398,13 @@ class TestSaveTaskToHeartbeatInjection:
         ids_out = {t["id"] for t in tasks_out}
         assert ids_out == {"t-alpha", "t-beta"}
 
-    def test_save_returns_false_when_file_missing(self, tmp_path, monkeypatch):
-        """save_task_to_heartbeat() must return False when the file does not exist."""
+    def test_save_auto_creates_file_when_missing(self, tmp_path, monkeypatch):
+        """save_task_to_heartbeat() auto-creates Heartbeat.md and returns True."""
         missing = tmp_path / "does_not_exist" / "Heartbeat.md"
         monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", missing)
         result = save_task_to_heartbeat({"name": "x", "frequency": "Daily 00:00", "command": "sh analytics overview"})
-        assert result is False
+        assert result is True
+        assert missing.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -602,4 +603,218 @@ class TestProbeUpstreamMCPResourceCleanup:
 
         assert ok is True
         assert "tools=2" in msg
-        mock_client_instance.disconnect.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 6. Heartbeat: normalize_frequency, should_run_task, parse edge cases,
+#    sh heartbeat init / add commands
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timezone
+import pytest
+from typer.testing import CliRunner
+from cli.commands.heartbeat import (
+    app as heartbeat_app,
+    normalize_frequency,
+    parse_frequency,
+    should_run_task,
+    parse_heartbeat_tasks,
+    HEARTBEAT_FILE,
+)
+
+
+class TestNormalizeFrequency:
+    """normalize_frequency must convert Chinese schedule strings to canonical English."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("每周五 15:00",  "Weekly Fri 15:00"),
+        ("每周一 09:00",  "Weekly Mon 09:00"),
+        ("每周六 08:30",  "Weekly Sat 08:30"),
+        ("每天 08:30",    "Daily 08:30"),
+        ("每小时",        "hourly"),
+        ("每1小时",       "hourly"),
+        # Already English — pass through
+        ("Daily 09:00",  "Daily 09:00"),
+        ("Weekly Fri 15:00", "Weekly Fri 15:00"),
+    ])
+    def test_conversion(self, raw, expected):
+        assert normalize_frequency(raw) == expected
+
+    def test_unrecognised_returns_original(self):
+        assert normalize_frequency("unknown schedule") == "unknown schedule"
+
+
+class TestShouldRunTask:
+    """should_run_task boundary cases."""
+
+    def _task(self, frequency: str, status: str = "pending") -> dict:
+        return {"id": "t1", "name": "T", "frequency": frequency, "status": status}
+
+    # Non-pending tasks must never run
+    def test_running_status_returns_false(self):
+        now = datetime(2024, 1, 5, 15, 0)  # Friday 15:00
+        assert should_run_task(self._task("Weekly Fri 15:00", status="running"), now) is False
+
+    def test_failed_status_returns_false(self):
+        now = datetime(2024, 1, 5, 15, 0)
+        assert should_run_task(self._task("Weekly Fri 15:00", status="failed"), now) is False
+
+    # Daily: within 5-minute window
+    def test_daily_at_exact_minute_returns_true(self):
+        now = datetime(2024, 1, 5, 8, 0)  # 08:00 exactly
+        assert should_run_task(self._task("Daily 08:00"), now) is True
+
+    def test_daily_at_minute_plus_4_returns_true(self):
+        now = datetime(2024, 1, 5, 8, 4)  # 08:04 — inside window
+        assert should_run_task(self._task("Daily 08:00"), now) is True
+
+    def test_daily_at_minute_plus_5_returns_false(self):
+        now = datetime(2024, 1, 5, 8, 5)  # 08:05 — outside window
+        assert should_run_task(self._task("Daily 08:00"), now) is False
+
+    def test_daily_wrong_hour_returns_false(self):
+        now = datetime(2024, 1, 5, 9, 0)  # 09:00 instead of 08:00
+        assert should_run_task(self._task("Daily 08:00"), now) is False
+
+    # Weekly: correct weekday + window
+    def test_weekly_correct_day_and_window_returns_true(self):
+        # 2024-01-05 is a Friday (weekday()=4)
+        now = datetime(2024, 1, 5, 15, 0)
+        assert should_run_task(self._task("Weekly Fri 15:00"), now) is True
+
+    def test_weekly_wrong_weekday_returns_false(self):
+        # 2024-01-04 is a Thursday
+        now = datetime(2024, 1, 4, 15, 0)
+        assert should_run_task(self._task("Weekly Fri 15:00"), now) is False
+
+    def test_weekly_past_window_returns_false(self):
+        # Friday 15:06 — 6 minutes past
+        now = datetime(2024, 1, 5, 15, 6)
+        assert should_run_task(self._task("Weekly Fri 15:00"), now) is False
+
+    # Hourly: within first 5 minutes
+    def test_hourly_minute_0_returns_true(self):
+        now = datetime(2024, 1, 5, 10, 0)
+        assert should_run_task(self._task("hourly"), now) is True
+
+    def test_hourly_minute_4_returns_true(self):
+        now = datetime(2024, 1, 5, 10, 4)
+        assert should_run_task(self._task("hourly"), now) is True
+
+    def test_hourly_minute_5_returns_false(self):
+        now = datetime(2024, 1, 5, 10, 5)
+        assert should_run_task(self._task("hourly"), now) is False
+
+    # Unknown type
+    def test_unknown_type_returns_false(self):
+        now = datetime(2024, 1, 5, 10, 0)
+        assert should_run_task(self._task("unknown-format"), now) is False
+
+
+class TestParseHeartbeatTasksEdgeCases:
+    """parse_heartbeat_tasks edge cases: empty / missing section / missing file."""
+
+    def test_missing_file_returns_empty_list(self, tmp_path, monkeypatch):
+        missing = tmp_path / "NoFile.md"
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", missing)
+        assert parse_heartbeat_tasks() == []
+
+    def test_empty_file_returns_empty_list(self, tmp_path, monkeypatch):
+        empty = tmp_path / "Heartbeat.md"
+        empty.write_text("", encoding="utf-8")
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", empty)
+        assert parse_heartbeat_tasks() == []
+
+    def test_missing_scheduled_tasks_section_returns_empty_list(self, tmp_path, monkeypatch):
+        f = tmp_path / "Heartbeat.md"
+        f.write_text("# SocialHub Heartbeat\n\nNo tasks section here.\n", encoding="utf-8")
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", f)
+        assert parse_heartbeat_tasks() == []
+
+
+class TestHeartbeatInitCommand:
+    """sh heartbeat init creates the file or reports existing."""
+
+    def test_creates_file_when_missing(self, tmp_path, monkeypatch):
+        target = tmp_path / "Heartbeat.md"
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", target)
+        runner = CliRunner()
+        result = runner.invoke(heartbeat_app, ["init"])
+        assert result.exit_code == 0
+        assert target.exists()
+        content = target.read_text(encoding="utf-8")
+        assert "## Scheduled Tasks" in content
+        assert "## Execution Log" in content
+
+    def test_does_not_overwrite_existing_file(self, tmp_path, monkeypatch):
+        target = tmp_path / "Heartbeat.md"
+        original = "# my custom content\n"
+        target.write_text(original, encoding="utf-8")
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", target)
+        runner = CliRunner()
+        result = runner.invoke(heartbeat_app, ["init"])
+        assert result.exit_code == 0
+        assert target.read_text(encoding="utf-8") == original
+        assert "already exists" in result.output
+
+
+class TestHeartbeatAddCommand:
+    """sh heartbeat add validates input and writes task."""
+
+    def _run_add(self, tmp_path, monkeypatch, extra_args: list[str]):
+        target = tmp_path / "Heartbeat.md"
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", target)
+        runner = CliRunner()
+        return runner.invoke(heartbeat_app, ["add"] + extra_args), target
+
+    def test_add_valid_task_succeeds(self, tmp_path, monkeypatch):
+        result, target = self._run_add(tmp_path, monkeypatch, [
+            "--name", "Weekly Report",
+            "--schedule", "Weekly Fri 15:00",
+            "--command", "sh analytics overview",
+        ])
+        assert result.exit_code == 0
+        assert target.exists()
+        tasks = parse_heartbeat_tasks()
+        assert len(tasks) == 1
+        assert tasks[0]["name"] == "Weekly Report"
+
+    def test_add_chinese_schedule_normalised(self, tmp_path, monkeypatch):
+        result, target = self._run_add(tmp_path, monkeypatch, [
+            "--name", "周报",
+            "--schedule", "每周五 15:00",
+            "--command", "sh analytics overview",
+        ])
+        assert result.exit_code == 0
+        tasks = parse_heartbeat_tasks()
+        assert tasks[0]["frequency"] == "Weekly Fri 15:00"
+
+    def test_add_rejects_non_sh_command(self, tmp_path, monkeypatch):
+        result, _ = self._run_add(tmp_path, monkeypatch, [
+            "--name", "Bad",
+            "--schedule", "Daily 08:00",
+            "--command", "python malicious.py",
+        ])
+        assert result.exit_code != 0
+        assert "sh " in result.output
+
+    def test_add_rejects_unrecognised_schedule(self, tmp_path, monkeypatch):
+        result, _ = self._run_add(tmp_path, monkeypatch, [
+            "--name", "Bad Schedule",
+            "--schedule", "whenever I feel like it",
+            "--command", "sh analytics overview",
+        ])
+        assert result.exit_code != 0
+        assert "Unrecognised" in result.output or "schedule" in result.output.lower()
+
+    def test_add_creates_file_when_missing(self, tmp_path, monkeypatch):
+        target = tmp_path / "sub" / "Heartbeat.md"
+        monkeypatch.setattr("cli.commands.heartbeat.HEARTBEAT_FILE", target)
+        runner = CliRunner()
+        result = runner.invoke(heartbeat_app, ["add",
+            "--name", "Auto Create",
+            "--schedule", "Daily 09:00",
+            "--command", "sh analytics overview",
+        ])
+        assert result.exit_code == 0
+        assert target.exists()

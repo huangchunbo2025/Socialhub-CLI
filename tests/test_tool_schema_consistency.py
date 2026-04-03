@@ -166,6 +166,25 @@ def test_mcp_tools_have_required_schema_fields(mcp_tools_names):
     assert not errors, "工具 Schema 字段验证失败:\n" + "\n".join(errors)
 
 
+def test_tools_list_matches_handlers(server_handlers):
+    """server.py TOOLS list names must exactly match _HANDLERS keys.
+
+    Adding a tool to one without the other causes either undiscoverable tools
+    (in TOOLS but no handler) or reachable-but-undeclared tools (in _HANDLERS
+    but missing from TOOLS schema list).
+    """
+    from mcp_server.server import TOOLS
+    tools_names = {t.name for t in TOOLS}
+    in_tools_not_handlers = tools_names - server_handlers
+    in_handlers_not_tools = server_handlers - tools_names
+    assert not in_tools_not_handlers, (
+        f"TOOLS 中声明但 _HANDLERS 中缺少处理器: {in_tools_not_handlers}"
+    )
+    assert not in_handlers_not_tools, (
+        f"_HANDLERS 中有处理器但未在 TOOLS 中声明（schema 不可见）: {in_handlers_not_tools}"
+    )
+
+
 def test_declarative_agent_instructions_tool_names_exist_in_handlers(server_handlers):
     """declarativeAgent.json instructions 中出现的 analytics_* 工具名必须在 _HANDLERS 中存在。
 

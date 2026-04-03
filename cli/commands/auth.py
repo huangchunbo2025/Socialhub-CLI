@@ -1,7 +1,6 @@
 """Authentication management commands (sh auth login/logout/status)."""
 
 from datetime import datetime, timezone
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -17,9 +16,9 @@ console = Console()
 
 @app.command("login")
 def login(
-    tenant_id: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID"),
-    account: Optional[str] = typer.Option(None, "--account", "-a", help="Login account"),
-    password: Optional[str] = typer.Option(None, "--password", "-p", help="Account password"),
+    tenant_id: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID"),
+    account: str | None = typer.Option(None, "--account", "-a", help="Login account"),
+    password: str | None = typer.Option(None, "--password", "-p", help="Account password"),
 ) -> None:
     """Authenticate with the SocialHub platform."""
     config = load_config()

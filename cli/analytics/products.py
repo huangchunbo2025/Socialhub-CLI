@@ -2,7 +2,8 @@
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..output.export import format_output
 from .common import (
     _compute_date_range,
@@ -84,8 +85,8 @@ def _get_mcp_products(config, period: str, by_category: bool, limit: int) -> lis
 
 def _print_products(rows: list, period: str, by_category: bool, output: str = None) -> None:
     """Rich display for product/category analytics."""
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No product data found[/yellow]")

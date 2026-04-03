@@ -2,7 +2,8 @@
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..output.export import format_output
 from .common import (
     _compute_date_range,
@@ -52,8 +53,8 @@ def _get_mcp_stores(config, period: str, limit: int) -> list:
 
 
 def _print_stores(rows: list, period: str, output: str = None) -> None:
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if output:
         format_output(rows, "json", output)

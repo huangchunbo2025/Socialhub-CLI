@@ -1,11 +1,11 @@
 """Report generation functions."""
 
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 
 console = Console()
 
@@ -187,29 +187,29 @@ def _build_report_markdown(data: dict) -> str:
 
     lines = [
         f"# {period} Business Report",
-        f"",
+        "",
         f"_Period: {start} ~ {end}_  |  _Generated: {gen}_",
-        f"",
-        f"---",
-        f"",
-        f"## KPI Summary",
-        f"",
-        f"| Metric | Current Period | vs Prior Period |",
-        f"| --- | --- | --- |",
+        "",
+        "---",
+        "",
+        "## KPI Summary",
+        "",
+        "| Metric | Current Period | vs Prior Period |",
+        "| --- | --- | --- |",
         f"| GMV (¥) | {gmv_cur:,.0f} | {_pct(cur, prior, 'gmv', True)} |",
         f"| Orders | {orders_cur:,} | {_pct(cur, prior, 'orders', False)} |",
         f"| New Buyers | {buyers_cur:,} | {_pct(cur, prior, 'new_buyers', False)} |",
         f"| AOV (¥) | {aov_cur:,.1f} | {_pct(cur, prior, 'aov', True)} |",
-        f"",
+        "",
     ]
 
     # Daily trend
     if daily:
         lines += [
-            f"## Daily GMV Trend",
-            f"",
-            f"| Date | GMV (¥) |",
-            f"| --- | --- |",
+            "## Daily GMV Trend",
+            "",
+            "| Date | GMV (¥) |",
+            "| --- | --- |",
         ]
         for r in daily:
             day = r.get("day", "-")
@@ -220,10 +220,10 @@ def _build_report_markdown(data: dict) -> str:
     # Top products
     if top_p:
         lines += [
-            f"## Top Products",
-            f"",
-            f"| Product | GMV (¥) | Qty |",
-            f"| --- | --- | --- |",
+            "## Top Products",
+            "",
+            "| Product | GMV (¥) | Qty |",
+            "| --- | --- | --- |",
         ]
         for p in top_p:
             pname = p.get("product_name", "-")
@@ -233,8 +233,8 @@ def _build_report_markdown(data: dict) -> str:
         lines.append("")
 
     lines += [
-        f"---",
-        f"",
+        "---",
+        "",
         f"_Source: SocialHub.AI CLI — auto-generated {period} report_",
     ]
     return "\n".join(lines)
@@ -242,15 +242,15 @@ def _build_report_markdown(data: dict) -> str:
 
 def _print_report_console(data: dict) -> None:
     """Print a condensed report to the console."""
-    from rich.panel import Panel
     from rich.markdown import Markdown
+    from rich.panel import Panel
 
     md = _build_report_markdown(data)
     console.print(Panel(Markdown(md), title=f"[bold cyan]{data['period'].capitalize()} Report[/bold cyan]",
                          border_style="cyan"))
 
 
-def _write_md_report(md: str, output: Optional[str], title: str) -> None:
+def _write_md_report(md: str, output: str | None, title: str) -> None:
     """Write or print a markdown report. Shared by all report sub-types."""
     if output:
         ext = Path(output).suffix.lower()
@@ -258,7 +258,7 @@ def _write_md_report(md: str, output: Optional[str], title: str) -> None:
         Path(out_path).write_text(md, encoding="utf-8")
         console.print(f"[green]Report exported to {out_path}[/green]")
     else:
-        from rich.panel import Panel
         from rich.markdown import Markdown
+        from rich.panel import Panel
         console.print(Panel(Markdown(md), title=f"[bold cyan]{title}[/bold cyan]",
                             border_style="cyan"))

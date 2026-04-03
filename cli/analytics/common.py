@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
 from ..config import load_config
 
 console = Console()

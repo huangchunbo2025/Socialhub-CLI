@@ -1,13 +1,12 @@
 """MCP (Model Context Protocol) commands for analytics database."""
 
 import json
-from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.table import Table
 
 from ..api.mcp_client import MCPClient, MCPConfig, MCPError
 from ..config import load_config
@@ -32,7 +31,7 @@ def _print_mcp_unavailable(err: MCPError) -> None:
         )
 
 
-def _build_mcp_config(tenant: Optional[str] = None) -> MCPConfig:
+def _build_mcp_config(tenant: str | None = None) -> MCPConfig:
     app_config = load_config()
     return MCPConfig(
         sse_url=app_config.mcp.sse_url,
@@ -43,12 +42,12 @@ def _build_mcp_config(tenant: Optional[str] = None) -> MCPConfig:
 
 @app.command("connect")
 def mcp_connect(
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """Connect to MCP analytics database and show info."""
     config = _build_mcp_config(tenant)
 
-    console.print(f"\n[cyan]Connecting to MCP...[/cyan]")
+    console.print("\n[cyan]Connecting to MCP...[/cyan]")
     console.print(f"  SSE: {config.sse_url}")
     console.print(f"  Tenant: {config.tenant_id}\n")
 
@@ -88,10 +87,10 @@ def mcp_connect(
 @app.command("query")
 def mcp_query(
     sql: str = typer.Argument(..., help="SQL query to execute"),
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
-    database: Optional[str] = typer.Option(None, "--database", "-d", help="Database name"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    database: str | None = typer.Option(None, "--database", "-d", help="Database name"),
     format: str = typer.Option("table", "--format", "-f", help="Output: table, json, csv"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Output file"),
     timeout: int = typer.Option(60, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Execute SQL query via MCP."""
@@ -101,7 +100,7 @@ def mcp_query(
         console.print(f"[red]SQL too long (max {_MAX_SQL_LEN:,} chars).[/red]")
         raise typer.Exit(1)
 
-    console.print(f"\n[cyan]Query:[/cyan]")
+    console.print("\n[cyan]Query:[/cyan]")
     console.print(Syntax(sql, "sql"))
 
     with MCPClient(config) as client:
@@ -174,8 +173,8 @@ def mcp_query(
 
 @app.command("tables")
 def mcp_tables(
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
-    database: Optional[str] = typer.Option(None, "--database", "-d", help="Database name"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    database: str | None = typer.Option(None, "--database", "-d", help="Database name"),
 ) -> None:
     """List database tables."""
     config = _build_mcp_config(tenant)
@@ -210,8 +209,8 @@ def mcp_tables(
 @app.command("schema")
 def mcp_schema(
     table_name: str = typer.Argument(..., help="Table name"),
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
-    database: Optional[str] = typer.Option(None, "--database", "-d", help="Database name"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    database: str | None = typer.Option(None, "--database", "-d", help="Database name"),
 ) -> None:
     """Show table schema."""
     config = _build_mcp_config(tenant)
@@ -247,7 +246,7 @@ def mcp_schema(
 
 @app.command("databases")
 def mcp_databases(
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """List available databases."""
     config = _build_mcp_config(tenant)
@@ -277,7 +276,7 @@ def mcp_databases(
 
 @app.command("stats")
 def mcp_stats(
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """Show database statistics."""
     config = _build_mcp_config(tenant)
@@ -303,7 +302,7 @@ def mcp_stats(
 
 @app.command("sql")
 def mcp_sql(
-    tenant: Optional[str] = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
+    tenant: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID (defaults to config)"),
 ) -> None:
     """Interactive SQL session."""
     config = _build_mcp_config(tenant)

@@ -1,12 +1,11 @@
 """Skill manager for installation, updates, and removal."""
 
+import logging
 import shutil
 import subprocess
 import sys
 import zipfile
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 import yaml
 from rich.console import Console
@@ -23,11 +22,11 @@ from .security import (
     SecurityAuditLogger,
     SecurityError,
     SignatureVerifier,
-    validate_skill_source,
 )
-from .store_client import SkillsStoreClient, StoreError, compute_package_hash
+from .store_client import SkillsStoreClient, StoreError
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class SkillManagerError(Exception):
@@ -48,7 +47,7 @@ class SkillManager:
         self.permission_prompter = PermissionPrompter(console)
         self.revocation_manager = RevocationListManager()
         self.audit_logger = SecurityAuditLogger()
-        self._store_client: Optional[SkillsStoreClient] = None
+        self._store_client: SkillsStoreClient | None = None
 
     @property
     def store(self) -> SkillsStoreClient:
@@ -59,8 +58,8 @@ class SkillManager:
 
     def search(
         self,
-        query: Optional[str] = None,
-        category: Optional[str] = None,
+        query: str | None = None,
+        category: str | None = None,
     ) -> list:
         """Search skills in the store."""
         return self.store.search(query=query, category=category)
@@ -72,7 +71,7 @@ class SkillManager:
     def install(
         self,
         name: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         force: bool = False,
     ) -> InstalledSkill:
         """Install a skill from the official store.
@@ -115,15 +114,13 @@ class SkillManager:
             if not version:
                 version = skill_info.version
 
-            # Step 2: Get download info (hash, signature)
+            # Step 2: Get download info (hash) — MANDATORY: abort if unavailable
             progress.update(task, description="Verifying skill...")
             try:
                 download_info = self.store.get_download_info(name, version)
                 expected_hash = download_info.get("hash", "")
-                signature = download_info.get("signature", "")
-            except StoreError:
-                expected_hash = ""
-                signature = ""
+            except StoreError as e:
+                raise SkillManagerError(f"Failed to fetch download info: {e.message}")
 
             # Step 3: Download package
             progress.update(task, description=f"Downloading {name}@{version}...")
@@ -135,7 +132,6 @@ class SkillManager:
             # Step 4: Verify hash (MANDATORY - cannot be skipped)
             progress.update(task, description="Verifying package integrity...")
             if expected_hash:
-                actual_hash = compute_package_hash(package_content)
                 if not self.hash_verifier.verify_hash(
                     package_content, expected_hash, "sha256"
                 ):
@@ -147,9 +143,10 @@ class SkillManager:
                         "The downloaded package may be corrupted or tampered with."
                     )
             else:
-                # In strict mode, require hash for all packages
-                console.print(
-                    "[yellow]Warning: No hash provided for package verification[/yellow]"
+                self.audit_logger.log_install_blocked(name, "No hash provided for package verification")
+                raise SecurityError(
+                    "Package integrity check failed: no hash provided. "
+                    "Cannot verify package authenticity."
                 )
 
             # Step 5: Save to cache
@@ -169,6 +166,17 @@ class SkillManager:
 
             try:
                 with zipfile.ZipFile(cache_path, "r") as zf:
+                    _resolved_install = install_path.resolve()
+                    for member in zf.namelist():
+                        member_path = (_resolved_install / member).resolve()
+                        if not str(member_path).startswith(str(_resolved_install)):
+                            self.audit_logger.log_install_blocked(
+                                name, f"Zip Slip detected: entry '{member}'"
+                            )
+                            raise SkillManagerError(
+                                f"Invalid skill package: entry '{member}' would extract "
+                                "outside the install directory"
+                            )
                     zf.extractall(install_path)
             except zipfile.BadZipFile:
                 raise SkillManagerError("Invalid skill package (not a valid zip file)")
@@ -181,7 +189,7 @@ class SkillManager:
                 raise SkillManagerError("Invalid skill package (missing skill.yaml)")
 
             try:
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     manifest_data = yaml.safe_load(f)
                 manifest = SkillManifest(**manifest_data)
             except Exception as e:
@@ -277,6 +285,14 @@ class SkillManager:
             )
             self.registry.register_skill(skill_record)
 
+            # Invalidate the validator's command-tree cache so AI-generated commands
+            # that reference the newly installed skill are accepted immediately.
+            try:
+                from ..ai.validator import invalidate_cmd_tree
+                invalidate_cmd_tree()
+            except Exception:
+                pass  # non-fatal; tree will be rebuilt on next validation
+
             progress.update(task, description="[green]Installation complete!")
 
         # Sync to backend (fire-and-forget — local install already done)
@@ -294,11 +310,13 @@ class SkillManager:
                 [sys.executable, "-m", "pip", "install", "-q"] + dependencies,
                 check=True,
                 capture_output=True,
+                timeout=300,
             )
+        except subprocess.TimeoutExpired:
+            raise SkillManagerError("Dependency installation timed out (>300s)")
         except subprocess.CalledProcessError as e:
-            raise SkillManagerError(
-                f"Failed to install dependencies: {e.stderr.decode() if e.stderr else str(e)}"
-            )
+            logger.debug("pip install failed: %s", e.stderr.decode() if e.stderr else str(e))
+            raise SkillManagerError("Failed to install dependencies (check debug log for details)")
 
     def uninstall(self, name: str) -> bool:
         """Uninstall a skill.
@@ -321,6 +339,13 @@ class SkillManager:
         # Remove from registry
         self.registry.unregister_skill(name)
 
+        # Invalidate command-tree cache so AI no longer suggests this skill's commands.
+        try:
+            from ..ai.validator import invalidate_cmd_tree
+            invalidate_cmd_tree()
+        except Exception:
+            pass  # non-fatal
+
         # Revoke permissions
         self.permission_checker.revoke_all_permissions(name)
 
@@ -331,7 +356,7 @@ class SkillManager:
 
     def update(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
         all_skills: bool = False,
     ) -> list[InstalledSkill]:
         """Update installed skill(s).

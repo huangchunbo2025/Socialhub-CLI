@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 
 _GROUP_ID_RE = re.compile(r"^[0-9a-zA-Z_\-]{1,64}$")
 _VALID_PERIODS = ("7d", "30d", "90d", "365d")

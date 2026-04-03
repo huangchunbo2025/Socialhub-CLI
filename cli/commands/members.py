@@ -10,7 +10,6 @@ not yet exposed by the existing analytics commands:
 
 import re
 from datetime import datetime, timedelta
-from typing import Optional
 
 import typer
 from rich import box
@@ -18,7 +17,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
 from ..output.table import print_error
 
@@ -37,7 +37,7 @@ VALID_TOP_BY = frozenset({"spend", "orders"})
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_date_range(period: str, from_date: Optional[str], to_date: Optional[str]):
+def _resolve_date_range(period: str, from_date: str | None, to_date: str | None):
     """Return (start_date, end_date) as date objects.
 
     --from / --to take priority over --period.
@@ -132,8 +132,8 @@ def _pct(part, total) -> str:
 @app.command("overview")
 def members_overview(
     period: str = typer.Option("30d", "--period", "-p", help="Period for new-member count: 7d/30d/90d/365d/all"),
-    from_date: Optional[str] = typer.Option(None, "--from", help="Start date YYYY-MM-DD (overrides --period)"),
-    to_date: Optional[str] = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
+    from_date: str | None = typer.Option(None, "--from", help="Start date YYYY-MM-DD (overrides --period)"),
+    to_date: str | None = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
 ):
     """Member KPI overview: total, active, buying, new, pre-churn, churned, silent."""
     config = load_config()
@@ -287,8 +287,8 @@ def tier_distribution():
 
 @app.command("growth")
 def members_growth(
-    from_date: Optional[str] = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
-    to_date: Optional[str] = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
+    from_date: str | None = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
+    to_date: str | None = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
     period: str = typer.Option("90d", "--period", "-p", help="Fallback period if --from/--to not set"),
     by: str = typer.Option("month", "--by", help="Group by: day / week / month"),
 ):
@@ -356,7 +356,7 @@ def members_growth(
 @app.command("churn")
 def members_churn(
     period: str = typer.Option("30d", "--period", "-p", help="Snapshot period: 7d/30d/90d/365d"),
-    tier: Optional[str] = typer.Option(None, "--tier", help="Filter by tier name"),
+    tier: str | None = typer.Option(None, "--tier", help="Filter by tier name"),
 ):
     """Churn analysis by tier: pre-churn, churned, and silent counts."""
     config = load_config()
@@ -494,7 +494,7 @@ def members_at_risk(
 @app.command("rfm")
 def members_rfm(
     limit: int = typer.Option(50, "--limit", "-n", help="Number of rows to return"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to CSV file path"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to CSV file path"),
 ):
     """RFM customer value segmentation (from ads_v_rfm view)."""
     config = load_config()
@@ -524,7 +524,8 @@ def members_rfm(
     if output:
         # Export to CSV
         try:
-            import csv, pathlib
+            import csv
+            import pathlib
             out_path = pathlib.Path(output)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
@@ -554,8 +555,8 @@ def members_top(
     by: str = typer.Option("spend", "--by", help="Rank by: spend / orders"),
     limit: int = typer.Option(20, "--limit", "-n", help="Number of members to show"),
     period: str = typer.Option("365d", "--period", "-p", help="Purchase period: 7d/30d/90d/365d"),
-    from_date: Optional[str] = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
-    to_date: Optional[str] = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
+    from_date: str | None = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
+    to_date: str | None = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
 ):
     """Top members ranked by total spend or order count."""
     if by not in VALID_TOP_BY:
@@ -743,7 +744,7 @@ def _print_upgrade_candidates(
             if gap_cny:
                 gap = gap_cny - spend
                 gap_str = (
-                    f"[green]QUALIFIED[/green]" if gap <= 0
+                    "[green]QUALIFIED[/green]" if gap <= 0
                     else f"[yellow]{gap:,.2f}[/yellow]"
                 )
                 row_data.append(gap_str)
@@ -771,12 +772,12 @@ def _print_upgrade_candidates(
 @app.command("upgrade-candidates")
 def members_upgrade_candidates(
     period: str = typer.Option("365d", "--period", "-p", help="Spend window: 7d/30d/90d/365d"),
-    from_date: Optional[str] = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
-    to_date: Optional[str] = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
-    tier: Optional[str] = typer.Option(None, "--tier", help="Filter to specific tier code"),
+    from_date: str | None = typer.Option(None, "--from", help="Start date YYYY-MM-DD"),
+    to_date: str | None = typer.Option(None, "--to", help="End date YYYY-MM-DD"),
+    tier: str | None = typer.Option(None, "--tier", help="Filter to specific tier code"),
     limit: int = typer.Option(50, "--limit", "-n", help="Total rows to return (across all tiers)"),
-    gap_cny: Optional[float] = typer.Option(None, "--gap-cny", help="Show gap to this CNY threshold"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON"),
+    gap_cny: float | None = typer.Option(None, "--gap-cny", help="Show gap to this CNY threshold"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON"),
 ) -> None:
     """Members closest to tier upgrade — ranked by period spend within each tier.
 

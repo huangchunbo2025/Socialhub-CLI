@@ -1,7 +1,6 @@
 """Workflow commands — high-level business workflows composing analytics."""
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 import typer
 from rich import box as rich_box
@@ -9,9 +8,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
-from ..output.export import format_output
 from ..output.table import print_error
 
 app = typer.Typer(help="Business workflow shortcuts (daily-brief, etc.)")
@@ -107,7 +106,7 @@ def _get_mcp_daily_brief(config, period: str) -> dict:
     cur_avg  = _avg(cur,  n_cur_days)
     base_avg = _avg(base, n_base_days)
 
-    def _delta(cur_val, base_val) -> Optional[float]:
+    def _delta(cur_val, base_val) -> float | None:
         if base_val and base_val != 0:
             return (cur_val - base_val) / abs(base_val) * 100
         return None
@@ -139,7 +138,7 @@ def _fmt_cny(v: float) -> str:
     return f"¥{v:.0f}"
 
 
-def _fmt_delta(pct: Optional[float]) -> str:
+def _fmt_delta(pct: float | None) -> str:
     if pct is None:
         return "[dim]—[/dim]"
     arrow = "▲" if pct >= 0 else "▼"
@@ -220,7 +219,7 @@ def workflow_daily_brief(
         "today", "--period", "-p",
         help="Time period: today, 7d, 30d",
     ),
-    output: Optional[str] = typer.Option(
+    output: str | None = typer.Option(
         None, "--output", "-o",
         help="Export to file (.md or .html)",
     ),

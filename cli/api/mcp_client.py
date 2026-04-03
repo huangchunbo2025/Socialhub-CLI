@@ -2,12 +2,12 @@
 
 import json
 import logging
+import queue
+import threading
 import time
 import uuid
-import threading
-import queue
-from typing import Any, Optional
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from rich.console import Console
@@ -40,23 +40,23 @@ MCPConfig = MCPConnectionConfig
 class MCPClient:
     """Client for MCP analytics database service."""
 
-    def __init__(self, config: Optional[MCPConfig] = None):
+    def __init__(self, config: MCPConfig | None = None):
         self.config = config or MCPConfig()
-        self._session_id: Optional[str] = None
-        self._sse_thread: Optional[threading.Thread] = None
+        self._session_id: str | None = None
+        self._sse_thread: threading.Thread | None = None
         self._running = False
         self._responses: dict[str, queue.Queue] = {}
         self._tools: list[dict] = []
         self._connected = False
         self._initialized = False
         self._session_ready = threading.Event()
-        self._last_error: Optional[str] = None
-        self._sse_response: Optional[httpx.Response] = None
+        self._last_error: str | None = None
+        self._sse_response: httpx.Response | None = None
         self._connect_timeout = 10.0
         self._post_timeout = 5.0
         self._post_retries = 1
-        self._auth_token: Optional[str] = None
-        self._auth_tenant_id: Optional[str] = None
+        self._auth_token: str | None = None
+        self._auth_tenant_id: str | None = None
         self._load_auth_credentials()
 
     def _load_auth_credentials(self) -> None:
@@ -103,7 +103,7 @@ class MCPClient:
                 "tenant_id": self._auth_tenant_id,
                 "Authorization": f"Bearer {self._auth_token}",
             }
-        
+
         # Fallback to config.api_key (deprecated path)
         headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
         if self.config.api_key:
@@ -224,7 +224,7 @@ class MCPClient:
                 console.print(f"[red]SSE Error: {e}[/red]")
                 self._session_ready.set()
 
-    def _handle_sse_event(self, event_type: Optional[str], data: str):
+    def _handle_sse_event(self, event_type: str | None, data: str):
         """Handle incoming SSE event."""
         try:
             if event_type == "endpoint":
@@ -239,7 +239,7 @@ class MCPClient:
         except json.JSONDecodeError:
             pass
 
-    def _send_request(self, method: str, params: Optional[dict] = None, timeout: Optional[int] = None) -> dict:
+    def _send_request(self, method: str, params: dict | None = None, timeout: int | None = None) -> dict:
         """Send MCP request and wait for response via SSE."""
         request_id = uuid.uuid4().hex
         timeout = timeout or self.config.timeout
@@ -377,7 +377,7 @@ class MCPClient:
         finally:
             del self._responses[request_id]
 
-    def _send_notification(self, method: str, params: Optional[dict] = None):
+    def _send_notification(self, method: str, params: dict | None = None):
         """Send MCP notification (no response expected)."""
         message = {"jsonrpc": "2.0", "method": method}
         if params:
@@ -431,7 +431,7 @@ class MCPClient:
             return self._tools
         return []
 
-    def call_tool(self, tool_name: str, arguments: Optional[dict] = None, timeout: int = 60) -> Any:
+    def call_tool(self, tool_name: str, arguments: dict | None = None, timeout: int = 60) -> Any:
         """Call an MCP tool."""
         started = time.time()
         result = self._send_request("tools/call", {
@@ -468,7 +468,7 @@ class MCPClient:
 
         return result
 
-    def _parse_tsv(self, text: str) -> Optional[list[dict]]:
+    def _parse_tsv(self, text: str) -> list[dict] | None:
         """Parse tab-separated values into list of dictionaries."""
         lines = text.strip().split("\n")
         if len(lines) < 2:
@@ -499,21 +499,21 @@ class MCPClient:
 
         return result if result else None
 
-    def query(self, sql: str, timeout: int = 60, database: Optional[str] = None) -> Any:
+    def query(self, sql: str, timeout: int = 60, database: str | None = None) -> Any:
         """Execute SQL query via analytics_executeQuery tool."""
         args = {"sql": sql}  # Note: parameter name is 'sql', not 'query'
         if database:
             args["database"] = database
         return self.call_tool("analytics_executeQuery", args, timeout=timeout)
 
-    def list_tables(self, database: Optional[str] = None, timeout: int = 30) -> Any:
+    def list_tables(self, database: str | None = None, timeout: int = 30) -> Any:
         """List tables via analytics_listTables tool."""
         args = {}
         if database:
             args["database"] = database
         return self.call_tool("analytics_listTables", args, timeout=timeout)
 
-    def get_table_schema(self, table_name: str, database: Optional[str] = None, timeout: int = 30) -> Any:
+    def get_table_schema(self, table_name: str, database: str | None = None, timeout: int = 30) -> Any:
         """Get table schema via analytics_getTableSchema tool."""
         args = {"table": table_name}
         if database:

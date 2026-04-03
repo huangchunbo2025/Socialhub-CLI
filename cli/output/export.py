@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import pandas as pd
 from rich.console import Console
@@ -18,7 +18,7 @@ class ExportError(Exception):
 
 
 def export_to_csv(
-    data: Union[pd.DataFrame, list[dict[str, Any]]],
+    data: pd.DataFrame | list[dict[str, Any]],
     output_path: str,
     encoding: str = "utf-8-sig",  # UTF-8 with BOM for Excel compatibility
 ) -> str:
@@ -41,7 +41,7 @@ def export_to_csv(
 
 
 def export_to_excel(
-    data: Union[pd.DataFrame, list[dict[str, Any]], dict[str, pd.DataFrame]],
+    data: pd.DataFrame | list[dict[str, Any]] | dict[str, pd.DataFrame],
     output_path: str,
     sheet_name: str = "Data",
 ) -> str:
@@ -75,7 +75,7 @@ def export_to_excel(
 
 
 def export_to_json(
-    data: Union[pd.DataFrame, list[dict[str, Any]], dict[str, Any]],
+    data: pd.DataFrame | list[dict[str, Any]] | dict[str, Any],
     output_path: str,
     indent: int = 2,
     ensure_ascii: bool = False,
@@ -102,10 +102,10 @@ def export_to_json(
 
 
 def export_to_markdown(
-    data: Union[pd.DataFrame, list[dict[str, Any]], dict[str, Any]],
+    data: pd.DataFrame | list[dict[str, Any]] | dict[str, Any],
     output_path: str,
     title: str = "Analytics Report",
-    metadata: Optional[dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Export data to a Markdown file with table formatting.
 
@@ -157,18 +157,18 @@ def export_to_markdown(
 
     lines.append("\n## Results\n")
     lines.extend(_render(data))
-    lines.append(f"\n---\n_Source: SocialHub.AI CLI_")
+    lines.append("\n---\n_Source: SocialHub.AI CLI_")
 
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path.absolute())
 
 
 def export_data(
-    data: Union[pd.DataFrame, list[dict[str, Any]]],
+    data: pd.DataFrame | list[dict[str, Any]],
     output_path: str,
-    format: Optional[str] = None,
+    format: str | None = None,
     title: str = "Analytics Report",
-    metadata: Optional[dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Export data to file, auto-detecting format from extension."""
     path = Path(output_path)
@@ -199,12 +199,12 @@ def export_data(
 
 
 def format_output(
-    data: Union[pd.DataFrame, list[dict[str, Any]], dict[str, Any]],
+    data: pd.DataFrame | list[dict[str, Any]] | dict[str, Any],
     format: str = "table",
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
     title: str = "Analytics Report",
-    metadata: Optional[dict[str, Any]] = None,
-) -> Optional[str]:
+    metadata: dict[str, Any] | None = None,
+) -> str | None:
     """Format and output data based on format type."""
     from .table import print_dataframe, print_dict, print_list
 

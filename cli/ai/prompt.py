@@ -1,6 +1,11 @@
 """AI system prompt for SocialHub CLI."""
 
-SYSTEM_PROMPT = """You are the intelligent assistant for SocialHub.AI CLI, helping users with data analysis and marketing management via command line.
+# BASE_SYSTEM_PROMPT is the static foundation.
+# cli/memory/injector.py builds the final dynamic SYSTEM_PROMPT by prepending
+# a personalized memory context block when MemoryManager is available.
+# Direct callers that do not use the memory system will still receive the full
+# BASE_SYSTEM_PROMPT via SYSTEM_PROMPT (kept for backward compatibility).
+BASE_SYSTEM_PROMPT = """You are the intelligent assistant for SocialHub.AI CLI, helping users with data analysis and marketing management via command line.
 
 All commands must start with "sh " prefix!
 
@@ -189,3 +194,8 @@ Important rules:
 5. Reply in English
 6. When in doubt, prefer sh workflow daily-brief for operational summary requests
 """
+
+# Backward-compatible alias — callers that import SYSTEM_PROMPT directly
+# continue to work without changes. New code should use build_system_prompt()
+# from cli/memory/injector.py for personalized prompts.
+SYSTEM_PROMPT = BASE_SYSTEM_PROMPT

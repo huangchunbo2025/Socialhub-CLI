@@ -11,12 +11,11 @@ import csv
 import json
 import sys
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
-
 
 # stderr-only console: progress and diagnostic messages go here, never pollute stdout
 _stderr_console = Console(stderr=True)
@@ -274,7 +273,7 @@ class OutputFormatter:
 # ---------------------------------------------------------------------------
 
 
-def get_formatter(ctx_obj: Optional[dict] = None) -> OutputFormatter:
+def get_formatter(ctx_obj: dict | None = None) -> OutputFormatter:
     """Construct an OutputFormatter from a Typer context *obj* dict.
 
     This is a convenience wrapper for callers that already have the context

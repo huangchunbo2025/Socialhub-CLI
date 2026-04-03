@@ -1,7 +1,6 @@
 """Points management commands."""
 
 import json
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -10,7 +9,7 @@ from rich.panel import Panel
 from ..api.client import APIError, SocialHubClient
 from ..config import load_config
 from ..output.export import format_output
-from ..output.table import create_table, print_dict, print_error, print_list, print_success
+from ..output.table import create_table, print_error
 
 app = typer.Typer(help="Points program management commands")
 console = Console()
@@ -22,7 +21,7 @@ app.add_typer(rules_app, name="rules")
 
 @rules_app.command("list")
 def list_points_rules(
-    rule_type: Optional[str] = typer.Option(None, "--type", "-t", help="Type filter (basic, promo)"),
+    rule_type: str | None = typer.Option(None, "--type", "-t", help="Type filter (basic, promo)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:

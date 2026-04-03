@@ -1,22 +1,22 @@
 """Table output formatting using Rich."""
 
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 console = Console()
 
 
 def create_table(
-    title: Optional[str] = None,
-    columns: Optional[list[str]] = None,
+    title: str | None = None,
+    columns: list[str] | None = None,
     show_header: bool = True,
     show_lines: bool = False,
-    box_style: Optional[str] = None,
+    box_style: str | None = None,
 ) -> Table:
     """Create a Rich table with styling."""
     from rich import box
@@ -48,9 +48,9 @@ def create_table(
 
 def print_dataframe(
     df: pd.DataFrame,
-    title: Optional[str] = None,
+    title: str | None = None,
     max_rows: int = 50,
-    columns: Optional[list[str]] = None,
+    columns: list[str] | None = None,
 ) -> None:
     """Print pandas DataFrame as a Rich table."""
     if df.empty:
@@ -76,7 +76,7 @@ def print_dataframe(
 
 def print_dict(
     data: dict[str, Any],
-    title: Optional[str] = None,
+    title: str | None = None,
     key_header: str = "Field",
     value_header: str = "Value",
 ) -> None:
@@ -106,8 +106,8 @@ def print_dict(
 
 def print_list(
     items: list[dict[str, Any]],
-    title: Optional[str] = None,
-    columns: Optional[list[str]] = None,
+    title: str | None = None,
+    columns: list[str] | None = None,
 ) -> None:
     """Print list of dictionaries as a table."""
     if not items:

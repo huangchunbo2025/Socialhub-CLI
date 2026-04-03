@@ -8,9 +8,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
 
 import yaml
 
@@ -184,7 +182,7 @@ class VersionManager:
         """Load version index from disk."""
         if self.VERSION_INDEX_PATH.exists():
             try:
-                with open(self.VERSION_INDEX_PATH, "r", encoding="utf-8") as f:
+                with open(self.VERSION_INDEX_PATH, encoding="utf-8") as f:
                     data = json.load(f)
                 for skill_name, versions in data.items():
                     self._version_index[skill_name] = {
@@ -192,7 +190,7 @@ class VersionManager:
                         for v, info in versions.items()
                     }
             except Exception as e:
-                self._logger.warning(f"Failed to load version index: {e}")
+                self._logger.warning("Failed to load version index: %s", e)
                 self._version_index = {}
 
     def _save_index(self) -> None:
@@ -221,9 +219,9 @@ class VersionManager:
 
         self._version_index[record.name][record.version] = record
         self._save_index()
-        self._logger.info(f"Registered {record.name} v{record.version}")
+        self._logger.info("Registered %s v%s", record.name, record.version)
 
-    def get_version(self, skill_name: str, version: str) -> Optional[SkillVersionRecord]:
+    def get_version(self, skill_name: str, version: str) -> SkillVersionRecord | None:
         """Get a specific version record.
 
         Args:
@@ -235,7 +233,7 @@ class VersionManager:
         """
         return self._version_index.get(skill_name, {}).get(version)
 
-    def get_latest_version(self, skill_name: str) -> Optional[SkillVersionRecord]:
+    def get_latest_version(self, skill_name: str) -> SkillVersionRecord | None:
         """Get the latest version of a skill.
 
         Args:
@@ -289,7 +287,7 @@ class VersionManager:
         self,
         skill_name: str,
         current_version: str
-    ) -> Optional[SkillVersionRecord]:
+    ) -> SkillVersionRecord | None:
         """Check if an update is available for a skill.
 
         Args:
@@ -469,7 +467,7 @@ def load_skill_versions_from_manifest(skill_path: Path) -> list[ChangelogEntry]:
     if not manifest_path.exists():
         return []
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = yaml.safe_load(f)
 
     changelog_data = manifest.get("changelog", [])

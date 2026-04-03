@@ -7,12 +7,11 @@ components (filesystem, network, execution) during skill execution.
 import logging
 import threading
 from pathlib import Path
-from typing import Optional, Set
 
 from ..security import SecurityAuditLogger
-from .filesystem import FileSystemSandbox, FileAccessDeniedError
-from .network import NetworkSandbox, NetworkAccessDeniedError
-from .execute import ExecuteSandbox, CommandExecutionDeniedError
+from .execute import CommandExecutionDeniedError, ExecuteSandbox
+from .filesystem import FileAccessDeniedError, FileSystemSandbox
+from .network import NetworkAccessDeniedError, NetworkSandbox
 
 # Global serialization lock: monkey-patch sandboxes are non-reentrant because they
 # overwrite process-global symbols (socket.socket, builtins.open, etc.). Concurrent
@@ -54,10 +53,10 @@ class SandboxManager:
     def __init__(
         self,
         skill_name: str,
-        permissions: Set[str],
-        allowed_paths: Optional[Set[Path]] = None,
-        allowed_hosts: Optional[Set[str]] = None,
-        allowed_commands: Optional[Set[str]] = None,
+        permissions: set[str],
+        allowed_paths: set[Path] | None = None,
+        allowed_hosts: set[str] | None = None,
+        allowed_commands: set[str] | None = None,
     ):
         """Initialize the sandbox manager.
 
@@ -111,7 +110,7 @@ class SandboxManager:
         if self._active:
             return
 
-        self._logger.info(f"Activating sandbox for skill: {self.skill_name}")
+        self._logger.info("Activating sandbox for skill: %s", self.skill_name)
         self._audit_logger.log_permission_granted(
             self.skill_name,
             f"sandbox_activated:permissions={','.join(self.permissions)}",
@@ -134,7 +133,7 @@ class SandboxManager:
         if not self._active:
             return
 
-        self._logger.info(f"Deactivating sandbox for skill: {self.skill_name}")
+        self._logger.info("Deactivating sandbox for skill: %s", self.skill_name)
 
         # Deactivate in reverse order: filesystem -> network -> execute
         self.filesystem_sandbox.deactivate()
@@ -251,7 +250,7 @@ class SandboxManager:
 
 def create_sandbox_from_permissions(
     skill_name: str,
-    permissions: Set[str],
+    permissions: set[str],
 ) -> SandboxManager:
     """Create a sandbox manager from a set of permissions.
 

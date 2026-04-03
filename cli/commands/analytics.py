@@ -1,134 +1,123 @@
 """Data analytics commands."""
 
 import json
-import re
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 
+from ..analytics.advanced import (
+    _get_mcp_anomaly,
+    _get_mcp_canvas,
+    _get_mcp_ltv,
+    _get_mcp_recommend,
+    _get_mcp_repurchase,
+    _get_mcp_repurchase_path,
+    _get_mcp_rfm,
+    _print_anomaly,
+    _print_canvas,
+    _print_ltv,
+    _print_recommend,
+    _print_repurchase,
+    _print_repurchase_path,
+    _print_rfm,
+)
+from ..analytics.campaigns import (
+    _build_postmortem_markdown,
+    _get_mcp_campaign_audience,
+    _get_mcp_campaign_detail,
+    _get_mcp_campaign_postmortem,
+    _get_mcp_campaign_roi,
+    _get_mcp_campaigns,
+    _print_campaign_audience,
+    _print_campaign_detail,
+    _print_campaign_roi,
+    _print_campaigns_mcp,
+)
+
+# Analytics sub-module imports
+from ..analytics.common import (
+    _compute_date_range,
+    _print_sql_trace,
+    _safe_date_filter,
+    _sql_trace_ctx,
+)
+from ..analytics.coupons import (
+    _get_mcp_coupon_anomaly,
+    _get_mcp_coupon_lift,
+    _get_mcp_coupons,
+    _get_mcp_coupons_by_rule,
+    _print_coupon_anomaly,
+    _print_coupon_lift,
+    _print_coupons_by_rule,
+    _print_coupons_mcp,
+)
+from ..analytics.customers import (
+    _get_mcp_customer_gender,
+    _get_mcp_customer_source,
+    _get_mcp_customers,
+    _get_mcp_retention,
+    _print_customer_gender,
+    _print_customer_source,
+)
+from ..analytics.funnel import (
+    _build_diagnose_prompt,
+    _get_mcp_diagnose_context,
+    _get_mcp_funnel,
+    _print_funnel,
+)
+from ..analytics.loyalty import (
+    _build_loyalty_health_markdown,
+    _get_mcp_loyalty,
+    _get_mcp_loyalty_health,
+    _get_mcp_points,
+    _get_mcp_points_at_risk,
+    _get_mcp_points_daily_trend,
+    _print_loyalty_mcp,
+    _print_points_at_risk,
+    _print_points_daily_trend,
+    _print_points_mcp,
+)
+from ..analytics.orders import (
+    _get_mcp_order_returns,
+    _get_mcp_orders,
+    _get_mcp_orders_compare_both,
+    _print_order_returns,
+    _print_orders_by_product,
+    _print_orders_compare,
+)
+from ..analytics.overview import (
+    _compute_compare_range,
+    _get_mcp_overview,
+    _get_mcp_overview_compare_both,
+    _print_overview_compare,
+)
+from ..analytics.products import (
+    _get_mcp_products,
+    _print_products,
+)
+from ..analytics.report import (
+    _build_report_markdown,
+    _get_mcp_report,
+    _write_md_report,
+)
+from ..analytics.stores import (
+    _get_mcp_stores,
+    _print_stores,
+)
 from ..api.client import APIError, SocialHubClient
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
 from ..local.processor import DataProcessor
 from ..local.reader import LocalDataReader, read_customers_csv, read_orders_csv
 from ..output.export import export_data, format_output, print_export_success
 from ..output.formatter import OutputFormatter
 from ..output.table import (
-    print_dataframe,
     print_dict,
     print_error,
-    print_list,
     print_overview,
     print_retention_table,
-)
-
-# Analytics sub-module imports
-from ..analytics.common import (
-    _sql_trace_ctx,
-    _print_sql_trace,
-    _compute_date_range,
-    _safe_date_filter,
-    _validate_group_by,
-    get_data_source,
-)
-from ..analytics.overview import (
-    _get_mcp_overview,
-    _get_mcp_report_data,
-    _compute_compare_range,
-    _get_mcp_overview_compare_both,
-    _print_overview_compare,
-    _fmt_cny,
-)
-from ..analytics.customers import (
-    _get_mcp_customers,
-    _get_mcp_retention,
-    _get_mcp_customer_source,
-    _print_customer_source,
-    _get_mcp_customer_gender,
-    _print_customer_gender,
-)
-from ..analytics.orders import (
-    _get_mcp_orders,
-    _get_mcp_order_returns,
-    _get_mcp_orders_tool_payload,
-    _print_order_returns,
-    _print_orders_by_product,
-    _get_mcp_orders_compare_both,
-    _print_orders_compare,
-)
-from ..analytics.campaigns import (
-    _sanitize_string_input,
-    _get_mcp_campaigns,
-    _print_campaigns_mcp,
-    _get_mcp_campaign_detail,
-    _print_campaign_detail,
-    _get_mcp_campaign_audience,
-    _print_campaign_audience,
-    _get_mcp_campaign_roi,
-    _print_campaign_roi,
-    _get_mcp_campaign_postmortem,
-    _build_postmortem_markdown,
-)
-from ..analytics.loyalty import (
-    _get_mcp_points,
-    _print_points_mcp,
-    _get_mcp_points_at_risk,
-    _print_points_at_risk,
-    _get_mcp_loyalty,
-    _print_loyalty_mcp,
-    _get_mcp_points_daily_trend,
-    _print_points_daily_trend,
-    _get_mcp_loyalty_health,
-    _build_loyalty_health_markdown,
-)
-from ..analytics.coupons import (
-    _get_mcp_coupons,
-    _print_coupons_mcp,
-    _get_mcp_coupon_lift,
-    _print_coupon_lift,
-    _get_mcp_coupons_by_rule,
-    _print_coupons_by_rule,
-    _get_mcp_coupon_anomaly,
-    _print_coupon_anomaly,
-)
-from ..analytics.products import (
-    _get_mcp_products,
-    _print_products,
-)
-from ..analytics.stores import (
-    _get_mcp_stores,
-    _print_stores,
-)
-from ..analytics.funnel import (
-    _get_mcp_funnel,
-    _print_funnel,
-    _get_mcp_diagnose_context,
-    _build_diagnose_prompt,
-)
-from ..analytics.advanced import (
-    _ANOMALY_METRICS,
-    _get_mcp_ltv,
-    _print_ltv,
-    _get_mcp_repurchase,
-    _print_repurchase,
-    _get_mcp_repurchase_path,
-    _print_repurchase_path,
-    _get_mcp_anomaly,
-    _print_anomaly,
-    _get_mcp_canvas,
-    _print_canvas,
-    _get_mcp_recommend,
-    _print_recommend,
-    _get_mcp_rfm,
-    _print_rfm,
-)
-from ..analytics.report import (
-    _get_mcp_report,
-    _build_report_markdown,
-    _print_report_console,
-    _write_md_report,
 )
 
 app = typer.Typer(help="Data analytics commands")
@@ -152,12 +141,12 @@ _OVERVIEW_EXPLAIN = """[bold dim]── Data Source ─────────�
 def analytics_overview(
     ctx: typer.Context,
     period: str = typer.Option("7d", "--period", "-p", help="Time period (today, 7d, 30d, 90d, 365d, ytd)"),
-    from_date: Optional[str] = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+    from_date: str | None = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    to_date: str | None = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
     customer_type: str = typer.Option("all", "--type", "-t", help="Customer type (all, members, visitors)"),
     compare: bool = typer.Option(False, "--compare", help="Compare with previous period (MCP only)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
     explain: bool = typer.Option(False, "--explain", help="Show metric definitions and data sources"),
     sql_trace: bool = typer.Option(False, "--sql-trace", help="Print SQL queries executed"),
 ) -> None:
@@ -254,7 +243,7 @@ def analytics_customers(
     period: str = typer.Option("30d", "--period", "-p", help="Time period"),
     channel: str = typer.Option("all", "--channel", "-c", help="Channel filter (all, wechat, app, web, tmall)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
     source: bool = typer.Option(False, "--source", "-s", help="Show customer acquisition source breakdown (MCP)"),
     gender: bool = typer.Option(False, "--gender", "-g", help="Show gender distribution (MCP)"),
 ) -> None:
@@ -338,7 +327,7 @@ def analytics_retention(
     ctx: typer.Context,
     days: str = typer.Option("7,14,30", "--days", "-d", help="Retention periods in days (comma-separated)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """Analyze customer retention rates."""
     # Parse days
@@ -394,11 +383,11 @@ def analytics_orders(
     period: str = typer.Option("30d", "--period", "-p", help="Time period"),
     metric: str = typer.Option("sales", "--metric", "-m", help="Metric (sales, volume, atv)"),
     repurchase_rate: bool = typer.Option(False, "--repurchase-rate", help="Show repurchase rate"),
-    by: Optional[str] = typer.Option(None, "--by", help="Group by (channel, province, product)"),
+    by: str | None = typer.Option(None, "--by", help="Group by (channel, province, product)"),
     returns: bool = typer.Option(False, "--returns", help="Show return/exchange rate analysis (direction field)"),
     compare: bool = typer.Option(False, "--compare", help="Compare with previous period (MCP only)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """Analyze order metrics.
 
@@ -478,17 +467,17 @@ def analytics_orders(
 
 @app.command("campaigns")
 def analytics_campaigns(
-    campaign_id: Optional[str] = typer.Option(None, "--id", help="Campaign ID"),
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="Campaign name filter"),
+    campaign_id: str | None = typer.Option(None, "--id", help="Campaign ID"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Campaign name filter"),
     period: str = typer.Option("30d", "--period", "-p", help="Time period"),
     funnel: bool = typer.Option(False, "--funnel", help="Show conversion funnel"),
     detail: bool = typer.Option(False, "--detail", help="Deep analysis for a single campaign (requires --id)"),
     audience: bool = typer.Option(False, "--audience", help="Tier audience breakdown via BITMAP_AND (requires --id)"),
     campaign_roi: bool = typer.Option(False, "--roi", help="Attributed GMV per campaign (participant orders within window)"),
     window: int = typer.Option(30, "--window", "-w", help="Attribution window days for --roi (1-60)"),
-    canvas: Optional[str] = typer.Option(None, "--canvas", help="Canvas journey funnel for a canvas campaign ID"),
+    canvas: str | None = typer.Option(None, "--canvas", help="Canvas journey funnel for a canvas campaign ID"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """Analyze marketing campaign performance.
 
@@ -593,7 +582,7 @@ def analytics_points(
     daily_trend: bool = typer.Option(False, "--daily-trend", help="Show day-by-day earn vs redeem trend"),
     limit: int = typer.Option(200, "--limit", "-n", help="Max members for --at-risk-members"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """Analyze points program metrics.
 
@@ -676,7 +665,7 @@ def analytics_coupons(
     lookback: int = typer.Option(30, "--lookback", "-l", help="Baseline days for anomaly detection"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max rules for --by-rule (1-200)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """Analyze coupon usage and redemption value.
 
@@ -757,9 +746,6 @@ def generate_analytics_report(
         sh analytics report --topic="客户分布分析" --output=report.md
         sh analytics report --topic="市场拓展策略" --period=90d --formats=all
     """
-    import json
-    import re
-    import sys
     from datetime import timedelta
 
     config = load_config()
@@ -860,7 +846,7 @@ def generate_analytics_report(
                 data_json=json.dumps(data)
             )
 
-            console.print(f"\n[bold green]Report generated successfully![/bold green]")
+            console.print("\n[bold green]Report generated successfully![/bold green]")
             console.print(result)
 
         except Exception as e:
@@ -877,7 +863,7 @@ def generate_analytics_report(
 
 @app.command("loyalty")
 def analytics_loyalty(
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON file"),
 ) -> None:
     """Loyalty program overview: enrollment, tier distribution, points liability (MCP).
 
@@ -910,7 +896,7 @@ def analytics_loyalty(
 @app.command("funnel")
 def analytics_funnel(
     period: str = typer.Option("30d", "--period", "-p", help="Time period for new/active metrics"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export raw data to JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export raw data to JSON"),
 ) -> None:
     """Customer lifecycle funnel: New -> First Purchase -> Repeat -> Loyal -> At-Risk -> Churned.
 
@@ -944,7 +930,7 @@ def analytics_funnel(
 
 @app.command("diagnose")
 def analytics_diagnose(
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Save AI diagnosis to text file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Save AI diagnosis to text file"),
 ) -> None:
     """AI-synthesized business health diagnosis across all key metrics.
 
@@ -993,7 +979,7 @@ def analytics_products(
     period: str = typer.Option("30d", "--period", "-p", help="Time period: today/7d/30d/90d/365d"),
     by_category: bool = typer.Option(False, "--by-category", help="Roll up by product category instead of SKU"),
     limit: int = typer.Option(30, "--limit", "-n", help="Max rows (1-500)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON file"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """Product and category revenue analysis (MCP only).
@@ -1031,7 +1017,7 @@ def analytics_products(
 def analytics_stores(
     period: str = typer.Option("30d", "--period", "-p", help="Time period: today/7d/30d/90d/365d"),
     limit: int  = typer.Option(30,    "--limit",  "-n", help="Max stores (1-200)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """Store-level performance: revenue, ATV, unique customers, repeat rate (MCP).
@@ -1058,7 +1044,7 @@ def analytics_stores(
 def analytics_ltv(
     cohorts: int  = typer.Option(6,  "--cohorts",  "-c", help="Number of past cohort-months to show (1-24)"),
     window: int   = typer.Option(3,  "--window",   "-w", help="Follow-up months per cohort (1-12)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """Cohort-based Lifetime Value: GMV per customer by first-order month (MCP).
@@ -1093,7 +1079,7 @@ def analytics_ltv(
 def analytics_repurchase(
     period: str = typer.Option("90d", "--period", "-p",
                                help="Analysis period: 30d/90d/365d"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON/CSV/MD"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON/CSV/MD"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """Repurchase rate, GMV contribution, and first-to-second order timing distribution (MCP).
@@ -1134,7 +1120,7 @@ def analytics_repurchase_path(
                                help="Analysis period: 30d/90d/365d"),
     limit: int  = typer.Option(20,  "--limit",  "-n",
                                help="Number of category pairs to show (1-100)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON/CSV/MD"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON/CSV/MD"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """First-to-repurchase category transition path analysis (MCP).
@@ -1175,7 +1161,7 @@ def analytics_anomaly(
                                  help="Baseline history days (default 30)"),
     days: int = typer.Option(7, "--days", "-d",
                              help="Detection window: flag anomalies in last N days (default 7)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON / CSV / MD"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON / CSV / MD"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """Statistical anomaly detection on daily business metrics (MCP).
@@ -1223,8 +1209,8 @@ def analytics_anomaly(
 @app.command("report")
 def analytics_report(
     period: str = typer.Argument("weekly", help="weekly | monthly | campaign | loyalty"),
-    campaign_id: Optional[str] = typer.Option(None, "--id", help="Campaign ID (required for 'campaign' period)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o",
+    campaign_id: str | None = typer.Option(None, "--id", help="Campaign ID (required for 'campaign' period)"),
+    output: str | None = typer.Option(None, "--output", "-o",
                                           help="Export Markdown report to file (e.g. report.md)"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
@@ -1280,12 +1266,12 @@ def analytics_report(
 
 @app.command("recommend")
 def analytics_recommend(
-    user_id: Optional[str] = typer.Option(None, "--user", "-u",
+    user_id: str | None = typer.Option(None, "--user", "-u",
                                            help="Show recommendations for a specific user ID"),
-    product_id: Optional[str] = typer.Option(None, "--product", "-p",
+    product_id: str | None = typer.Option(None, "--product", "-p",
                                               help="Show products associated with a product ID"),
     limit: int = typer.Option(20, "--limit", "-n", help="Number of results (default 20)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
     show_sql: bool = typer.Option(False, "--show-sql", help="Print SQL queries used"),
 ) -> None:
     """Recommendation engine analysis: top products, user recs, product affinity (MCP).
@@ -1327,7 +1313,7 @@ def analytics_rfm(
                                 help="Filter to specific RFM segment code (e.g. high_value, at_risk)"),
     top: int = typer.Option(0, "--top", "-t",
                             help="Also show top N customers by RFM score (0=off, max 500)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
 ) -> None:
     """RFM customer segmentation - segment distribution, avg spend, avg orders (MCP).
 

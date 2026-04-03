@@ -11,7 +11,7 @@ from typing import Optional
 
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
-from ..config import load_config, SessionConfig
+from ..config import SessionConfig, load_config
 
 
 class Session:
@@ -63,7 +63,7 @@ class Session:
 class SessionStore:
     """Persists AI sessions to disk as JSON files."""
 
-    def __init__(self, config: Optional[SessionConfig] = None):
+    def __init__(self, config: SessionConfig | None = None):
         if config is None:
             config = load_config().session
         self._config = config
@@ -101,7 +101,7 @@ class SessionStore:
         if not path.exists():
             return None
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             session = Session.from_dict(data)
             if session.is_expired(self._config.ttl_hours):
@@ -129,7 +129,7 @@ class SessionStore:
         sessions = []
         for p in self._sessions_dir.glob("*.json"):
             try:
-                with open(p, "r", encoding="utf-8") as f:
+                with open(p, encoding="utf-8") as f:
                     data = json.load(f)
                 created_at = data["created_at"]
                 last_active = data.get("last_active", created_at)
@@ -148,7 +148,7 @@ class SessionStore:
                 continue
         return sessions
 
-    def clear(self, session_id: Optional[str] = None) -> int:
+    def clear(self, session_id: str | None = None) -> int:
         """Clear one session or all sessions. Returns count of removed files."""
         if session_id:
             try:
@@ -172,7 +172,7 @@ class SessionStore:
             if p.suffix == ".tmp":
                 continue
             try:
-                with open(p, "r", encoding="utf-8") as f:
+                with open(p, encoding="utf-8") as f:
                     data = json.load(f)
                 session = Session.from_dict(data)
                 if session.is_expired(self._config.ttl_hours):

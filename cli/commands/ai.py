@@ -1,7 +1,7 @@
 """AI-powered natural language command interface."""
 
+import logging
 import re
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -9,20 +9,23 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from ..ai.client import call_ai_api
-from ..ai.executor import execute_command, execute_plan, save_scheduled_task
-from ..ai.parser import extract_plan_steps, extract_scheduled_task
+from ..ai.executor import execute_command, execute_plan
+from ..ai.parser import extract_plan_steps
 from ..ai.sanitizer import sanitize_user_input, validate_input_length
 
 app = typer.Typer(help="AI assistant for natural language queries")
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 @app.command("chat")
 def ai_chat(
     query: str = typer.Argument(..., help="Natural language query"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", help="OpenAI API Key"),
+    api_key: str | None = typer.Option(None, "--api-key", "-k", help="OpenAI API Key"),
     execute: bool = typer.Option(False, "--execute", "-e", help="Auto-execute generated commands"),
     auto: bool = typer.Option(False, "--auto", "-a", help="Auto-execute multi-step plan (with confirmation)"),
+    session_id: str | None = typer.Option(None, "-c", "--session", help="Session ID for multi-turn conversation"),
+    no_memory: bool = typer.Option(False, "--no-memory", help="Disable memory injection for this query"),
 ) -> None:
     """
     Interact with CLI using natural language.
@@ -32,6 +35,8 @@ def ai_chat(
         ai chat "show all VIP members"
         ai chat "export high-value customers to Excel"
         ai chat "show order distribution and trends" --auto
+        ai chat "analyze sales" -c session-id  # continue a session
+        ai chat "analyze sales" --no-memory    # skip personalization
     """
     console.print(f"\n[dim]Analyzing: {query}[/dim]\n")
 
@@ -41,7 +46,43 @@ def ai_chat(
         raise typer.Exit(1)
     query = sanitize_user_input(query)
 
-    response, _ = call_ai_api(query, api_key)
+    # Load session history if session_id provided
+    session = None
+    session_history = None
+    store = None
+    if session_id:
+        from ..ai.session import SessionStore
+        store = SessionStore()
+        session = store.load(session_id)
+        if session is None:
+            console.print(f"[yellow]Session '{session_id}' not found or expired. Starting fresh.[/yellow]")
+        else:
+            session_history = session.get_history()
+
+    # Load memory context and build personalized system prompt (P3: inject shared tracer)
+    _memory_manager = None
+    _effective_system_prompt = None
+    if not no_memory:
+        try:
+            from ..ai.trace import get_tracer
+            from ..memory import MemoryManager
+            _memory_manager = MemoryManager(trace_logger=get_tracer())
+            _memory_ctx = _memory_manager.load()
+            _effective_system_prompt = _memory_manager.build_system_prompt(_memory_ctx)
+        except Exception as _mem_err:
+            logger.debug("Memory initialization failed (non-fatal): %s", _mem_err)
+
+    response, _usage = call_ai_api(query, api_key, session_history=session_history, system_prompt=_effective_system_prompt)
+
+    # Save session turn
+    if session_id and session is not None and store is not None:
+        from ..config import load_config as _lc
+        session.add_turn(query, response, max_history=_lc().session.max_history)
+        store.save(session)
+        if _memory_manager is not None:
+            _summary_id = _memory_manager.save_session_memory(session, no_memory=no_memory)
+            if _summary_id:
+                console.print(f"[dim]已记录本次会话摘要 · sh memory show summary/{_summary_id} 查看[/dim]")
 
     steps = extract_plan_steps(response)
 
@@ -56,7 +97,9 @@ def ai_chat(
 
             console.print()
             if typer.confirm("Execute this plan?", default=True):
-                execute_plan(steps, original_query=query)
+                _prompt_tokens = (_usage or {}).get("prompt_tokens", 0)
+                _completion_tokens = (_usage or {}).get("completion_tokens", 0)
+                execute_plan(steps, original_query=query, session_id=session_id or "", prompt_tokens=_prompt_tokens, completion_tokens=_completion_tokens, no_memory=no_memory, memory_manager=_memory_manager)
             else:
                 console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
     else:

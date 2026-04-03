@@ -2,17 +2,14 @@
 
 import json
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
 from ..api.client import APIError, SocialHubClient
 from ..config import load_config
 from ..output.export import format_output
-from ..output.table import create_table, print_dict, print_error, print_list, print_success
+from ..output.table import create_table, print_dict, print_error, print_success
 
 app = typer.Typer(help="Marketing campaign management commands")
 console = Console()
@@ -20,7 +17,7 @@ console = Console()
 
 @app.command("list")
 def list_campaigns(
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Status filter (draft, running, paused, finished)"),
+    status: str | None = typer.Option(None, "--status", "-s", help="Status filter (draft, running, paused, finished)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
@@ -147,7 +144,7 @@ def analyze_campaign(
 def create_campaign(
     name: str = typer.Option(..., "--name", "-n", help="Campaign name"),
     campaign_type: str = typer.Option("single", "--type", "-t", help="Campaign type (single, recurring)"),
-    config_file: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path (JSON)"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Config file path (JSON)"),
 ) -> None:
     """Create a new marketing campaign."""
     config = load_config()
@@ -160,7 +157,7 @@ def create_campaign(
     extra_config = {}
     if config_file:
         try:
-            with open(config_file, "r", encoding="utf-8") as f:
+            with open(config_file, encoding="utf-8") as f:
                 extra_config = json.load(f)
         except Exception as e:
             print_error(f"Failed to read config file: {e}")

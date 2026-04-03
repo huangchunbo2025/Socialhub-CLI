@@ -1,16 +1,14 @@
 """Advanced analytics functions: LTV, repurchase, anomaly, canvas, recommend, RFM."""
 
-from typing import Optional
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
-from ..output.export import format_output
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
+from .campaigns import _sanitize_string_input
 from .common import (
     _compute_date_range,
-    _safe_date_filter,
 )
-from .campaigns import _sanitize_string_input
 
 console = Console()
 
@@ -80,8 +78,8 @@ def _get_mcp_ltv(config, cohort_months: int, follow_months: int) -> list:
 
 
 def _print_ltv(rows: list, cohort_months: int, follow_months: int) -> None:
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No LTV data found[/yellow]")
@@ -274,9 +272,9 @@ def _get_mcp_repurchase(config, period: str) -> dict:
 
 
 def _print_repurchase(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     period    = data["period"]
     rate      = data["repurchase_rate"]
@@ -453,8 +451,8 @@ def _get_mcp_repurchase_path(config, period: str, limit: int) -> dict:
 
 
 def _print_repurchase_path(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     period = data["period"]
     pairs  = data.get("pairs", [])
@@ -656,9 +654,9 @@ def _get_mcp_anomaly(config, metric: str, lookback: int, detect_days: int) -> di
 
 
 def _print_anomaly(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     if "error" in data:
         console.print(f"[red]Error: {data['error']}[/red]")
@@ -795,9 +793,9 @@ def _get_mcp_canvas(config, canvas_id: str) -> dict:
 
 
 def _print_canvas(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     canvas_id = data["canvas_id"]
     canvas    = data["canvas"]
@@ -887,8 +885,8 @@ def _print_canvas(data: dict) -> None:
         )
 
 
-def _get_mcp_recommend(config, user_id: Optional[str] = None,
-                        product_id: Optional[str] = None, limit: int = 20) -> dict:
+def _get_mcp_recommend(config, user_id: str | None = None,
+                        product_id: str | None = None, limit: int = 20) -> dict:
     """Fetch recommendation analytics data.
 
     Modes:
@@ -975,9 +973,9 @@ def _get_mcp_recommend(config, user_id: Optional[str] = None,
 
 
 def _print_recommend(data: dict) -> None:
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     mode = data["mode"]
 
@@ -1183,9 +1181,9 @@ def _get_mcp_rfm(config, limit: int = 0, segment_filter: str = "") -> dict:
 
 def _print_rfm(data: dict, show_top: bool = False) -> None:
     """Rich display for RFM analysis."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     total = data.get("total_customers", 0)
     seg_f = data.get("segment_filter", "all")

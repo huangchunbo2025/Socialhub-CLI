@@ -395,3 +395,41 @@ class TestRetryAfterHeaderParsing:
         assert text == "Hello from AI"
         assert len(sleep_calls) == 1
         assert sleep_calls[0] <= 30
+
+
+# ---------------------------------------------------------------------------
+# call_ai_api — empty choices[] (R8.4)
+# ---------------------------------------------------------------------------
+
+class TestCallAiApiEmptyChoices:
+    def test_empty_choices_does_not_raise_index_error(self):
+        """A 200 response with choices=[] must not cause an uncaught IndexError.
+
+        The API occasionally returns an empty choices list under load-shedding.
+        The caller must receive an error string, not a traceback.
+        """
+        from cli.config import Config, AIConfig
+
+        mock_config = Config()
+        mock_config.ai = AIConfig(provider="openai", openai_api_key="sk-test")
+
+        empty_choices_resp = _make_mock_response(200, {
+            "choices": [],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 0, "total_tokens": 5},
+        })
+
+        with patch("cli.ai.client.load_config", return_value=mock_config), \
+             patch("cli.ai.client.build_httpx_kwargs", return_value={}), \
+             patch("httpx.Client") as mock_client_cls, \
+             patch("cli.ai.client.time.sleep"):
+
+            mock_http_client = MagicMock()
+            mock_http_client.__enter__ = lambda s: s
+            mock_http_client.__exit__ = MagicMock(return_value=False)
+            mock_http_client.post.return_value = empty_choices_resp
+            mock_client_cls.return_value = mock_http_client
+
+            text, usage = call_ai_api("hello", max_retries=1, show_thinking=False)
+
+        # Must return a string (error message), not raise
+        assert isinstance(text, str)

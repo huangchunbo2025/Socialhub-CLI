@@ -2,7 +2,6 @@
 
 import json
 import re
-from typing import Optional
 
 import typer
 from rich import box as rich_box
@@ -11,13 +10,13 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..api.client import APIError, SocialHubClient
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
 from ..local.reader import read_customers_csv
 from ..output.export import export_data, format_output, print_export_success
 from ..output.formatter import OutputFormatter
-from ..output.table import print_dataframe, print_dict, print_error, print_list
-
+from ..output.table import print_dict, print_error, print_list
 
 # ---------------------------------------------------------------------------
 # MCP helpers — Customer 360 Profile
@@ -245,9 +244,9 @@ console = Console()
 @app.command("search")
 def search_customers(
     ctx: typer.Context,
-    phone: Optional[str] = typer.Option(None, "--phone", "-p", help="Phone number"),
-    email: Optional[str] = typer.Option(None, "--email", "-e", help="Email address"),
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="Customer name"),
+    phone: str | None = typer.Option(None, "--phone", "-p", help="Phone number"),
+    email: str | None = typer.Option(None, "--email", "-e", help="Email address"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Customer name"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
     """Search customers by phone, email, or name."""
@@ -379,9 +378,9 @@ def get_customer_portrait(
 
 @app.command("profile")
 def customer_profile(
-    code: Optional[str] = typer.Option(None, "--code", "-c", help="Consumer code (01xxxxxxx)"),
-    phone: Optional[str] = typer.Option(None, "--phone", "-p", help="Phone number (lookup by phone)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export raw data to JSON"),
+    code: str | None = typer.Option(None, "--code", "-c", help="Consumer code (01xxxxxxx)"),
+    phone: str | None = typer.Option(None, "--phone", "-p", help="Phone number (lookup by phone)"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export raw data to JSON"),
 ) -> None:
     """Customer 360 profile — cross-table view (MCP mode).
 
@@ -425,10 +424,10 @@ def customer_profile(
 @app.command("list")
 def list_customers(
     ctx: typer.Context,
-    customer_type: Optional[str] = typer.Option(None, "--type", "-t", help="Customer type (member, registered, visitor)"),
+    customer_type: str | None = typer.Option(None, "--type", "-t", help="Customer type (member, registered, visitor)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records to return"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """List customers."""
     config = load_config()
@@ -473,7 +472,7 @@ def list_customers(
 
 @app.command("export")
 def export_customers(
-    customer_type: Optional[str] = typer.Option(None, "--type", "-t", help="Customer type filter"),
+    customer_type: str | None = typer.Option(None, "--type", "-t", help="Customer type filter"),
     output: str = typer.Option("customers_export.csv", "--output", "-o", help="Output file path"),
 ) -> None:
     """Export customers to file."""

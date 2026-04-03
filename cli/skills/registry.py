@@ -3,17 +3,14 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from pydantic import BaseModel
-
-from .models import InstalledSkill, SkillManifest
+from .models import InstalledSkill
 
 
 class SkillRegistry:
     """Manages the local registry of installed skills."""
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, base_dir: Path | None = None):
         self.base_dir = base_dir or Path.home() / ".socialhub"
         self.skills_dir = self.base_dir / "skills"
         self.installed_dir = self.skills_dir / "installed"
@@ -35,7 +32,7 @@ class SkillRegistry:
             return {"skills": {}, "updated_at": None}
 
         try:
-            with open(self.registry_file, "r", encoding="utf-8") as f:
+            with open(self.registry_file, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, Exception):
             return {"skills": {}, "updated_at": None}
@@ -60,7 +57,7 @@ class SkillRegistry:
 
         return skills
 
-    def get_installed(self, name: str) -> Optional[InstalledSkill]:
+    def get_installed(self, name: str) -> InstalledSkill | None:
         """Get an installed skill by name."""
         registry = self._load_registry()
         data = registry.get("skills", {}).get(name)
@@ -76,7 +73,7 @@ class SkillRegistry:
         """Check if a skill is installed."""
         return self.get_installed(name) is not None
 
-    def get_installed_version(self, name: str) -> Optional[str]:
+    def get_installed_version(self, name: str) -> str | None:
         """Get the installed version of a skill."""
         skill = self.get_installed(name)
         return skill.version if skill else None

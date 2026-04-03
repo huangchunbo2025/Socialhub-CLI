@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -74,12 +74,12 @@ class Customer(BaseModel):
     """Customer data model."""
 
     id: str
-    name: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
+    name: str | None = None
+    phone: str | None = None
+    email: str | None = None
     customer_type: CustomerType = CustomerType.VISITOR
-    created_at: Optional[datetime] = None
-    last_active_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    last_active_at: datetime | None = None
     total_orders: int = 0
     total_spent: float = 0.0
     points_balance: int = 0
@@ -92,12 +92,12 @@ class Segment(BaseModel):
 
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     status: SegmentStatus = SegmentStatus.DRAFT
     rules: dict[str, Any] = Field(default_factory=dict)
     customer_count: int = 0
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class Tag(BaseModel):
@@ -105,7 +105,7 @@ class Tag(BaseModel):
 
     id: str
     name: str
-    group: Optional[str] = None
+    group: str | None = None
     tag_type: TagType = TagType.STATIC
     values: list[str] = Field(default_factory=list)
     customer_count: int = 0
@@ -119,13 +119,13 @@ class Campaign(BaseModel):
     name: str
     campaign_type: str = "single"
     status: CampaignStatus = CampaignStatus.DRAFT
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    target_segment_id: Optional[str] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    target_segment_id: str | None = None
     target_count: int = 0
     reached_count: int = 0
     converted_count: int = 0
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class CouponRule(BaseModel):
@@ -138,8 +138,8 @@ class CouponRule(BaseModel):
     min_purchase: float = 0.0
     total_count: int = 0
     used_count: int = 0
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
     enabled: bool = True
 
 
@@ -150,9 +150,9 @@ class Coupon(BaseModel):
     rule_id: str
     code: str
     status: CouponStatus = CouponStatus.UNUSED
-    customer_id: Optional[str] = None
-    used_at: Optional[datetime] = None
-    order_id: Optional[str] = None
+    customer_id: str | None = None
+    used_at: datetime | None = None
+    order_id: str | None = None
 
 
 class PointsRule(BaseModel):
@@ -237,6 +237,6 @@ class APIResponse(BaseModel):
     """Standard API response wrapper."""
 
     success: bool = True
-    data: Optional[Any] = None
-    error: Optional[str] = None
-    message: Optional[str] = None
+    data: Any | None = None
+    error: str | None = None
+    message: str | None = None

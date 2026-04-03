@@ -1,8 +1,6 @@
 """Coupon management commands."""
 
 import json
-from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -10,7 +8,7 @@ from rich.console import Console
 from ..api.client import APIError, SocialHubClient
 from ..config import load_config
 from ..output.export import format_output
-from ..output.table import create_table, print_dict, print_error, print_list, print_success
+from ..output.table import create_table, print_dict, print_error, print_success
 
 app = typer.Typer(help="Coupon management commands")
 console = Console()
@@ -22,7 +20,7 @@ app.add_typer(rules_app, name="rules")
 
 @rules_app.command("list")
 def list_coupon_rules(
-    coupon_type: Optional[str] = typer.Option(None, "--type", "-t", help="Type filter (discount, percent, exchange)"),
+    coupon_type: str | None = typer.Option(None, "--type", "-t", help="Type filter (discount, percent, exchange)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
@@ -111,7 +109,7 @@ def create_coupon_rule(
 
     # Load config
     try:
-        with open(config_file, "r", encoding="utf-8") as f:
+        with open(config_file, encoding="utf-8") as f:
             rule_config = json.load(f)
     except Exception as e:
         print_error(f"Failed to read config file: {e}")
@@ -131,7 +129,7 @@ def create_coupon_rule(
 
 @app.command("list")
 def list_coupons(
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Status filter (unused, used, expired)"),
+    status: str | None = typer.Option(None, "--status", "-s", help="Status filter (unused, used, expired)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:

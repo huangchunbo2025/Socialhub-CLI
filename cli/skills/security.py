@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 from cryptography.exceptions import InvalidSignature
@@ -48,8 +48,8 @@ class KeyManager:
     EXPECTED_KEY_FINGERPRINT = "sha256:9e5bd0f4cfcf487341eb582501b04587f62ac62de3303f56a2489f90cdae867b"
 
     def __init__(self):
-        self._public_key: Optional[Ed25519PublicKey] = None
-        self._key_loaded_at: Optional[datetime] = None
+        self._public_key: Ed25519PublicKey | None = None
+        self._key_loaded_at: datetime | None = None
         self._logger = logging.getLogger(__name__)
 
     def load_public_key(self) -> Ed25519PublicKey:
@@ -72,7 +72,7 @@ class KeyManager:
             return self._public_key
 
         except Exception as e:
-            self._logger.error(f"Failed to load public key: {e}")
+            self._logger.error("Failed to load public key: %s", e)
             raise SecurityError(
                 "Failed to load official public key. "
                 "Please ensure cryptography library is properly installed."
@@ -312,7 +312,7 @@ class SignatureVerifier:
         except SecurityError:
             raise
         except Exception as e:
-            self._logger.error(f"Signature verification error: {e}")
+            self._logger.error("Signature verification error: %s", e)
             raise SecurityError(
                 f"Signature verification failed for '{name}': {e}"
             ) from e
@@ -410,6 +410,17 @@ class SignatureVerifier:
             raise SecurityError(f"Permission denied reading package: {package_path}")
 
 
+def _crl_integrity_hash(payload: str) -> str:
+    """Compute an HMAC-style integrity hash for CRL cache content.
+
+    Uses the CRL URL as a fixed salt so that a tampered file without the
+    correct hash (or a hash computed without this salt) is rejected.
+    Not a substitute for server-side signatures, but prevents casual tampering.
+    """
+    salt = b"socialhub-crl-v1:" + RevocationListManager.CRL_URL.encode()
+    return hashlib.sha256(salt + payload.encode()).hexdigest()
+
+
 class RevocationListManager:
     """Manage certificate revocation list (CRL).
 
@@ -424,10 +435,13 @@ class RevocationListManager:
     def __init__(self):
         self._revoked_skills: set[str] = set()
         self._revoked_certificates: set[str] = set()
-        self._last_update: Optional[datetime] = None
+        self._last_update: datetime | None = None
+        # True once CRL data has been successfully loaded (from server or cache).
+        # False means we have no data — is_revoked() will raise rather than silently pass.
+        self._data_loaded: bool = False
         self._logger = logging.getLogger(__name__)
 
-    def is_revoked(self, skill_name: str, certificate_id: Optional[str] = None) -> bool:
+    def is_revoked(self, skill_name: str, certificate_id: str | None = None) -> bool:
         """Check if a skill or certificate is revoked.
 
         Args:
@@ -436,8 +450,19 @@ class RevocationListManager:
 
         Returns:
             bool: True if revoked
+
+        Raises:
+            SecurityError: If CRL data could not be loaded (no network + no local cache).
+                           Callers must not silently swallow this — installation must be blocked.
         """
         self._maybe_update()
+
+        if not self._data_loaded:
+            raise SecurityError(
+                "Cannot verify revocation status: CRL data unavailable "
+                "(no network access and no local cache). "
+                "Ensure network connectivity to install skills."
+            )
 
         if skill_name in self._revoked_skills:
             return True
@@ -447,7 +472,7 @@ class RevocationListManager:
 
         return False
 
-    def get_revocation_reason(self, skill_name: str) -> Optional[str]:
+    def get_revocation_reason(self, skill_name: str) -> str | None:
         """Get the reason a skill was revoked.
 
         Args:
@@ -474,12 +499,13 @@ class RevocationListManager:
                 self._revoked_skills = set(data.get("revoked_skills", []))
                 self._revoked_certificates = set(data.get("revoked_certificates", []))
                 self._last_update = datetime.now()
+                self._data_loaded = True
                 self._save_local_cache()
                 return True
             return False
 
         except Exception as e:
-            self._logger.warning(f"Failed to update CRL: {e}")
+            self._logger.warning("Failed to update CRL: %s", e)
             # Fall back to local cache
             self._load_local_cache()
             return False
@@ -499,29 +525,47 @@ class RevocationListManager:
         return datetime.now() - self._last_update > self.UPDATE_INTERVAL
 
     def _save_local_cache(self) -> None:
-        """Save CRL to local cache."""
+        """Save CRL to local cache with integrity hash."""
         try:
             self.LOCAL_CRL_PATH.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "revoked_skills": list(self._revoked_skills),
-                "revoked_certificates": list(self._revoked_certificates),
+            payload = {
+                "revoked_skills": sorted(self._revoked_skills),
+                "revoked_certificates": sorted(self._revoked_certificates),
                 "updated_at": self._last_update.isoformat() if self._last_update else None,
             }
+            payload_str = json.dumps(payload, sort_keys=True)
+            data = json.loads(payload_str)
+            data["_integrity"] = _crl_integrity_hash(payload_str)
             self.LOCAL_CRL_PATH.write_text(json.dumps(data))
         except Exception as e:
-            self._logger.warning(f"Failed to save CRL cache: {e}")
+            self._logger.warning("Failed to save CRL cache: %s", e)
 
     def _load_local_cache(self) -> None:
-        """Load CRL from local cache."""
+        """Load CRL from local cache, verifying integrity hash."""
         try:
-            if self.LOCAL_CRL_PATH.exists():
-                data = json.loads(self.LOCAL_CRL_PATH.read_text())
-                self._revoked_skills = set(data.get("revoked_skills", []))
-                self._revoked_certificates = set(data.get("revoked_certificates", []))
-                if data.get("updated_at"):
-                    self._last_update = datetime.fromisoformat(data["updated_at"])
+            if not self.LOCAL_CRL_PATH.exists():
+                return
+            raw = self.LOCAL_CRL_PATH.read_text()
+            data = json.loads(raw)
+            stored_hash = data.pop("_integrity", None)
+            # Recompute integrity over the content fields only (without _integrity key)
+            payload_str = json.dumps(
+                {k: v for k, v in data.items()},
+                sort_keys=True,
+            )
+            if stored_hash is None or stored_hash != _crl_integrity_hash(payload_str):
+                self._logger.warning(
+                    "CRL cache integrity check failed — ignoring potentially tampered file: %s",
+                    self.LOCAL_CRL_PATH,
+                )
+                return
+            self._revoked_skills = set(data.get("revoked_skills", []))
+            self._revoked_certificates = set(data.get("revoked_certificates", []))
+            if data.get("updated_at"):
+                self._last_update = datetime.fromisoformat(data["updated_at"])
+            self._data_loaded = True
         except Exception as e:
-            self._logger.warning(f"Failed to load CRL cache: {e}")
+            self._logger.warning("Failed to load CRL cache: %s", e)
 
 
 class SecurityAuditLogger:
@@ -540,6 +584,8 @@ class SecurityAuditLogger:
         """Set up the audit logger."""
         logger = logging.getLogger("socialhub.security.audit")
         logger.setLevel(logging.INFO)
+        if logger.handlers:
+            return logger
 
         # Create log directory if needed
         self.LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -814,7 +860,7 @@ class PermissionStore:
                 data = json.loads(self.PERMISSIONS_FILE.read_text(encoding="utf-8"))
                 self._permissions = data.get("skills", {})
         except Exception as e:
-            self._logger.warning(f"Failed to load permissions: {e}")
+            self._logger.warning("Failed to load permissions: %s", e)
             self._permissions = {}
 
     def _save(self) -> None:
@@ -831,7 +877,7 @@ class PermissionStore:
                 encoding="utf-8",
             )
         except Exception as e:
-            self._logger.warning(f"Failed to save permissions: {e}")
+            self._logger.warning("Failed to save permissions: %s", e)
 
     def get_permissions(self, skill_name: str) -> set[str]:
         """Get granted permissions for a skill.
@@ -956,9 +1002,7 @@ class PermissionPrompter:
         Returns:
             Tuple of (all_approved, list of approved permissions)
         """
-        from rich.panel import Panel
         from rich.prompt import Confirm
-        from rich.table import Table
 
         # Categorize permissions
         safe_perms = []
@@ -1126,8 +1170,8 @@ class PermissionContext:
         self,
         skill_name: str,
         granted_permissions: set[str],
-        permission_store: Optional[PermissionStore] = None,
-        prompter: Optional[PermissionPrompter] = None,
+        permission_store: PermissionStore | None = None,
+        prompter: PermissionPrompter | None = None,
     ):
         self.skill_name = skill_name
         self.granted_permissions = granted_permissions
@@ -1252,7 +1296,7 @@ class SecurityEventReporter:
                 data = json.loads(self.LOCAL_QUEUE_PATH.read_text(encoding="utf-8"))
                 self._event_queue = data.get("events", [])
         except Exception as e:
-            self._logger.warning(f"Failed to load event queue: {e}")
+            self._logger.warning("Failed to load event queue: %s", e)
             self._event_queue = []
 
     def _save_queue(self) -> None:
@@ -1268,7 +1312,7 @@ class SecurityEventReporter:
                 encoding="utf-8",
             )
         except Exception as e:
-            self._logger.warning(f"Failed to save event queue: {e}")
+            self._logger.warning("Failed to save event queue: %s", e)
 
     def report_event(
         self,
@@ -1381,7 +1425,7 @@ class SecurityEventReporter:
                 return True
 
         except Exception as e:
-            self._logger.debug(f"Failed to report events: {e}")
+            self._logger.debug("Failed to report events: %s", e)
 
         return False
 

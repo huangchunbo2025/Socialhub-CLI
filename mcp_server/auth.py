@@ -64,7 +64,7 @@ def _extract_tenant_id_from_token(token: str) -> Optional[str]:
     # 生产环境应该：
     # 1. JWT: jwt.decode(token, verify=True).get('tenantId')
     # 2. Opaque: httpx.post(auth_url + '/validate', headers={'Authorization': token})
-    
+
     # 当前返回 None，表示无法从 token 提取 tenant_id
     # 需要 MCP 客户端显式提供 tenant_id header
     return None
@@ -152,12 +152,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # 白名单路径跳过认证
         if request.url.path in _AUTH_EXEMPT_PATHS:
             return await call_next(request)
-    
+
         # 提取认证凭证
         api_key = _extract_api_key(request)
         tenant_id: str | None = None
         auth_method: str = "none"
-    
+
         # 如果配置了 MCP_API_KEYS，使用 API Key 映射验证
         if self._key_map:
             # 使用 hmac.compare_digest 防止时序攻击
@@ -166,7 +166,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     tenant_id = tid
                     auth_method = "api_key"
                     break
-                
+
             if tenant_id is None:
                 ref_id = str(uuid.uuid4())
                 logger.warning(
@@ -184,43 +184,27 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     },
                 )
         else:
-            # 未配置 MCP_API_KEYS，使用 OAuth token 验证
-            # 注意：当前简化实现，假设 token 有效，tenant_id 从 header 提取
-            # 生产环境应该验证 token 签名并提取 tenant_id
-            if api_key:  # 这里 api_key 实际是 OAuth token
-                tenant_id = request.headers.get("tenant_id", "")
-                if not tenant_id:
-                    ref_id = str(uuid.uuid4())
-                    logger.warning(
-                        "OAuth token provided but tenant_id header missing: path=%s ref_id=%s",
-                        request.url.path,
-                        ref_id,
-                    )
-                    return JSONResponse(
-                        status_code=401,
-                        content={
-                            "error": "unauthorized",
-                            "message": "tenant_id header required with OAuth token",
-                            "reference_id": ref_id,
-                        },
-                    )
-                auth_method = "oauth_token"
-            else:
-                ref_id = str(uuid.uuid4())
-                logger.warning(
-                    "No authentication provided: path=%s ref_id=%s",
-                    request.url.path,
-                    ref_id,
-                )
-                return JSONResponse(
-                    status_code=401,
-                    content={
-                        "error": "unauthorized",
-                        "message": "Authentication required (API Key or OAuth token)",
-                        "reference_id": ref_id,
-                    },
-                )
-    
+            # MCP_API_KEYS 未配置 — OAuth token 验证尚未实现（TODO），直接拒绝所有请求。
+            # 这确保未正确部署 API Keys 的实例不会因 stub 绕过而暴露数据。
+            # 若需 OAuth 支持，请实现 _extract_tenant_id_from_token() 后移除此限制。
+            ref_id = str(uuid.uuid4())
+            logger.error(
+                "MCP_API_KEYS not configured and OAuth not implemented: rejecting path=%s ref_id=%s",
+                request.url.path,
+                ref_id,
+            )
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "service_unavailable",
+                    "message": (
+                        "MCP server requires MCP_API_KEYS to be configured. "
+                        "Set the environment variable and restart the server."
+                    ),
+                    "reference_id": ref_id,
+                },
+            )
+
         # 注入 tenant_id 到请求 state（同步代码可读）和 ContextVar（executor 线程可读）
         request.state.tenant_id = tenant_id
         logger.info(
@@ -231,11 +215,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             api_key[:8] if api_key else "<empty>",
         )
         token = _tenant_id_var.set(tenant_id)
-    
+
         try:
             response = await call_next(request)
         finally:
             # 请求结束后重置 ContextVar，防止线程池复用时值残留（防止跨租户数据污染）
             _tenant_id_var.reset(token)
-    
+
         return response

@@ -2,11 +2,11 @@
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..output.export import format_output
 from .common import (
     _compute_date_range,
-    _mcp_query_timeout,
     _safe_date_filter,
 )
 
@@ -150,9 +150,9 @@ def _get_mcp_points(config, period: str, expiring_days: int = 0, breakdown: bool
 
 def _print_points_mcp(data: dict) -> None:
     """Rich output for MCP points analytics."""
+    from rich import box as rich_box
     from rich.panel import Panel
     from rich.table import Table
-    from rich import box as rich_box
 
     earned   = int(data.get("total_earned") or 0)
     redeemed = int(data.get("total_redeemed") or 0)
@@ -256,9 +256,9 @@ def _get_mcp_points_at_risk(config, expiring_days: int, limit: int = 200) -> lis
 
 def _print_points_at_risk(rows: list, expiring_days: int, output: str = None) -> None:
     """Rich display for at-risk points member list."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     if not rows:
         console.print(f"[green]No members with points expiring in the next {expiring_days} days[/green]")
@@ -419,9 +419,9 @@ def _get_mcp_loyalty(config) -> dict:
 
 def _print_loyalty_mcp(data: dict, output: str = None) -> None:
     """Rich display for loyalty program overview."""
-    from rich.table import Table
     from rich import box as rich_box
     from rich.panel import Panel
+    from rich.table import Table
 
     if output:
         format_output(data, "json", output)
@@ -521,8 +521,8 @@ def _get_mcp_points_daily_trend(config, period: str) -> list:
 
 def _print_points_daily_trend(rows: list, period: str) -> None:
     """Bar-style daily earn/redeem trend table."""
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No daily points data found[/yellow]")
@@ -664,21 +664,21 @@ def _build_loyalty_health_markdown(data: dict) -> str:
     churn_pct = at_risk / total * 100 if total else 0
 
     lines = [
-        f"# Loyalty Program Health Review",
-        f"",
+        "# Loyalty Program Health Review",
+        "",
         f"_Generated: {gen}_",
-        f"",
-        f"---",
-        f"",
-        f"## Membership Overview",
-        f"",
+        "",
+        "---",
+        "",
+        "## Membership Overview",
+        "",
         f"Total enrolled members: **{total:,}**  |  "
         f"Active point holders: **{holders:,}**",
-        f"",
-        f"### Tier Distribution",
-        f"",
-        f"| Tier | Members | Share | Available Pts | In-Transit Pts |",
-        f"| --- | --- | --- | --- | --- |",
+        "",
+        "### Tier Distribution",
+        "",
+        "| Tier | Members | Share | Available Pts | In-Transit Pts |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for t in tiers:
         m  = int(t.get("members") or 0)
@@ -688,24 +688,24 @@ def _build_loyalty_health_markdown(data: dict) -> str:
         lines.append(f"| {t.get('tier_name','-')} | {m:,} | {sh:.1f}% | {ap:,.0f} | {tp:,.0f} |")
 
     lines += [
-        f"",
-        f"## Points Health",
-        f"",
-        f"| Metric | Value |",
-        f"| --- | --- |",
+        "",
+        "## Points Health",
+        "",
+        "| Metric | Value |",
+        "| --- | --- |",
         f"| Total Available (liability) | {avail:,.0f} pts |",
         f"| In-Transit | {transit:,.0f} pts |",
         f"| Expired (last 30d) | {expired:,.0f} pts |",
         f"| Earned (last 30d) | {earned:,.0f} pts |",
         f"| Redeemed (last 30d) | {redeemed:,.0f} pts |",
         f"| Redeem Rate | {redeem_rate:.1f}% |",
-        f"",
-        f"## Churn Risk",
-        f"",
+        "",
+        "## Churn Risk",
+        "",
         f"Members inactive 90+ days: **{at_risk:,}** ({churn_pct:.1f}% of enrolled)",
-        f"",
-        f"---",
-        f"",
-        f"_Source: SocialHub.AI CLI — Loyalty Health Review_",
+        "",
+        "---",
+        "",
+        "_Source: SocialHub.AI CLI — Loyalty Health Review_",
     ]
     return "\n".join(lines)

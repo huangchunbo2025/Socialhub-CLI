@@ -26,75 +26,75 @@ Maintenance note — adding a new analytics MCP tool requires updates in 5 place
      separate entry point from mcp_adapter and must be kept in sync manually)
 """
 
-from cli.analytics.overview import (
-    _get_mcp_overview,
-    _get_mcp_report_data,
-    _compute_compare_range,
-    _get_mcp_overview_compare_both,
-    _fmt_cny,
-)
-from cli.analytics.customers import (
-    _get_mcp_customers,
-    _get_mcp_retention,
-    _get_mcp_customer_source,
-    _get_mcp_customer_gender,
-)
-from cli.analytics.orders import (
-    _get_mcp_orders,
-    _get_mcp_order_returns,
-    _get_mcp_orders_tool_payload,
-    _get_mcp_orders_compare_both,
+from cli.analytics.advanced import (
+    _ANOMALY_METRICS,
+    _get_mcp_anomaly,
+    _get_mcp_canvas,
+    _get_mcp_ltv,
+    _get_mcp_recommend,
+    _get_mcp_repurchase,
+    _get_mcp_repurchase_path,
+    _get_mcp_rfm,
 )
 from cli.analytics.campaigns import (
-    _sanitize_string_input,
-    _get_mcp_campaigns,
-    _get_mcp_campaign_detail,
-    _get_mcp_campaign_audience,
-    _get_mcp_campaign_roi,
-    _get_mcp_campaign_postmortem,
     _build_postmortem_markdown,
-)
-from cli.analytics.loyalty import (
-    _get_mcp_points,
-    _get_mcp_points_at_risk,
-    _get_mcp_loyalty,
-    _get_mcp_points_daily_trend,
-    _get_mcp_loyalty_health,
-    _build_loyalty_health_markdown,
+    _get_mcp_campaign_audience,
+    _get_mcp_campaign_detail,
+    _get_mcp_campaign_postmortem,
+    _get_mcp_campaign_roi,
+    _get_mcp_campaigns,
+    _sanitize_string_input,
 )
 from cli.analytics.coupons import (
-    _get_mcp_coupons,
-    _get_mcp_coupon_lift,
-    _get_mcp_coupons_by_rule,
     _get_mcp_coupon_anomaly,
+    _get_mcp_coupon_lift,
+    _get_mcp_coupons,
+    _get_mcp_coupons_by_rule,
+)
+from cli.analytics.customers import (
+    _get_mcp_customer_gender,
+    _get_mcp_customer_source,
+    _get_mcp_customers,
+    _get_mcp_retention,
+)
+from cli.analytics.funnel import (
+    _build_diagnose_prompt,
+    _get_mcp_diagnose_context,
+    _get_mcp_funnel,
+)
+from cli.analytics.loyalty import (
+    _build_loyalty_health_markdown,
+    _get_mcp_loyalty,
+    _get_mcp_loyalty_health,
+    _get_mcp_points,
+    _get_mcp_points_at_risk,
+    _get_mcp_points_daily_trend,
+)
+from cli.analytics.orders import (
+    _get_mcp_order_returns,
+    _get_mcp_orders,
+    _get_mcp_orders_compare_both,
+    _get_mcp_orders_tool_payload,
+)
+from cli.analytics.overview import (
+    _compute_compare_range,
+    _fmt_cny,
+    _get_mcp_overview,
+    _get_mcp_overview_compare_both,
+    _get_mcp_report_data,
 )
 from cli.analytics.products import (
     _get_mcp_products,
 )
-from cli.analytics.stores import (
-    _get_mcp_stores,
-)
-from cli.analytics.funnel import (
-    _get_mcp_funnel,
-    _get_mcp_diagnose_context,
-    _build_diagnose_prompt,
-)
-from cli.analytics.advanced import (
-    _ANOMALY_METRICS,
-    _get_mcp_ltv,
-    _get_mcp_repurchase,
-    _get_mcp_repurchase_path,
-    _get_mcp_anomaly,
-    _get_mcp_canvas,
-    _get_mcp_recommend,
-    _get_mcp_rfm,
-)
 from cli.analytics.report import (
-    _get_mcp_report,
     _build_report_markdown,
+    _get_mcp_report,
     _write_md_report,
 )
 from cli.analytics.segments import _mcp_segment_analyze
+from cli.analytics.stores import (
+    _get_mcp_stores,
+)
 
 __all__ = [
     # overview

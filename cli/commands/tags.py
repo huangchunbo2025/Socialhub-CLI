@@ -1,13 +1,13 @@
 """Tag management commands."""
 
 import json
-from typing import Optional
 
 import typer
 from rich.console import Console
 
 from ..api.client import APIError, SocialHubClient
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
 from ..output.export import format_output
 from ..output.table import print_dict, print_error, print_list, print_success
@@ -18,8 +18,8 @@ console = Console()
 
 @app.command("list")
 def list_tags(
-    group: Optional[str] = typer.Option(None, "--group", "-g", help="Tag group filter"),
-    tag_type: Optional[str] = typer.Option(None, "--type", "-t", help="Tag type (rfm, aipl, static, computed)"),
+    group: str | None = typer.Option(None, "--group", "-g", help="Tag group filter"),
+    tag_type: str | None = typer.Option(None, "--type", "-t", help="Tag type (rfm, aipl, static, computed)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
@@ -106,7 +106,7 @@ def create_tag(
     name: str = typer.Option(..., "--name", "-n", help="Tag name"),
     tag_type: str = typer.Option("static", "--type", "-t", help="Tag type (rfm, aipl, static, computed)"),
     values: str = typer.Option(..., "--values", "-v", help="Comma-separated tag values"),
-    group: Optional[str] = typer.Option(None, "--group", "-g", help="Tag group"),
+    group: str | None = typer.Option(None, "--group", "-g", help="Tag group"),
 ) -> None:
     """Create a new tag."""
     config = load_config()
@@ -138,9 +138,9 @@ def create_tag(
 @app.command("update")
 def update_tag(
     tag_id: str = typer.Argument(..., help="Tag ID"),
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="New tag name"),
-    values: Optional[str] = typer.Option(None, "--values", "-v", help="New comma-separated values"),
-    group: Optional[str] = typer.Option(None, "--group", "-g", help="New tag group"),
+    name: str | None = typer.Option(None, "--name", "-n", help="New tag name"),
+    values: str | None = typer.Option(None, "--values", "-v", help="New comma-separated values"),
+    group: str | None = typer.Option(None, "--group", "-g", help="New tag group"),
 ) -> None:
     """Update a tag."""
     config = load_config()
@@ -220,7 +220,6 @@ def disable_tag(
 
 def _mcp_tags_coverage(config, limit: int) -> list:
     """Coverage and value distribution for all tags from t_customer_tag_result."""
-    from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
     if not isinstance(limit, int) or limit < 1 or limit > 200:
         limit = 30
 
@@ -254,7 +253,7 @@ def _mcp_tags_coverage(config, limit: int) -> list:
         """, database="datanow_demoen")
 
         # Top values per tag (top 3)
-        top_values = client.query(f"""
+        top_values = client.query("""
             SELECT
                 tag_id,
                 tag_value,
@@ -292,8 +291,8 @@ def _mcp_tags_coverage(config, limit: int) -> list:
 
 
 def _print_tags_coverage(rows: list) -> None:
-    from rich.table import Table
     from rich import box as rich_box
+    from rich.table import Table
 
     if not rows:
         console.print("[yellow]No tag data found in t_customer_tag_result[/yellow]")
@@ -329,7 +328,7 @@ def _print_tags_coverage(rows: list) -> None:
 @app.command("coverage")
 def tags_coverage(
     limit: int = typer.Option(30, "--limit", "-n", help="Max tags to show (1-200)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
 ) -> None:
     """Tag coverage and top-value distribution from t_customer_tag_result (MCP).
 

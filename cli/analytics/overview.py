@@ -4,7 +4,8 @@ import re
 
 from rich.console import Console
 
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from .common import (
     _compute_date_range,
     _mcp_query_timeout,
@@ -393,8 +394,8 @@ def _print_compare_row(tbl, label: str, c_val, p_val, c_raw, p_raw, fmt: str = "
 
 def _print_overview_compare(cur: dict, prev: dict, period: str) -> None:
     """Side-by-side period-over-period overview table."""
-    from rich.table import Table
     from rich import box
+    from rich.table import Table
 
     title = (
         f"Overview Compare — Current ({cur['start']} → {cur['end']}) "

@@ -1,6 +1,7 @@
 """Command executor — runs CLI commands and multi-step plans."""
 
 import logging
+import os
 import shlex
 import subprocess
 import sys
@@ -13,26 +14,21 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..config import load_config
-from .trace import TraceLogger
+from .trace import get_tracer
+
+# Internal env var: set when spawning sub-CLI processes so the auth gate
+# inside the subprocess does not prompt for credentials again.
+_SUBPROCESS_AUTH_SKIP_ENV = "_SOCIALHUB_INTERNAL_SUBPROCESS_SKIP_AUTH"
 
 console = Console()
 logger = logging.getLogger(__name__)
 
-# Module-level TraceLogger singleton — initialized once on first plan execution.
-# TraceLogger is stateless per-plan (each plan gets its own trace_id), so a
-# shared instance is safe. Avoids re-reading config.json + re-compiling PII
-# regexes on every call.
-_tracer: "TraceLogger | None" = None
-
-
-def _get_tracer() -> TraceLogger:
-    global _tracer
-    if _tracer is None:
-        _tracer = TraceLogger(load_config().trace)
-    return _tracer
-
 MAX_PLAN_STEPS = 10
 PLAN_WALL_CLOCK = 300
+
+DANGEROUS_CHARS: list[str] = [';', '&&', '||', '|', '`', '$', '>', '<', '\n', '\r']
+# Legacy alias kept for internal compatibility — prefer DANGEROUS_CHARS
+_DANGEROUS_CHARS = DANGEROUS_CHARS
 
 
 class _CircuitEntry:
@@ -87,8 +83,18 @@ class ToolCircuitBreaker:
                 entry.opened_at = time.time()
 
 
-def _emit_insights(original_query: str, all_results: list[dict]) -> None:
-    """Generate and display AI insights for completed plan results."""
+def _emit_insights(
+    original_query: str,
+    all_results: list[dict],
+    session_id: str = "",
+    trace_id: str = "",
+    no_memory: bool = False,
+    memory_manager=None,
+) -> str:
+    """Generate and display AI insights for completed plan results.
+
+    Returns the insights text (empty string if none generated).
+    """
     from .insights import generate_insights
 
     console.print("[bold cyan]Generating AI insights...[/bold cyan]\n")
@@ -99,7 +105,7 @@ def _emit_insights(original_query: str, all_results: list[dict]) -> None:
         transient=True,
     ) as progress:
         progress.add_task(description="AI analyzing...", total=None)
-        insights = generate_insights(original_query, all_results)
+        insights = generate_insights(original_query, all_results, session_id=session_id, trace_id=trace_id, no_memory=no_memory, trace_logger=get_tracer(), memory_manager=memory_manager)
 
     if insights and "Error" not in insights:
         console.print(Panel(
@@ -108,6 +114,8 @@ def _emit_insights(original_query: str, all_results: list[dict]) -> None:
             border_style="magenta",
         ))
         console.print()
+        return insights
+    return ""
 
 
 def execute_command(cmd: str) -> tuple[bool, str]:
@@ -130,8 +138,7 @@ def execute_command(cmd: str) -> tuple[bool, str]:
 
     cli_args = cmd[3:].strip()
 
-    dangerous_chars = [';', '&&', '||', '|', '`', '$', '>', '<', '\n', '\r']
-    for char in dangerous_chars:
+    for char in DANGEROUS_CHARS:
         if char in cli_args:
             return False, f"Invalid command: contains disallowed character '{char}'"
 
@@ -142,9 +149,13 @@ def execute_command(cmd: str) -> tuple[bool, str]:
 
     full_cmd = [python_exe, "-m", "cli.main"] + args
 
+    _env = os.environ.copy()
+    _env[_SUBPROCESS_AUTH_SKIP_ENV] = "1"
+
     try:
         result = subprocess.run(
             full_cmd,
+            env=_env,
             shell=False,
             capture_output=True,
             text=True,
@@ -160,14 +171,6 @@ def execute_command(cmd: str) -> tuple[bool, str]:
         return False, f"Execution error: {str(e)}"
 
 
-def save_scheduled_task(task: dict) -> bool:
-    """Save scheduled task to Heartbeat.md.
-
-    Delegates to heartbeat module which owns the Heartbeat.md format.
-    """
-    from ..commands.heartbeat import save_task_to_heartbeat
-    return save_task_to_heartbeat(task)
-
 
 def execute_plan(
     steps: list[dict],
@@ -175,21 +178,26 @@ def execute_plan(
     session_id: str = "",
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
-) -> None:
-    """Execute a multi-step plan with progress display."""
+    no_memory: bool = False,
+    memory_manager=None,
+) -> str | None:
+    """Execute a multi-step plan with progress display.
+
+    Returns an execution summary string, or None if execution was aborted early.
+    """
     if not steps:
         console.print("[yellow]No steps to execute.[/yellow]")
-        return
+        return None
 
     if len(steps) > MAX_PLAN_STEPS:
         console.print(
             f"[red]Error: plan has {len(steps)} steps which exceeds the maximum of "
             f"{MAX_PLAN_STEPS}. Execution refused.[/red]"
         )
-        return
+        return None
 
     _config = load_config()
-    _tracer = _get_tracer()
+    _tracer = get_tracer()
     _model = _config.ai.azure_deployment if _config.ai.provider == "azure" else _config.ai.openai_model
     trace_id = _tracer.log_plan_start(
         session_id=session_id,
@@ -201,6 +209,7 @@ def execute_plan(
 
     all_results = []
     _success_count = 0
+    _budget_exceeded = False
 
     plan_start = time.time()
     _confirm_wait_s = 0.0  # Accumulated time spent in typer.confirm() — excluded from budget
@@ -212,8 +221,7 @@ def execute_plan(
     report_step_idx = None
     for i, step in enumerate(steps):
         if "report" in step.get("command", "").lower():
-            report_step_idx = i
-            break
+            report_step_idx = i  # keep updating to capture the last report step
 
     for idx, step in enumerate(steps):
         step_num = step.get("number", idx + 1)
@@ -237,6 +245,7 @@ def execute_plan(
                 f"[yellow]Warning: wall-clock budget of {PLAN_WALL_CLOCK}s exceeded. "
                 f"Aborting remaining steps.[/yellow]"
             )
+            _budget_exceeded = True
             break
 
         # Circuit breaker check
@@ -290,7 +299,9 @@ def execute_plan(
             if report_step_idx is not None and idx == report_step_idx and original_query and all_results:
                 if any(r["success"] for r in all_results):
                     try:
-                        _emit_insights(original_query, all_results)
+                        _ins_t0 = time.time()
+                        _emit_insights(original_query, all_results, session_id=session_id, trace_id=trace_id, no_memory=no_memory, memory_manager=memory_manager)
+                        _confirm_wait_s += time.time() - _ins_t0
                     except Exception as _ins_err:
                         logger.warning("Insights generation failed (non-fatal): %s", _ins_err)
         else:
@@ -306,7 +317,7 @@ def execute_plan(
                         _success_count,
                         prompt_tokens, completion_tokens,
                     )
-                    return
+                    return None
                 _confirm_t = time.time()
                 _confirmed = typer.confirm("Continue with remaining steps?", default=False)
                 _confirm_wait_s += time.time() - _confirm_t
@@ -317,11 +328,14 @@ def execute_plan(
                         _success_count,
                         prompt_tokens, completion_tokens,
                     )
-                    return
+                    return None
 
         console.print()
 
-    console.print("[bold green]All steps completed![/bold green]\n")
+    if _budget_exceeded:
+        console.print(f"[bold yellow]{_success_count}/{len(steps)} steps completed (wall-clock budget exceeded)[/bold yellow]\n")
+    else:
+        console.print("[bold green]All steps completed![/bold green]\n")
 
     _tracer.log_plan_end(
         trace_id, len(steps),
@@ -331,6 +345,12 @@ def execute_plan(
 
     if report_step_idx is None and original_query and any(r["success"] for r in all_results):
         try:
-            _emit_insights(original_query, all_results)
+            _emit_insights(original_query, all_results, session_id=session_id, trace_id=trace_id, no_memory=no_memory, memory_manager=memory_manager)
         except Exception as _ins_err:
             logger.warning("Insights generation failed (non-fatal): %s", _ins_err)
+
+    summary_lines = [f"执行了 {len(all_results)} 步计划（{_success_count}/{len(all_results)} 成功，原始查询：{original_query[:100]}）："]
+    for r in all_results:
+        icon = "✓" if r["success"] else "✗"
+        summary_lines.append(f"  {icon} 步骤 {r['step']} {r['description']}: {(r['output'] or '')[:200]}")
+    return "\n".join(summary_lines)

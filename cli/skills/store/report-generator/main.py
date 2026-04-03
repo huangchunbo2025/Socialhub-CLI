@@ -13,18 +13,16 @@ Core Principles:
 - Executive Insight Callouts
 """
 
-import base64
 import re
 import subprocess
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 # Try to import MCP client for data-driven reports
 try:
+    from cli.api.mcp_client import MCPClient
+    from cli.api.mcp_client import MCPConfig as MCPClientConfig
     from cli.config import load_config
-    from cli.api.mcp_client import MCPClient, MCPConfig as MCPClientConfig
     HAS_MCP = True
 except ImportError:
     HAS_MCP = False
@@ -32,8 +30,8 @@ except ImportError:
 # Check for optional dependencies
 try:
     import markdown
-    from markdown.extensions.tables import TableExtension
     from markdown.extensions.fenced_code import FencedCodeExtension
+    from markdown.extensions.tables import TableExtension
     from markdown.extensions.toc import TocExtension
     HAS_MARKDOWN = True
 except ImportError:
@@ -41,8 +39,8 @@ except ImportError:
 
 try:
     from pygments import highlight
-    from pygments.lexers import get_lexer_by_name
     from pygments.formatters import HtmlFormatter
+    from pygments.lexers import get_lexer_by_name
     HAS_PYGMENTS = True
 except ImportError:
     HAS_PYGMENTS = False
@@ -507,7 +505,6 @@ def _validate_output_path(output: str, allowed_extensions: set[str] = None) -> P
     3. Validating against allowed directories
     4. Checking file extension
     """
-    import os
 
     if allowed_extensions is None:
         allowed_extensions = {".md", ".markdown", ".txt", ".html", ".pdf"}
@@ -797,8 +794,8 @@ def _generate_outputs(md_content: str, base_path: Path, title: str, formats: set
             # Clean up temporary PDF HTML
             pdf_html_path.unlink(missing_ok=True)
         else:
-            outputs.append(f"PDF: Conversion tools not available. Use the HTML file to print as PDF.")
-            outputs.append(f"     Install weasyprint: pip install weasyprint")
+            outputs.append("PDF: Conversion tools not available. Use the HTML file to print as PDF.")
+            outputs.append("     Install weasyprint: pip install weasyprint")
 
     return outputs
 

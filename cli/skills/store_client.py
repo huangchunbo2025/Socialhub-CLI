@@ -5,11 +5,17 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
-from .models import SkillCategory, SkillDetail, SkillSearchResult, SkillCommand, SkillDependencies, SkillCertification
+from .models import (
+    SkillCategory,
+    SkillCommand,
+    SkillDependencies,
+    SkillDetail,
+    SkillSearchResult,
+)
 
 _TOKEN_FILE = Path.home() / ".socialhub" / "store_token.json"
 
@@ -17,7 +23,7 @@ _TOKEN_FILE = Path.home() / ".socialhub" / "store_token.json"
 class StoreError(Exception):
     """Store API error."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None):
+    def __init__(self, message: str, status_code: int | None = None):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
@@ -130,7 +136,7 @@ class SkillsStoreClient:
     # Official store URL — hardcoded, cannot be overridden at runtime (supply-chain protection)
     OFFICIAL_STORE_URL = "https://skills.socialhub.ai/api/v1"
 
-    def __init__(self, base_url: Optional[str] = None, timeout: int = 30, demo_mode: Optional[bool] = None):
+    def __init__(self, base_url: str | None = None, timeout: int = 30, demo_mode: bool | None = None):
         self.base_url = self.OFFICIAL_STORE_URL
         self.timeout = timeout
 
@@ -148,7 +154,7 @@ class SkillsStoreClient:
                 "External skill sources are not permitted."
             )
 
-        self._client: Optional[httpx.Client] = None
+        self._client: httpx.Client | None = None
 
     def _get_client(self) -> httpx.Client:
         """Get or create HTTP client."""
@@ -223,7 +229,7 @@ class SkillsStoreClient:
     # Auth — token stored at ~/.socialhub/store_token.json               #
     # ------------------------------------------------------------------ #
 
-    def _load_token(self) -> Optional[str]:
+    def _load_token(self) -> str | None:
         """Load JWT token from disk. Returns None if missing or expired."""
         if not _TOKEN_FILE.exists():
             return None
@@ -311,7 +317,7 @@ class SkillsStoreClient:
         except (httpx.ConnectError, httpx.TimeoutException):
             raise StoreError("Store unavailable", 503)
 
-    def add_my_skill(self, skill_name: str, version: Optional[str] = None) -> dict[str, Any]:
+    def add_my_skill(self, skill_name: str, version: str | None = None) -> dict[str, Any]:
         """POST /api/v1/users/me/skills/{skill_name} — add to user library."""
         headers = self._auth_headers()
         if not headers:
@@ -359,8 +365,8 @@ class SkillsStoreClient:
 
     def search(
         self,
-        query: Optional[str] = None,
-        category: Optional[str] = None,
+        query: str | None = None,
+        category: str | None = None,
         page: int = 1,
         limit: int = 20,
     ) -> list[SkillSearchResult]:
@@ -452,7 +458,7 @@ class SkillsStoreClient:
                     return [skill["version"], "1.0.0"]
             return []
 
-    def download(self, name: str, version: Optional[str] = None) -> bytes:
+    def download(self, name: str, version: str | None = None) -> bytes:
         """Download skill package."""
         if self._is_demo_mode():
             raise StoreError(
@@ -477,7 +483,7 @@ class SkillsStoreClient:
             self._force_demo = True
             raise StoreError("Store unavailable", 503)
 
-    def get_download_info(self, name: str, version: Optional[str] = None) -> dict[str, Any]:
+    def get_download_info(self, name: str, version: str | None = None) -> dict[str, Any]:
         """Get download info including hash and signature."""
         try:
             params = {}

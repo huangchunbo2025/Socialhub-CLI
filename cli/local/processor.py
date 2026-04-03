@@ -1,7 +1,7 @@
 """Local data processor for analytics calculations."""
 
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 from rich.console import Console
@@ -44,8 +44,8 @@ class DataProcessor:
     def filter_by_date(
         df: pd.DataFrame,
         date_column: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> pd.DataFrame:
         """Filter dataframe by date range."""
         if date_column not in df.columns:

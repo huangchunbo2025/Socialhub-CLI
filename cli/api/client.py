@@ -1,7 +1,6 @@
 """API client for SocialHub platform."""
 
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from rich.console import Console
@@ -15,7 +14,7 @@ console = Console()
 class APIError(Exception):
     """API error exception."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None):
+    def __init__(self, message: str, status_code: int | None = None):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
@@ -26,8 +25,8 @@ class SocialHubClient:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
         timeout: int = 30,
     ):
         config = load_config()
@@ -69,17 +68,17 @@ class SocialHubClient:
         except Exception:
             return {"data": response.text}
 
-    def get(self, endpoint: str, params: Optional[dict] = None) -> dict[str, Any]:
+    def get(self, endpoint: str, params: dict | None = None) -> dict[str, Any]:
         """Make GET request."""
         response = self._client.get(endpoint, params=params)
         return self._handle_response(response)
 
-    def post(self, endpoint: str, data: Optional[dict] = None) -> dict[str, Any]:
+    def post(self, endpoint: str, data: dict | None = None) -> dict[str, Any]:
         """Make POST request."""
         response = self._client.post(endpoint, json=data)
         return self._handle_response(response)
 
-    def put(self, endpoint: str, data: Optional[dict] = None) -> dict[str, Any]:
+    def put(self, endpoint: str, data: dict | None = None) -> dict[str, Any]:
         """Make PUT request."""
         response = self._client.put(endpoint, json=data)
         return self._handle_response(response)
@@ -104,8 +103,8 @@ class SocialHubClient:
     def get_analytics_overview(
         self,
         period: str = "7d",
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
         customer_type: str = "all",
     ) -> dict[str, Any]:
         """Get analytics overview."""
@@ -147,8 +146,8 @@ class SocialHubClient:
 
     def get_campaign_analytics(
         self,
-        campaign_id: Optional[str] = None,
-        name: Optional[str] = None,
+        campaign_id: str | None = None,
+        name: str | None = None,
         period: str = "30d",
     ) -> dict[str, Any]:
         """Get campaign analytics."""
@@ -163,9 +162,9 @@ class SocialHubClient:
 
     def search_customers(
         self,
-        phone: Optional[str] = None,
-        email: Optional[str] = None,
-        name: Optional[str] = None,
+        phone: str | None = None,
+        email: str | None = None,
+        name: str | None = None,
     ) -> dict[str, Any]:
         """Search customers."""
         params = {}
@@ -187,7 +186,7 @@ class SocialHubClient:
 
     def list_customers(
         self,
-        customer_type: Optional[str] = None,
+        customer_type: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -201,7 +200,7 @@ class SocialHubClient:
 
     def list_segments(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -219,7 +218,7 @@ class SocialHubClient:
         """Preview segment customers."""
         return self.get(f"/api/v1/segments/{segment_id}/preview")
 
-    def create_segment(self, name: str, rules: dict, description: Optional[str] = None) -> dict[str, Any]:
+    def create_segment(self, name: str, rules: dict, description: str | None = None) -> dict[str, Any]:
         """Create a new segment."""
         data = {"name": name, "rules": rules}
         if description:
@@ -242,8 +241,8 @@ class SocialHubClient:
 
     def list_tags(
         self,
-        group: Optional[str] = None,
-        tag_type: Optional[str] = None,
+        group: str | None = None,
+        tag_type: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -268,7 +267,7 @@ class SocialHubClient:
         name: str,
         tag_type: str,
         values: list[str],
-        group: Optional[str] = None,
+        group: str | None = None,
     ) -> dict[str, Any]:
         """Create a new tag."""
         data = {"name": name, "type": tag_type, "values": values}
@@ -288,7 +287,7 @@ class SocialHubClient:
 
     def list_campaigns(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -310,7 +309,7 @@ class SocialHubClient:
         self,
         name: str,
         campaign_type: str = "single",
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> dict[str, Any]:
         """Create a new campaign."""
         data = {"name": name, "type": campaign_type}
@@ -338,7 +337,7 @@ class SocialHubClient:
 
     def list_coupon_rules(
         self,
-        coupon_type: Optional[str] = None,
+        coupon_type: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -358,7 +357,7 @@ class SocialHubClient:
 
     def list_coupons(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -380,7 +379,7 @@ class SocialHubClient:
 
     def list_points_rules(
         self,
-        rule_type: Optional[str] = None,
+        rule_type: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -414,7 +413,7 @@ class SocialHubClient:
 
     def list_message_templates(
         self,
-        channel: Optional[str] = None,
+        channel: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:
@@ -430,8 +429,8 @@ class SocialHubClient:
 
     def list_message_records(
         self,
-        channel: Optional[str] = None,
-        status: Optional[str] = None,
+        channel: str | None = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> dict[str, Any]:

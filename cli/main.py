@@ -29,6 +29,7 @@ from .commands import (
     history,
     mcp,
     members,
+    memory,
     messages,
     points,
     schema,
@@ -75,6 +76,7 @@ app.add_typer(history.app, name="history", help="Run history: list, inspect, and
 app.add_typer(workflow.app, name="workflow", help="Business workflow shortcuts (daily-brief, etc.)")
 app.add_typer(session_cmd.app, name="session", help="Manage AI conversation sessions")
 app.add_typer(trace_cmd.app, name="trace", help="View and manage AI decision traces")
+app.add_typer(memory.app, name="memory", help="Manage AI memory: preferences, insights, campaigns")
 
 # Derive valid commands from registered groups — single source of truth
 VALID_COMMANDS = (
@@ -136,6 +138,7 @@ def main(
     obj = ctx.ensure_object(dict)
     obj["output_format"] = output_format
     obj["session_id"] = session_id
+
 
 def _run_auth_gate() -> None:
     """Run OAuth2 auth gate for registered commands (Typer path)."""
@@ -217,6 +220,274 @@ def show_welcome() -> None:
     console.print()
 
 
+# ---------------------------------------------------------------------------
+# Smart-mode helpers (D8: extracted from monolithic cli())
+# ---------------------------------------------------------------------------
+
+
+def _parse_smart_mode_flags(args: list[str]) -> tuple[str | None, bool, str]:
+    """Extract -c/--session and --no-memory from args.
+
+    Returns (session_id, no_memory, query).
+    """
+    session_id: str | None = None
+    no_memory = False
+    clean_args: list[str] = []
+    skip_next = False
+    for i, a in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if a in ("-c", "--session") and i + 1 < len(args):
+            session_id = args[i + 1]
+            skip_next = True
+        elif a == "--no-memory":
+            no_memory = True
+        else:
+            clean_args.append(a)
+    return session_id, no_memory, " ".join(clean_args)
+
+
+def _resolve_repeat(query: str) -> str | None:
+    """Resolve repeat-phrase queries from history.
+
+    Returns the actual query string to use, or None if the caller should return
+    immediately (command already executed or nothing to do).
+    """
+    query_lower = query.lower().strip()
+    if not (query_lower in REPEAT_PHRASES or any(p in query_lower for p in REPEAT_PHRASES)):
+        return query  # not a repeat phrase, pass through unchanged
+
+    hist = load_history()
+    last_commands = hist.get("last_commands", [])
+    last_query = hist.get("last_query", "")
+
+    if last_commands:
+        console.print("\n[dim]Re-executing last command...[/dim]")
+        from .ai import execute_command
+
+        for cmd in last_commands:
+            console.print(f"\n[cyan]Executing: {cmd}[/cyan]\n")
+            success, output = execute_command(cmd)
+            if output:
+                console.print(output)
+        return None  # handled; caller should return
+
+    if last_query:
+        console.print(f"\n[dim]Re-executing: {last_query}[/dim]")
+        return last_query
+
+    console.print("[yellow]No previous command found. Please enter a query.[/yellow]")
+    return None  # nothing to do; caller should return
+
+
+def _load_session(session_id: str | None):
+    """Load session and history. Returns (session, session_history, store)."""
+    if not session_id:
+        return None, None, None
+    from .ai.session import SessionStore
+
+    store = SessionStore()
+    session = store.load(session_id)
+    if session is None:
+        console.print(
+            f"[yellow]Session '{session_id}' not found or expired. Starting fresh.[/yellow]"
+        )
+        return None, None, store
+    return session, session.get_history(), store
+
+
+def _load_memory(no_memory: bool):
+    """Load MemoryManager (with TraceLogger) and build system prompt.
+
+    Returns (manager, effective_system_prompt). Both are None on failure or when
+    no_memory=True — memory failures never block the main AI call (P3 + graceful degradation).
+    """
+    if no_memory:
+        return None, None
+    try:
+        from .ai.trace import get_tracer
+        from .memory import MemoryManager
+
+        mm = MemoryManager(trace_logger=get_tracer())  # P3: inject shared tracer
+        ctx = mm.load()
+        return mm, mm.build_system_prompt(ctx)
+    except Exception:
+        return None, None
+
+
+def _save_session_turn(
+    query: str,
+    response: str,
+    session,
+    store,
+    memory_manager,
+    session_id: str,
+    no_memory: bool,
+) -> None:
+    """Persist one Q&A conversation turn and optional memory summary."""
+    if not (session_id and session is not None and store is not None):
+        return
+    from .config import load_config as _lc
+
+    session.add_turn(query, response, max_history=_lc().session.max_history)
+    store.save(session)
+    if memory_manager is not None:
+        _sid = memory_manager.save_session_memory(session, trace_id="", no_memory=no_memory)
+        if _sid:
+            console.print(
+                f"[dim]已记录本次会话摘要 · sh memory show summary/{_sid} 查看[/dim]"
+            )
+
+
+def _handle_scheduled_task(response: str, scheduled_task: dict) -> None:
+    """Display and optionally persist a SCHEDULE_TASK response."""
+    import re
+
+    from rich.markdown import Markdown
+
+    display_response = re.sub(
+        r"\[SCHEDULE_TASK\].*?\[/SCHEDULE_TASK\]", "", response, flags=re.DOTALL
+    )
+    console.print(
+        Panel(Markdown(display_response), title="AI Assistant - Scheduled Task", border_style="green")
+    )
+    console.print("\n[bold]Scheduled task detected:[/bold]")
+    console.print(f"  Task name: {scheduled_task.get('name', '-')}")
+    console.print(f"  Frequency: {scheduled_task.get('frequency', '-')}")
+    console.print(f"  Command: {scheduled_task.get('command', '-')}")
+    console.print(f"  AI Insights: {scheduled_task.get('insights', 'false')}")
+    console.print()
+
+    if typer.confirm("Add this task to Heartbeat.md?", default=True):
+        # D4: import directly from heartbeat (commands layer owns this format)
+        from .commands.heartbeat import save_task_to_heartbeat
+
+        if save_task_to_heartbeat(scheduled_task):
+            console.print("[green][OK] Scheduled task added to Heartbeat.md[/green]")
+        else:
+            console.print("[red]Failed to add scheduled task[/red]")
+
+
+def _handle_plan_response(
+    display_response: str,
+    steps: list[dict],
+    query: str,
+    session,
+    store,
+    session_id: str | None,
+    usage: dict | None,
+    memory_manager=None,
+) -> None:
+    """Confirm and execute a multi-step plan; D7: save results to session history."""
+    from rich.markdown import Markdown
+
+    console.print(
+        Panel(Markdown(display_response), title="AI Assistant - Analysis Plan", border_style="cyan")
+    )
+    console.print(f"\n[bold]Detected {len(steps)} execution steps:[/bold]")
+    for step in steps:
+        console.print(f"  {step['number']}. {step['description']}")
+    console.print()
+
+    if not typer.confirm("Execute this plan?", default=True):
+        console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
+        return
+
+    from .ai import execute_plan
+
+    commands = [step["command"] for step in steps]
+    save_history(query, commands)
+    plan_summary = execute_plan(
+        steps,
+        original_query=query,
+        session_id=session_id or "",
+        prompt_tokens=(usage or {}).get("prompt_tokens", 0),
+        completion_tokens=(usage or {}).get("completion_tokens", 0),
+        memory_manager=memory_manager,
+    )
+
+    # D7: write plan execution results back to session so future turns have context
+    if plan_summary and session_id and session is not None and store is not None:
+        from .config import load_config as _lc
+
+        session.add_turn(
+            f"[计划执行] {query}", plan_summary, max_history=_lc().session.max_history
+        )
+        store.save(session)
+
+
+def _handle_inline_command(response: str, query: str) -> None:
+    """Execute a bare ```bash block in the response if the user confirms."""
+    import re
+
+    if "```bash" not in response:
+        return
+    commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
+    if not commands:
+        return
+    cmd = commands[0].strip()
+    if typer.confirm(f"\nExecute command: {cmd}?", default=True):
+        from .ai import execute_command
+
+        save_history(query, [cmd])
+        console.print(f"\n[dim]Executing: {cmd}[/dim]\n")
+        _success, output = execute_command(cmd)
+        if output:
+            console.print(output)
+
+
+def _run_smart_mode(query: str, session_id: str | None, no_memory: bool) -> None:
+    """Full smart-mode AI pipeline: validate → memory → AI → dispatch response type."""
+    from rich.markdown import Markdown
+
+    from .ai import call_ai_api, extract_plan_steps, extract_scheduled_task
+    from .ai.sanitizer import sanitize_user_input, validate_input_length
+
+    ok, _msg = validate_input_length(query)
+    if not ok:
+        console.print(
+            f"[red]Input too long ({len(query)} chars, limit 2000). Please shorten your query.[/red]"
+        )
+        return
+    query = sanitize_user_input(query)
+
+    session, session_history, store = _load_session(session_id)
+    memory_manager, effective_system_prompt = _load_memory(no_memory)
+
+    response, usage = call_ai_api(
+        query,
+        session_history=session_history,
+        system_prompt=effective_system_prompt,
+    )
+
+    if response.startswith("Error:"):
+        console.print(f"[red]{response}[/red]")
+        return
+
+    # Save the main Q&A turn to session before dispatching plan/task
+    _save_session_turn(query, response, session, store, memory_manager, session_id or "", no_memory)
+
+    # Dispatch by response type: scheduled task > plan > plain text / inline command
+    scheduled_task = extract_scheduled_task(response)
+    if scheduled_task:
+        _handle_scheduled_task(response, scheduled_task)
+        return
+
+    steps = extract_plan_steps(response)
+    if steps:
+        display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
+        _handle_plan_response(display_response, steps, query, session, store, session_id, usage, memory_manager=memory_manager)
+    else:
+        console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
+        _handle_inline_command(response, query)
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point (D8: refactored God Function → thin dispatcher)
+# ---------------------------------------------------------------------------
+
+
 def cli() -> None:
     """CLI entry point with smart natural language detection."""
     args = sys.argv[1:]
@@ -230,155 +501,23 @@ def cli() -> None:
         app()
         return
 
-    # Extract -c/--session flag from args before building the query string,
-    # so the session flag is not accidentally included in the NL query sent to AI.
-    _session_id_early: str = None
-    clean_args = []
-    _skip_next = False
-    for _i, _a in enumerate(args):
-        if _skip_next:
-            _skip_next = False
-            continue
-        if _a in ("-c", "--session") and _i + 1 < len(args):
-            _session_id_early = args[_i + 1]
-            _skip_next = True
-        else:
-            clean_args.append(_a)
-    query = " ".join(clean_args)
+    # Parse session/memory flags before doing anything else
+    session_id, no_memory, query = _parse_smart_mode_flags(args)
 
-    query_lower = query.lower().strip()
-    if query_lower in REPEAT_PHRASES or any(p in query_lower for p in REPEAT_PHRASES):
-        history = load_history()
-        last_query = history.get("last_query", "")
-        last_commands = history.get("last_commands", [])
-
-        if last_commands:
-            console.print("\n[dim]Re-executing last command...[/dim]")
-            from .ai import execute_command
-
-            for cmd in last_commands:
-                console.print(f"\n[cyan]Executing: {cmd}[/cyan]\n")
-                success, output = execute_command(cmd)
-                if output:
-                    console.print(output)
-            return
-        elif last_query:
-            query = last_query
-            console.print(f"\n[dim]Re-executing: {query}[/dim]")
-        else:
-            console.print("[yellow]No previous command found. Please enter a query.[/yellow]")
-            return
-
-    console.print(f"\n[dim]Smart mode: {query}[/dim]")
-
-    # Auth gate for smart-mode (natural language path bypasses Typer callback)
+    # D1 FIX: Auth gate BEFORE repeat-phrase check (was after, allowing unauthenticated replay)
     from .auth.gate import ensure_authenticated
 
     ensure_authenticated()
 
+    # Resolve repeat phrases; None means "already handled, return now"
+    query = _resolve_repeat(query)
+    if query is None:
+        return
+
+    console.print(f"\n[dim]Smart mode: {query}[/dim]")
+
     try:
-        import re
-
-        from .ai import (
-            call_ai_api,
-            execute_command,
-            execute_plan,
-            extract_plan_steps,
-            extract_scheduled_task,
-            save_scheduled_task,
-        )
-        from .ai.sanitizer import sanitize_user_input, validate_input_length
-
-        ok, msg = validate_input_length(query)
-        if not ok:
-            console.print(f"[red]Input too long ({len(query)} chars, limit 2000). Please shorten your query.[/red]")
-            return
-        query = sanitize_user_input(query)
-
-        session_history = None
-        session = None
-        _session_id = _session_id_early  # extracted above before query was built
-
-        if _session_id:
-            from .ai.session import SessionStore
-
-            store = SessionStore()
-            session = store.load(_session_id)
-            if session is None:
-                console.print(
-                    f"[yellow]Session '{_session_id}' not found or expired. Starting fresh.[/yellow]"
-                )
-            else:
-                session_history = session.get_history()
-
-        response, _usage = call_ai_api(query, session_history=session_history)
-
-        if response.startswith("Error:"):
-            console.print(f"[red]{response}[/red]")
-            return
-
-        if _session_id and session is not None:
-            from .config import load_config as _load_cfg
-            session.add_turn(query, response, max_history=_load_cfg().session.max_history)
-            store.save(session)
-
-        scheduled_task = extract_scheduled_task(response)
-        if scheduled_task:
-            display_response = re.sub(r"\[SCHEDULE_TASK\].*?\[/SCHEDULE_TASK\]", "", response, flags=re.DOTALL)
-            from rich.markdown import Markdown
-
-            console.print(Panel(Markdown(display_response), title="AI Assistant - Scheduled Task", border_style="green"))
-            console.print("\n[bold]Scheduled task detected:[/bold]")
-            console.print(f"  Task name: {scheduled_task.get('name', '-')}")
-            console.print(f"  Frequency: {scheduled_task.get('frequency', '-')}")
-            console.print(f"  Command: {scheduled_task.get('command', '-')}")
-            console.print(f"  AI Insights: {scheduled_task.get('insights', 'false')}")
-            console.print()
-
-            if typer.confirm("Add this task to Heartbeat.md?", default=True):
-                if save_scheduled_task(scheduled_task):
-                    console.print("[green][OK] Scheduled task added to Heartbeat.md[/green]")
-                else:
-                    console.print("[red]Failed to add scheduled task[/red]")
-            return
-
-        steps = extract_plan_steps(response)
-        from rich.markdown import Markdown
-
-        if steps:
-            display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
-            console.print(Panel(Markdown(display_response), title="AI Assistant - Analysis Plan", border_style="cyan"))
-            console.print(f"\n[bold]Detected {len(steps)} execution steps:[/bold]")
-            for step in steps:
-                console.print(f"  {step['number']}. {step['description']}")
-
-            console.print()
-            if typer.confirm("Execute this plan?", default=True):
-                commands = [step["command"] for step in steps]
-                save_history(query, commands)
-                execute_plan(
-                    steps,
-                    original_query=query,
-                    session_id=_session_id or "",
-                    prompt_tokens=(_usage or {}).get("prompt_tokens", 0),
-                    completion_tokens=(_usage or {}).get("completion_tokens", 0),
-                )
-            else:
-                console.print("[yellow]Plan not executed. You can run the commands manually.[/yellow]")
-        else:
-            console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
-
-            if "```bash" in response:
-                commands = re.findall(r"```bash\n(.*?)\n```", response, re.DOTALL)
-                if commands:
-                    cmd = commands[0].strip()
-                    if typer.confirm(f"\nExecute command: {cmd}?", default=True):
-                        save_history(query, [cmd])
-                        console.print(f"\n[dim]Executing: {cmd}[/dim]\n")
-                        success, output = execute_command(cmd)
-                        if output:
-                            console.print(output)
-
+        _run_smart_mode(query, session_id, no_memory)
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled[/yellow]")
     except Exception as e:

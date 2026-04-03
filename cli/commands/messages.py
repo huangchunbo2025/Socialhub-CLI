@@ -1,9 +1,11 @@
 """Message management commands."""
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta
-from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import typer
 from rich import box as rich_box
@@ -12,10 +14,11 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..api.client import APIError, SocialHubClient
-from ..api.mcp_client import MCPClient, MCPConfig as MCPClientConfig, MCPError
+from ..api.mcp_client import MCPClient, MCPError
+from ..api.mcp_client import MCPConfig as MCPClientConfig
 from ..config import load_config
 from ..output.export import format_output
-from ..output.table import create_table, print_dict, print_error, print_list, print_success
+from ..output.table import create_table, print_dict, print_error
 
 # vdm_t_message_record.channel_type codes
 _CHANNEL_LABELS = {
@@ -207,7 +210,7 @@ app.add_typer(templates_app, name="templates")
 
 @templates_app.command("list")
 def list_message_templates(
-    channel: Optional[str] = typer.Option(None, "--channel", "-c", help="Channel filter (sms, email, wechat, app_push)"),
+    channel: str | None = typer.Option(None, "--channel", "-c", help="Channel filter (sms, email, wechat, app_push)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
@@ -309,8 +312,8 @@ def get_message_template(
 
 @app.command("records")
 def list_message_records(
-    channel: Optional[str] = typer.Option(None, "--channel", "-c", help="Channel filter"),
-    status: Optional[str] = typer.Option(None, "--status", "-s", help="Status filter (success, failed, pending)"),
+    channel: str | None = typer.Option(None, "--channel", "-c", help="Channel filter"),
+    status: str | None = typer.Option(None, "--status", "-s", help="Status filter (success, failed, pending)"),
     limit: int = typer.Option(50, "--limit", "-l", help="Number of records"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
 ) -> None:
@@ -371,7 +374,7 @@ def list_message_records(
 def get_message_stats(
     period: str = typer.Option("30d", "--period", "-p", help="Time period (7d/30d/90d/365d)"),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to file"),
 ) -> None:
     """Get message delivery statistics.
 
@@ -608,8 +611,8 @@ def _mcp_message_trend(config, period: str) -> dict:
             if isinstance(rows, list) and rows:
                 daily_rows = rows
                 dws_ok = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("DWS pre-aggregated query failed, falling back to source table: %s", e)
 
         if not dws_ok:
             rows = client.query(f"""
@@ -704,7 +707,7 @@ def message_health(
     period: str = typer.Option("30d", "--period", "-p", help="Time period (7d/30d/90d/365d)"),
     trend: bool = typer.Option(False, "--trend", "-t",
                                help="Show daily delivery trend with spike detection"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export to JSON file"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export to JSON file"),
 ) -> None:
     """Message deliverability health check: fail/bounce/unsubscribe rates by channel (MCP).
 
@@ -789,8 +792,8 @@ def _mcp_template_stats(config, period: str, limit: int) -> list:
             """, database="das_demoen")
             if isinstance(rows, list) and rows:
                 return rows
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("ADS pre-aggregated template query failed, falling back to source table: %s", e)
 
         # Fallback: vdm_t_message_record (source)
         rows = client.query(f"""
@@ -855,7 +858,7 @@ def _print_template_stats(rows: list, period: str) -> None:
 def message_template_stats(
     period: str = typer.Option("30d", "--period", "-p", help="Time period (7d/30d/90d/365d)"),
     limit: int  = typer.Option(20,    "--limit",  "-n", help="Max templates (1-200)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
 ) -> None:
     """Per-template open/click/unsubscribe rates ranked by volume (MCP).
 
@@ -1006,7 +1009,7 @@ def _print_message_attribution(data: dict) -> None:
 def message_attribution(
     period: str      = typer.Option("30d", "--period", "-p", help="Time period (7d/30d/90d/365d)"),
     window: int      = typer.Option(7,     "--window", "-w", help="Attribution window in days (1-30)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Export JSON"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Export JSON"),
 ) -> None:
     """Message-to-purchase attribution: buyers who ordered within N days of delivery (MCP).
 

@@ -6,8 +6,9 @@ restricting read/write operations to authorized directories only.
 
 import builtins
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, Set, Union
+from typing import Any
 
 from ..security import SecurityAuditLogger
 
@@ -38,10 +39,21 @@ class FileSystemSandbox:
         "Downloads",  # Downloads folder
     ]
 
+    # Paths that are always denied regardless of allowed_paths configuration.
+    # Skills must never read or write sensitive user data outside their sandbox.
+    PROTECTED_PATHS = [
+        ".socialhub/memory",    # Memory system — contains user preferences and insights
+        ".socialhub/sessions",  # AI conversation sessions
+        ".socialhub/ai_trace.jsonl",  # Audit log
+        ".socialhub/Heartbeat.md",    # Scheduled task definitions
+        ".socialhub/locks",     # Task execution lock files
+        ".claude",              # Claude Code configuration
+    ]
+
     def __init__(
         self,
         skill_name: str,
-        allowed_paths: Optional[Set[Path]] = None,
+        allowed_paths: set[Path] | None = None,
         allow_read: bool = True,
         allow_write: bool = False,
     ):
@@ -60,7 +72,7 @@ class FileSystemSandbox:
         self._audit_logger = SecurityAuditLogger()
 
         # Set up allowed paths
-        self.allowed_paths: Set[Path] = set()
+        self.allowed_paths: set[Path] = set()
 
         # Skill's own sandbox directory (always allowed)
         self.sandbox_dir = (
@@ -86,10 +98,10 @@ class FileSystemSandbox:
                 self.allowed_paths.add(dir_path)
 
         # Store original functions for restoration
-        self._original_open: Optional[Callable] = None
+        self._original_open: Callable | None = None
         self._active = False
 
-    def is_path_allowed(self, path: Union[str, Path], for_write: bool = False) -> bool:
+    def is_path_allowed(self, path: str | Path, for_write: bool = False) -> bool:
         """Check if a path is allowed for access.
 
         Args:
@@ -102,6 +114,18 @@ class FileSystemSandbox:
         try:
             # Resolve to absolute path
             resolved = Path(path).resolve()
+            home = Path.home()
+
+            # Check protected paths — always denied regardless of allow_paths
+            for protected_rel in self.PROTECTED_PATHS:
+                protected = (home / protected_rel).resolve()
+                try:
+                    resolved.relative_to(protected)
+                    return False  # inside a protected path
+                except ValueError:
+                    pass
+                if resolved == protected:
+                    return False
 
             # Check permission flags
             if for_write and not self.allow_write:
@@ -133,7 +157,7 @@ class FileSystemSandbox:
         sandbox = self
 
         def guarded_open(
-            file: Union[str, Path, int],
+            file: str | Path | int,
             mode: str = "r",
             *args,
             **kwargs,
@@ -169,7 +193,7 @@ class FileSystemSandbox:
         self._original_open = builtins.open
         builtins.open = self._create_guarded_open()
         self._active = True
-        self._logger.debug(f"File system sandbox activated for {self.skill_name}")
+        self._logger.debug("File system sandbox activated for %s", self.skill_name)
 
     def deactivate(self) -> None:
         """Deactivate the file system sandbox.
@@ -184,7 +208,7 @@ class FileSystemSandbox:
             self._original_open = None
 
         self._active = False
-        self._logger.debug(f"File system sandbox deactivated for {self.skill_name}")
+        self._logger.debug("File system sandbox deactivated for %s", self.skill_name)
 
     def __enter__(self):
         """Enter the sandbox context."""
@@ -196,7 +220,7 @@ class FileSystemSandbox:
         self.deactivate()
         return False
 
-    def add_allowed_path(self, path: Union[str, Path]) -> None:
+    def add_allowed_path(self, path: str | Path) -> None:
         """Add a path to the allowed list.
 
         Args:
@@ -204,7 +228,7 @@ class FileSystemSandbox:
         """
         self.allowed_paths.add(Path(path).resolve())
 
-    def remove_allowed_path(self, path: Union[str, Path]) -> None:
+    def remove_allowed_path(self, path: str | Path) -> None:
         """Remove a path from the allowed list.
 
         Args:
