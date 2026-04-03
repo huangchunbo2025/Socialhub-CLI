@@ -51,6 +51,9 @@ snowflake = [
     "snowflake-connector-python[pandas]>=4.4.0",
     "openpyxl>=3.1.0",
 ]
+sync = [
+    "pymysql>=1.1.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -64,6 +67,7 @@ dev = [
 socialhub = "cli.main:cli"
 socialhub-mcp = "mcp_server.__main__:main"
 socialhub-sync-snowflake = "cli.snowflake_sync:main"
+socialhub-sync-emarsys = "emarsys_sync.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/socialhub-ai/cli"
