@@ -55,7 +55,8 @@ class SnowflakeSyncConfig:
 
 
 def quote_identifier(value: str) -> str:
-    return f'"{value.replace("\"", "\"\"")}"'
+    escaped = value.replace('"', '""')
+    return f'"{escaped}"'
 
 
 def required_env(name: str) -> str:

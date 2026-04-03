@@ -24,6 +24,11 @@ import pytest
 
 M365_DIR = Path("build/m365-agent")
 
+pytestmark = pytest.mark.skipif(
+    not M365_DIR.exists(),
+    reason="build/m365-agent/ not found — skipping M365 schema consistency tests",
+)
+
 
 @pytest.fixture(scope="module")
 def mcp_tools_names() -> list[str]:

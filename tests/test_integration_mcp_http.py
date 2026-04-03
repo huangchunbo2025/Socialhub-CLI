@@ -12,6 +12,8 @@ Run:
 
 from __future__ import annotations
 
+import os
+import socket
 from typing import Any
 
 import httpx
@@ -20,6 +22,26 @@ import pytest
 BASE_URL = "http://localhost:8091"
 API_KEY = "sh_a2d8db3b7011a3e4a4dbf56b49203abf"
 MCP_URL = "/mcp/"  # trailing slash — /mcp redirects 307
+
+
+def _integration_available() -> bool:
+    """Return True only when RUN_INTEGRATION_TESTS env var is set and server is reachable."""
+    if not os.environ.get("RUN_INTEGRATION_TESTS"):
+        return False
+    try:
+        with socket.create_connection(("localhost", 8091), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _integration_available(),
+    reason=(
+        "Integration tests skipped — set RUN_INTEGRATION_TESTS=1 and start "
+        "the local MCP server on localhost:8091 with the correct API key"
+    ),
+)
 
 
 @pytest.fixture(scope="session")

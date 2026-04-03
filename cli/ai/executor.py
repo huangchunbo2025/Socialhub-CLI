@@ -104,8 +104,9 @@ def save_scheduled_task(task: dict) -> bool:
         if insert_marker not in content:
             insert_marker = "## Add New Task Template"
 
+        task_number = len(re.findall(r"### \d+\.", content)) + 1
         task_entry = f"""
-### {len(re.findall(r'### \\d+\\.', content)) + 1}. {task.get('name', 'New Task')}
+### {task_number}. {task.get('name', 'New Task')}
 - **ID**: {task.get('id', 'task-' + datetime.now().strftime('%Y%m%d%H%M%S'))}
 - **Frequency**: {task.get('frequency', 'Daily 00:00')}
 - **Status**: `pending`
