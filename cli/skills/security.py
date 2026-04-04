@@ -879,16 +879,23 @@ class PermissionStore:
         except Exception as e:
             self._logger.warning("Failed to save permissions: %s", e)
 
-    def get_permissions(self, skill_name: str) -> set[str]:
+    def get_permissions(self, skill_name: str, version: str = "") -> set[str]:
         """Get granted permissions for a skill.
+
+        If version is provided and differs from the stored version,
+        returns an empty set — the user must re-approve permissions
+        after an upgrade.
 
         Args:
             skill_name: Name of the skill
+            version: If provided, compare against stored version
 
         Returns:
             Set of permission strings
         """
         skill_data = self._permissions.get(skill_name, {})
+        if version and skill_data.get("version") and skill_data["version"] != version:
+            return set()  # Version mismatch — permissions invalidated
         return set(skill_data.get("permissions", []))
 
     def grant_permissions(

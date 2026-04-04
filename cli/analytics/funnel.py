@@ -33,8 +33,8 @@ def _get_mcp_funnel(config, period: str = "30d") -> dict:
     )
     database = config.mcp.database
 
-    from datetime import datetime, timedelta
-    today = datetime.now().date()
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone.utc).date()
     at_risk_cutoff = (today - timedelta(days=60)).isoformat()
     at_risk_active = (today - timedelta(days=120)).isoformat()
     churned_cutoff = (today - timedelta(days=180)).isoformat()
@@ -164,9 +164,9 @@ def _print_funnel(data: dict) -> None:
 
 def _get_mcp_diagnose_context(config) -> dict:
     """Gather key metrics from multiple tables for AI diagnosis."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     start_30d = (today - timedelta(days=30)).isoformat()
     end_str = today.isoformat()
     start_7d = (today - timedelta(days=7)).isoformat()

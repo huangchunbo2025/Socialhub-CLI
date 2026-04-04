@@ -86,7 +86,7 @@ class SkillLoader:
             raise SkillLoadError(f"Failed to load skill manifest: {e}")
 
         # Check permissions - load from persistent store first
-        stored_permissions = self.permission_store.get_permissions(name)
+        stored_permissions = self.permission_store.get_permissions(name, version=manifest.version)
         for perm in stored_permissions:
             self.permission_checker.grant_permission(name, perm)
 
@@ -194,8 +194,12 @@ class SkillLoader:
                 f"Command '{command_name}' not found in skill '{skill_name}'"
             )
 
-        # Get granted permissions from persistent store
-        granted_permissions = self.permission_store.get_permissions(skill_name)
+        # Get granted permissions — version-bound to prevent stale grants
+        skill_info = self._loaded_skills.get(skill_name) or self.load_skill(skill_name)
+        manifest_version = skill_info["manifest"].version
+        granted_permissions = self.permission_store.get_permissions(
+            skill_name, version=manifest_version,
+        )
 
         # Create permission context for runtime enforcement
         perm_context = PermissionContext(

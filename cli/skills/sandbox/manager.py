@@ -2,6 +2,11 @@
 
 This module provides a unified interface for managing all sandbox
 components (filesystem, network, execution) during skill execution.
+
+SECURITY NOTE: This sandbox is a Python-level monkey-patch isolation layer,
+NOT a process/container-level hard isolation boundary. It blocks known Python
+APIs (filesystem, network, subprocess, ctypes) but cannot prevent escapes via
+native extensions or interpreter-level exploits. See ADR-002 in docs.
 """
 
 import logging
@@ -73,6 +78,9 @@ class SandboxManager:
         self._audit_logger = SecurityAuditLogger()
         self._active = False
 
+        # ctypes originals for restore on deactivate
+        self._ctypes_originals: dict | None = None
+
         # Parse permissions
         allow_file_read = "file:read" in permissions
         allow_file_write = "file:write" in permissions
@@ -117,11 +125,12 @@ class SandboxManager:
             "system",
         )
 
-        # Activate in order: execute -> network -> filesystem
+        # Activate in order: execute -> network -> filesystem -> ctypes
         # This ensures lower-level guards are in place first
         self.execute_sandbox.activate()
         self.network_sandbox.activate()
         self.filesystem_sandbox.activate()
+        self._activate_ctypes_blocking()
 
         self._active = True
 
@@ -135,12 +144,91 @@ class SandboxManager:
 
         self._logger.info("Deactivating sandbox for skill: %s", self.skill_name)
 
-        # Deactivate in reverse order: filesystem -> network -> execute
+        # Deactivate in reverse order: ctypes -> filesystem -> network -> execute
+        self._deactivate_ctypes_blocking()
         self.filesystem_sandbox.deactivate()
         self.network_sandbox.deactivate()
         self.execute_sandbox.deactivate()
 
         self._active = False
+
+    def _activate_ctypes_blocking(self) -> None:
+        """Block ctypes to prevent native-code escape from sandbox."""
+        try:
+            import ctypes
+            import ctypes.util
+
+            skill_name = self.skill_name
+
+            self._ctypes_originals = {
+                "CDLL": ctypes.CDLL,
+                "cdll": ctypes.cdll,
+                "find_library": ctypes.util.find_library,
+            }
+
+            def _blocked_cdll(*args, **kwargs):
+                raise PermissionError(
+                    f"Skill '{skill_name}' attempted to load a native library via ctypes. "
+                    "Native code execution is not allowed in the sandbox."
+                )
+
+            def _blocked_find_library(*args, **kwargs):
+                return None  # Pretend library doesn't exist
+
+            ctypes.CDLL = _blocked_cdll
+            ctypes.cdll = type(
+                "BlockedCDLL",
+                (),
+                {
+                    "LoadLibrary": staticmethod(_blocked_cdll),
+                    "__getattr__": lambda s, n: _blocked_cdll(n),
+                },
+            )()
+            ctypes.util.find_library = _blocked_find_library
+
+            # Windows-specific: block WinDLL, windll, OleDLL, oledll, PyDLL
+            for attr in ("WinDLL", "OleDLL", "PyDLL"):
+                if hasattr(ctypes, attr):
+                    self._ctypes_originals[attr] = getattr(ctypes, attr)
+                    setattr(ctypes, attr, _blocked_cdll)
+            for attr in ("windll", "oledll"):
+                if hasattr(ctypes, attr):
+                    self._ctypes_originals[attr] = getattr(ctypes, attr)
+                    setattr(ctypes, attr, type(
+                        f"Blocked_{attr}",
+                        (),
+                        {
+                            "LoadLibrary": staticmethod(_blocked_cdll),
+                            "__getattr__": lambda s, n: _blocked_cdll(n),
+                        },
+                    )())
+
+            self._logger.debug("ctypes blocking activated for skill: %s", skill_name)
+        except ImportError:
+            pass  # ctypes not available — no patching needed
+
+    def _deactivate_ctypes_blocking(self) -> None:
+        """Restore original ctypes functions."""
+        if self._ctypes_originals is None:
+            return
+        try:
+            import ctypes
+            import ctypes.util
+
+            ctypes.CDLL = self._ctypes_originals["CDLL"]
+            ctypes.cdll = self._ctypes_originals["cdll"]
+            ctypes.util.find_library = self._ctypes_originals["find_library"]
+
+            # Restore Windows-specific ctypes
+            for attr in ("WinDLL", "OleDLL", "PyDLL", "windll", "oledll"):
+                if attr in self._ctypes_originals:
+                    setattr(ctypes, attr, self._ctypes_originals[attr])
+
+            self._logger.debug("ctypes blocking deactivated for skill: %s", self.skill_name)
+        except ImportError:
+            pass
+        finally:
+            self._ctypes_originals = None
 
     def __enter__(self):
         """Enter the sandbox context.

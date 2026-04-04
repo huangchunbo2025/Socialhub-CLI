@@ -571,8 +571,8 @@ def _print_points_daily_trend(rows: list, period: str) -> None:
 
 def _get_mcp_loyalty_health(config) -> dict:
     """Fetch loyalty program health metrics."""
-    from datetime import datetime, timedelta
-    today    = datetime.now().date()
+    from datetime import datetime, timedelta, timezone
+    today    = datetime.now(timezone.utc).date()
     start_30 = (today - timedelta(days=30)).isoformat()
 
     mcp_config = MCPClientConfig(
@@ -640,7 +640,7 @@ def _get_mcp_loyalty_health(config) -> dict:
         "points":        pts,
         "redeem":        redeem,
         "churn":         churn,
-        "generated":     datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated":     datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     }
 
 

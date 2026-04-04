@@ -11,19 +11,26 @@ Stored fields mirror SocialHub API response:
 
 import json
 import stat
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..config import CONFIG_DIR
 
 _TOKEN_FILE = CONFIG_DIR / "oauth_token.json"
 
+# Allow 5-minute grace period for brief auth-server outages
+_TOKEN_GRACE = timedelta(minutes=5)
+
 
 def load_oauth_token() -> dict[str, Any] | None:
     """Load cached token from disk.
 
-    Returns the full token dict if the access token is still valid,
-    or None if missing, corrupted, or expired.
+    Returns the full token dict if the access token is still valid
+    (or within the grace period), or None if missing/corrupted/expired.
+
+    When the token is in the grace window (expired but < 5 min ago),
+    the dict is returned with ``_grace=True`` so callers can attempt
+    a refresh before falling back to the still-usable token.
     """
     if not _TOKEN_FILE.exists():
         return None
@@ -35,8 +42,11 @@ def load_oauth_token() -> dict[str, Any] | None:
         exp = datetime.fromisoformat(expires_at)
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) >= exp:
-            return None
+        now = datetime.now(timezone.utc)
+        if now >= exp + _TOKEN_GRACE:
+            return None  # Fully expired — beyond grace
+        if now >= exp:
+            data["_grace"] = True  # In grace window — token works but refresh preferred
         return data
     except Exception:
         return None

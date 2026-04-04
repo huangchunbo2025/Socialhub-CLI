@@ -44,29 +44,14 @@ _request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 
 def _extract_tenant_id_from_token(token: str) -> Optional[str]:
-    """
-    从 OAuth token 中提取 tenant_id。
-    
-    SocialHub OAuth token 格式：
-    - 可能是 JWT（需要解码）
-    - 或 opaque string（需要通过 auth server 验证）
-    
-    简化实现：假设 token 包含 tenantId 信息，实际生产环境应该：
-    1. 验证 token 签名（JWT）或调用 auth server 验证
-    2. 从 claims 中提取 tenantId
-    
-    当前 MVP 实现：返回 token 中的 tenant_id（需要客户端在 token 中携带）
-    或者通过 auth server API 验证 token 并获取 tenant_id
-    
-    TODO: 实现完整的 JWT 验证和 claims 提取
-    """
-    # MVP 简化实现：假设 token 有效，返回空字符串让下游处理
-    # 生产环境应该：
-    # 1. JWT: jwt.decode(token, verify=True).get('tenantId')
-    # 2. Opaque: httpx.post(auth_url + '/validate', headers={'Authorization': token})
+    """Extract tenant_id from an OAuth/JWT token.
 
-    # 当前返回 None，表示无法从 token 提取 tenant_id
-    # 需要 MCP 客户端显式提供 tenant_id header
+    NOT IMPLEMENTED: MCP Server currently uses API Key auth only
+    (MCP_API_KEYS env var). OAuth token validation requires JWT signature
+    verification or an auth-server round-trip, which is not yet implemented.
+
+    Returns None, causing the middleware to fall through to API Key validation.
+    """
     return None
 
 
@@ -101,10 +86,10 @@ def _load_api_key_map() -> dict[str, str]:
         key = key.strip()
         tenant_id = tenant_id.strip()
         if not key or not tenant_id:
-            logger.error("MCP_API_KEYS 含空 key 或 tenant_id，跳过: %s", pair)
+            logger.error("MCP_API_KEYS 含空 key 或 tenant_id，跳过条目（长度=%d）", len(pair))
             continue
         mapping[key] = tenant_id
-        logger.info("已加载 API Key 映射: key_prefix=%s... tenant=%s", key[:8], tenant_id)
+        logger.info("已加载 API Key 映射: key_prefix=%s... tenant=%s", key[:4], tenant_id)
 
     logger.info("API Key 映射加载完成，共 %d 个租户", len(mapping))
     return mapping
@@ -173,7 +158,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     "API Key authentication failed: path=%s ref_id=%s key_prefix=%s",
                     request.url.path,
                     ref_id,
-                    api_key[:8] if api_key else "<empty>",
+                    api_key[:4] + "***" if api_key else "<empty>",
                 )
                 return JSONResponse(
                     status_code=401,
@@ -212,7 +197,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             request.url.path,
             tenant_id,
             auth_method,
-            api_key[:8] if api_key else "<empty>",
+            api_key[:4] + "***" if api_key else "<empty>",
         )
         token = _tenant_id_var.set(tenant_id)
 

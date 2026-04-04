@@ -337,10 +337,26 @@ class MemoryStore:
     # Helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def make_insight_id(topic: str, date_str: str | None = None) -> str:
-        """Generate a filesystem-safe insight ID from topic + date."""
+    def make_insight_id(self, topic: str, date_str: str | None = None) -> str:
+        """Generate a filesystem-safe, unique insight ID from topic + date.
+
+        Appends a numeric suffix (-2, -3, …) when the same date+topic
+        already exists on disk, preventing silent overwrites of earlier
+        insights with the same topic on the same day.
+        """
         if date_str is None:
             date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         slug = _INSIGHT_SLUG_RE.sub("-", topic.lower())[:40].strip("-")
-        return f"{date_str}-{slug}"
+        base_id = f"{date_str}-{slug}"
+
+        # Check for existing files with this base ID.
+        # Note: narrow TOCTOU race if two processes call concurrently, but CLI
+        # is single-process so this is acceptable. Worst case: one overwrites.
+        if not self._insight_path(base_id).exists():
+            return base_id
+
+        # Find next available suffix
+        suffix = 2
+        while self._insight_path(f"{base_id}-{suffix}").exists():
+            suffix += 1
+        return f"{base_id}-{suffix}"

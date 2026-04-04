@@ -21,9 +21,9 @@ def _get_mcp_report(config, period: str) -> dict:
       4. Anomaly quick-scan (last N days vs baseline)
     All from DWS layer where available.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     if period == "weekly":
         n_days     = 7
         prior_days = 7
@@ -156,7 +156,7 @@ def _get_mcp_report(config, period: str) -> dict:
         "kpi_prior":    kpi_prior,
         "daily_trend":  daily_rows,
         "top_products": top_products,
-        "generated":    datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated":    datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     }
 
 

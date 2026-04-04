@@ -27,14 +27,14 @@ def _get_mcp_ltv(config, cohort_months: int, follow_months: int) -> list:
         cohort_months: how many past months of cohorts to show (3-24)
         follow_months: how many months to track each cohort (1-12)
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     if not isinstance(cohort_months, int) or cohort_months < 1 or cohort_months > 24:
         cohort_months = 6
     if not isinstance(follow_months, int) or follow_months < 1 or follow_months > 12:
         follow_months = 3
 
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     # Earliest cohort start
     earliest = (today.replace(day=1) - timedelta(days=cohort_months * 31)).replace(day=1)
     earliest_str = earliest.isoformat()
@@ -534,7 +534,7 @@ def _get_mcp_anomaly(config, metric: str, lookback: int, detect_days: int) -> di
         lookback:     days of history used to compute baseline (default 30)
         detect_days:  how many recent days to flag as anomalies (default 7)
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     metric_info = _ANOMALY_METRICS.get(metric)
     if metric_info is None:
@@ -544,7 +544,7 @@ def _get_mcp_anomaly(config, metric: str, lookback: int, detect_days: int) -> di
         )
     label, field, is_fen = metric_info
 
-    today      = datetime.now().date()
+    today      = datetime.now(timezone.utc).date()
     start_base = (today - timedelta(days=lookback + detect_days)).isoformat()
     end_base   = (today - timedelta(days=detect_days + 1)).isoformat()
     start_det  = (today - timedelta(days=detect_days)).isoformat()

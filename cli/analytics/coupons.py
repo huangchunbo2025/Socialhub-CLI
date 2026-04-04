@@ -528,9 +528,9 @@ def _print_coupons_by_rule(rows: list, period: str, output: str = None) -> None:
 
 def _get_mcp_coupon_anomaly(config, lookback: int = 30, detect_days: int = 7) -> dict:
     """Detect abnormal daily coupon redeem volume using mean+2sigma."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    today      = datetime.now().date()
+    today      = datetime.now(timezone.utc).date()
     start_base = (today - timedelta(days=lookback + detect_days)).isoformat()
     end_base   = (today - timedelta(days=detect_days + 1)).isoformat()
     start_det  = (today - timedelta(days=detect_days)).isoformat()

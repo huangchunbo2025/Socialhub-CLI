@@ -84,9 +84,10 @@ def test_build_httpx_client_mounts_proxy():
     client.close()
 
 
-def test_env_proxy_override(monkeypatch):
-    """NetworkConfig picks up env vars at construction time."""
+def test_env_proxy_override(monkeypatch, tmp_path):
+    """Environment variables override network proxy config via _apply_env_overrides."""
     monkeypatch.setenv("HTTP_PROXY", "http://env-proxy:3128")
-    config = NetworkConfig()  # reads env at default_factory time
-    # The env var should be reflected
-    assert config.http_proxy == "http://env-proxy:3128"
+    # Use load_config path: env vars are applied by _apply_env_overrides(), not default_factory
+    from cli.config import Config, _apply_env_overrides
+    config = _apply_env_overrides(Config())
+    assert config.network.http_proxy == "http://env-proxy:3128"

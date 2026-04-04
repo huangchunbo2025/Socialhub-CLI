@@ -2,8 +2,11 @@
 
 import importlib
 import json
+import logging
 import threading
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Top-level commands mirrored from main.py registrations.
 # Kept in sync via the module map below (no separate VALID_COMMANDS import
@@ -64,6 +67,7 @@ def _build_cmd_tree_for_app(app) -> dict:
 
 def _build_full_cmd_tree() -> dict[str, dict]:
     """Build the full command tree by lazily importing every top-level module."""
+    _check_module_map_consistency()
     tree: dict[str, dict] = {}
     seen: dict[str, dict] = {}
 
@@ -114,6 +118,28 @@ def invalidate_cmd_tree() -> None:
     global _CMD_TREE
     with _CMD_TREE_LOCK:
         _CMD_TREE = None
+
+
+def _check_module_map_consistency() -> None:
+    """Warn if _MODULE_MAP is out of sync with main.py registrations.
+
+    Called lazily on first validation. Logs a warning rather than raising
+    to avoid breaking the CLI on a benign sync issue.
+    """
+    try:
+        from ..main import VALID_COMMANDS
+        # VALID_COMMANDS includes --help, -h, --version, -v — exclude those
+        registered = {c for c in VALID_COMMANDS if not c.startswith("-")}
+        mapped = set(_MODULE_MAP.keys())
+        missing = registered - mapped
+        if missing:
+            logger.warning(
+                "validator._MODULE_MAP missing commands registered in main.py: %s. "
+                "AI-generated commands for these will be rejected.",
+                ", ".join(sorted(missing)),
+            )
+    except Exception:
+        pass  # Don't break validation if this check fails
 
 
 def _check_tokens(tree: dict | None, tokens: list[str], path: str) -> tuple[bool, str]:

@@ -16,9 +16,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..config import load_config
 from .trace import get_tracer
 
-# Internal env var: set when spawning sub-CLI processes so the auth gate
-# inside the subprocess does not prompt for credentials again.
-_SUBPROCESS_AUTH_SKIP_ENV = "_SOCIALHUB_INTERNAL_SUBPROCESS_SKIP_AUTH"
+from ..auth import SUBPROCESS_AUTH_SKIP_ENV as _SUBPROCESS_AUTH_SKIP_ENV
 
 console = Console()
 logger = logging.getLogger(__name__)

@@ -89,7 +89,14 @@ sh config set mcp.tenant_id "your-tenant-id"
 
 # Authenticate if your organization uses OAuth
 sh auth login
+
+# If password input is unreliable in your terminal (e.g., PowerShell),
+# make the password field visible:
+sh auth login --show-password
+# Or set the environment variable: SOCIALHUB_SHOW_PASSWORD=1
 ```
+
+> **Token grace period:** Brief auth-server outages (under 5 minutes) will not immediately lock you out. Expired tokens have a 5-minute grace period, so transient network issues do not interrupt your workflow.
 
 ### 2.3 Run your first query
 
@@ -366,7 +373,30 @@ Smart Mode works best when:
 - you need multiple commands chained together
 - you want a first pass before tightening the logic yourself
 
-### 6.2 Prompting techniques that work
+### 6.2 Global options with Smart Mode
+
+Smart Mode now handles global options placed before the query. For example:
+
+```bash
+sh --output-format json "analyze retention by channel over the last 30 days"
+sh --export=./data/result.csv "compare campaign ROI for last four weeks"
+```
+
+This lets you control output format and export path while still using natural language.
+
+### 6.3 Replay vs. new request
+
+The replay shortcut ("again", "retry", "!!") triggers **only when it is the entire query**. If you add any extra words, the CLI treats it as a new request:
+
+```bash
+sh "analyze retention"
+sh "again"                              # Replays the previous query exactly
+sh "analyze retention again by channel" # New request — not a replay
+```
+
+This means you can safely use the word "again" in a longer sentence without accidentally repeating the last command.
+
+### 6.4 Prompting techniques that work
 
 Good prompts usually specify:
 - the time range
@@ -382,7 +412,7 @@ sh "Analyze the drivers of repeat purchase decline over the last 30 days. Priori
 sh "Compare campaign efficiency for the last four weeks and identify which programs produced the highest incremental GMV."
 ```
 
-### 6.3 How AI multi-step planning works
+### 6.5 How AI multi-step planning works
 
 In practice, Smart Mode typically follows this pattern:
 1. Understand the question.
@@ -393,7 +423,7 @@ In practice, Smart Mode typically follows this pattern:
 
 You still own the judgment. AI accelerates the path to the answer, but analysts should validate the output before sharing it broadly.
 
-### 6.4 Reusable prompt templates
+### 6.6 Reusable prompt templates
 
 - “Summarize the business trend over the last 7 days and highlight the top three changes.”
 - “Explain the likely causes of the decline and rank them by confidence.”
@@ -404,15 +434,21 @@ You still own the judgment. AI accelerates the path to the answer, but analysts 
 
 ## 7. Multi-Turn Analysis: Ask AI Like You Would Ask a Teammate
 
-### 7.1 Start a session
+### 7.1 Automatic memory for every query
 
-Use session mode when the question evolves over time and each step depends on the previous one.
+Even without `--session`, the CLI now creates an ephemeral session behind the scenes. This means every query benefits from insight extraction and session summarization. You no longer need to explicitly start a session to build up personalized context for future queries.
+
+If you have configured business context via `sh memory set` (industry, peak seasons, KPI baselines, etc.), that context is included in the AI prompt automatically -- even before you set any analysis preferences.
+
+### 7.2 Start an explicit session
+
+Use an explicit session when the question evolves over time and each step depends on the previous one.
 
 ```bash
 sh chat start
 ```
 
-### 7.2 Manage sessions
+### 7.3 Manage sessions
 
 Keep a session when:
 - the context matters
@@ -424,7 +460,7 @@ End or reset a session when:
 - the time window changes materially
 - you need a clean analytical path
 
-### 7.3 Best practices for multi-turn work
+### 7.4 Best practices for multi-turn work
 
 - Keep each follow-up specific.
 - Ask one analytical question at a time.
@@ -447,16 +483,22 @@ Heartbeat is designed for recurring analytical tasks such as:
 
 ```bash
 sh heartbeat list
-sh heartbeat add --name=daily-overview --cron="0 8 * * *" --command="sh analytics overview --period=today --compare"
+sh heartbeat add --name="Daily Overview" --schedule="Daily 08:30" --command="sh analytics overview --period=today --compare"
+sh heartbeat add --name="Weekly Report" --schedule="Weekly Fri 15:00" --command="sh analytics overview --period=7d"
 ```
 
-### 8.3 Cron quick reference
+**Periodic tasks now actually repeat.** Daily and weekly tasks automatically reset to `pending` after execution, so they run again at the next scheduled time. You do not need to re-create them.
 
-Use cron when the reporting rhythm is fixed:
-- daily
-- weekly
-- monthly
-- event monitoring windows
+**Manual runs are safe.** `sh heartbeat run <id>` acquires a lock, so there is no risk of double-execution if the scheduler is also running.
+
+**Check history is auditable.** Every `sh heartbeat check` appends a record to the Check Record table, giving you a full audit trail.
+
+### 8.3 Schedule quick reference
+
+Use `--schedule` when the reporting rhythm is fixed:
+- `"Daily 08:30"` -- every day at 08:30
+- `"Weekly Mon 09:00"` -- every Monday at 09:00
+- event monitoring windows (use shorter intervals during peak events)
 
 ### 8.4 Natural-language scheduling
 
@@ -598,6 +640,8 @@ Validate:
 - comparison window
 - filter scope
 
+> **All analytics use UTC dates.** Date computations are performed in UTC. If you notice a one-day offset in "today" queries, this is likely because your local timezone differs from UTC. Keep this in mind when comparing CLI output against dashboards that use local time.
+
 ### 12.3 AI mode issues
 
 If Smart Mode gives weak output:
@@ -606,7 +650,12 @@ If Smart Mode gives weak output:
 - name the dimensions you want checked
 - ask for ranked causes rather than a broad explanation
 
-### 12.4 Practical shortcuts
+### 12.4 Authentication issues
+
+- If password input appears broken in your terminal, use `sh auth login --show-password` or set `SOCIALHUB_SHOW_PASSWORD=1`.
+- Expired tokens have a 5-minute grace period. Brief auth-server outages will not immediately block your work.
+
+### 12.5 Practical shortcuts
 
 - Start broad, then tighten.
 - Export only once the logic is stable.

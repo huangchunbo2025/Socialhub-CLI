@@ -282,10 +282,13 @@ socialhub/
 
 ## Documentation
 
-- [Full Product Documentation](docs/README.md) - Detailed command reference and usage guide
-- [Technical Design Document](docs/DESIGN.md) - Architecture design and implementation details
-- [Skills Technical Specification](docs/skills-technical-spec.md) - Complete skills subsystem technical spec
-- [Skills Store Design](docs/skills-store-design.md) - Skills Store platform design
+- [Architecture Reference (EN)](docs/Architecture-Reference-en.md) - Architecture design and technical reference
+- [Architecture Reference (中文)](docs/Architecture-Reference.md) - 架构参考手册
+- [Data Analyst Handbook (EN)](docs/Data-Analyst-Handbook-en.md) - Practical guide for data analysts
+- [Data Analyst Handbook (中文)](docs/Data-Analyst-Handbook.md) - 数据分析师业务指导手册
+- [CIO Technical Report](docs/AI-Frontier-CIO-Technical-Report.md) - AI Frontier 平台架构白皮书
+- [CMO Playbook](docs/CMO-AI-Frontier-Playbook.md) - CMO AI 营销战略手册
+- [Installation Guide](docs/安装指南.md) - 安装指南
 - [Skills Store](https://huangchunbo2025.github.io/Socialhub-CLI/) - Online skills store
 
 ## Tech Stack

@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ..auth.oauth_client import OAuthClient, OAuthError
+from ..auth.prompts import prompt_password
 from ..auth.token_store import delete_oauth_token, load_oauth_token, save_oauth_token
 from ..config import load_config
 
@@ -19,6 +20,11 @@ def login(
     tenant_id: str | None = typer.Option(None, "--tenant", "-t", help="Tenant ID"),
     account: str | None = typer.Option(None, "--account", "-a", help="Login account"),
     password: str | None = typer.Option(None, "--password", "-p", help="Account password"),
+    show_password: bool = typer.Option(
+        False,
+        "--show-password",
+        help="Show typed password instead of hiding it during interactive prompt",
+    ),
 ) -> None:
     """Authenticate with the SocialHub platform."""
     config = load_config()
@@ -36,7 +42,7 @@ def login(
     if not account:
         account = typer.prompt("Account")
     if not password:
-        password = typer.prompt("Password", hide_input=True)
+        password = prompt_password(explicit_visible=show_password)
 
     try:
         client = OAuthClient(oauth.auth_url)

@@ -1,6 +1,7 @@
 """Skill manager for installation, updates, and removal."""
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -158,15 +159,18 @@ class SkillManager:
             progress.update(task, description="Installing skill...")
             install_path = self.registry.get_skill_path(name)
 
-            # Remove old installation if exists
-            if install_path.exists():
-                shutil.rmtree(install_path)
+            # Clean up orphan staging/backup dirs from previous crashed installs
+            for pattern in (f"{name}._staging_*", f"{name}._backup_*"):
+                for orphan in install_path.parent.glob(pattern):
+                    shutil.rmtree(orphan, ignore_errors=True)
 
-            install_path.mkdir(parents=True, exist_ok=True)
+            # Install to temp directory first, swap after validation succeeds
+            staging_path = install_path.with_name(f"{install_path.name}._staging_{os.getpid()}")
+            staging_path.mkdir(parents=True, exist_ok=True)
 
             try:
                 with zipfile.ZipFile(cache_path, "r") as zf:
-                    _resolved_install = install_path.resolve()
+                    _resolved_install = staging_path.resolve()
                     for member in zf.namelist():
                         member_path = (_resolved_install / member).resolve()
                         if not str(member_path).startswith(str(_resolved_install)):
@@ -177,15 +181,16 @@ class SkillManager:
                                 f"Invalid skill package: entry '{member}' would extract "
                                 "outside the install directory"
                             )
-                    zf.extractall(install_path)
+                    zf.extractall(staging_path)
             except zipfile.BadZipFile:
+                shutil.rmtree(staging_path, ignore_errors=True)
                 raise SkillManagerError("Invalid skill package (not a valid zip file)")
 
             # Step 7: Load and verify manifest
             progress.update(task, description="Verifying certification...")
-            manifest_path = install_path / "skill.yaml"
+            manifest_path = staging_path / "skill.yaml"
             if not manifest_path.exists():
-                shutil.rmtree(install_path)
+                shutil.rmtree(staging_path, ignore_errors=True)
                 raise SkillManagerError("Invalid skill package (missing skill.yaml)")
 
             try:
@@ -193,7 +198,7 @@ class SkillManager:
                     manifest_data = yaml.safe_load(f)
                 manifest = SkillManifest(**manifest_data)
             except Exception as e:
-                shutil.rmtree(install_path)
+                shutil.rmtree(staging_path, ignore_errors=True)
                 raise SkillManagerError(f"Invalid skill manifest: {e}")
 
             # Step 8: Verify signature
@@ -202,7 +207,7 @@ class SkillManager:
                 self.audit_logger.log_signature_verified(manifest.name, manifest.version)
             except SecurityError as e:
                 self.audit_logger.log_signature_failed(manifest.name, manifest.version, str(e))
-                shutil.rmtree(install_path)
+                shutil.rmtree(staging_path, ignore_errors=True)
                 raise SkillManagerError(f"Security verification failed: {e}")
 
             # Step 8.5: Check revocation list
@@ -214,11 +219,26 @@ class SkillManager:
             )
             if self.revocation_manager.is_revoked(name, cert_id):
                 self.audit_logger.log_install_blocked(name, "Skill is revoked")
-                shutil.rmtree(install_path)
+                shutil.rmtree(staging_path, ignore_errors=True)
                 raise SecurityError(
                     f"Skill '{name}' has been revoked for security reasons. "
                     "Installation is blocked. Please contact the skill author."
                 )
+
+            # All validation passed — atomically replace old installation
+            if install_path.exists():
+                backup_path = install_path.with_name(f"{install_path.name}._backup_{os.getpid()}")
+                install_path.rename(backup_path)
+                try:
+                    staging_path.rename(install_path)
+                except Exception:
+                    # Restore backup on swap failure
+                    backup_path.rename(install_path)
+                    shutil.rmtree(staging_path, ignore_errors=True)
+                    raise
+                shutil.rmtree(backup_path, ignore_errors=True)
+            else:
+                staging_path.rename(install_path)
 
         # Step 8.6: Request permission approval (outside progress context for user interaction)
         requested_permissions = [p.value for p in manifest.permissions]

@@ -114,7 +114,7 @@ def _get_mcp_customers(config, period: str, channel: str) -> dict:
 def _get_mcp_retention(config, days_list: list) -> list:
     """Get retention analytics from MCP database."""
     import re
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Validate days_list
     days_list = _validate_days_list(days_list)
@@ -130,7 +130,7 @@ def _get_mcp_retention(config, days_list: list) -> list:
     retention_period = "365d" if longest_window > 90 else "90d" if longest_window > 30 else "30d"
     query_timeout = _mcp_query_timeout(retention_period, grouped=True)
 
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     results = []
 
     with MCPClient(mcp_config) as client:

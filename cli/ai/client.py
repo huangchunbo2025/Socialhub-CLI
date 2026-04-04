@@ -36,6 +36,7 @@ def get_ai_config(config=None) -> dict:
         "azure_deployment": ai.azure_deployment,
         "azure_api_version": ai.azure_api_version,
         "openai_api_key": ai.openai_api_key,
+        "openai_base_url": ai.openai_base_url,
         "openai_model": ai.openai_model,
         "max_tokens": ai.max_tokens,
         "temperature": ai.temperature,
@@ -112,7 +113,8 @@ def call_ai_api(
                     result_holder["error"] = "Error: OpenAI API Key not configured. Run 'sh config set ai.openai_api_key YOUR_KEY' or set OPENAI_API_KEY environment variable."
                     return
 
-                url = "https://api.openai.com/v1/chat/completions"
+                base_url = ai_config.get("openai_base_url", "https://api.openai.com/v1").rstrip("/")
+                url = f"{base_url}/chat/completions"
                 headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
                 body = {
                     "model": ai_config["openai_model"],
@@ -127,8 +129,9 @@ def call_ai_api(
             result_holder["response"] = response
         except httpx.TimeoutException:
             result_holder["timeout"] = True
-        except httpx.ConnectError:
+        except (httpx.ConnectError, OSError) as exc:
             result_holder["connect_error"] = True
+            logger.warning("Retryable transport error: %s: %s", type(exc).__name__, exc)
         except Exception as e:
             logger.debug("AI request exception: %s: %s", type(e).__name__, e)
             result_holder["error"] = f"Error: {type(e).__name__} (see debug log)"
@@ -194,6 +197,7 @@ def call_ai_api(
             last_error = "API request timeout"
             if attempt < max_retries - 1:
                 console.print(f"[yellow]API request timeout, retrying in {_backoff_s}s ({attempt + 1}/{max_retries})...[/yellow]")
+                logger.warning("AI API timeout, retrying (%d/%d)", attempt + 1, max_retries)
                 time.sleep(_backoff_s)
             continue
 
@@ -201,6 +205,7 @@ def call_ai_api(
             last_error = "Network connection failed"
             if attempt < max_retries - 1:
                 console.print(f"[yellow]Network connection failed, retrying in {_backoff_s}s ({attempt + 1}/{max_retries})...[/yellow]")
+                logger.warning("AI API connection failed, retrying (%d/%d)", attempt + 1, max_retries)
                 time.sleep(_backoff_s)
             continue
 
@@ -215,6 +220,7 @@ def call_ai_api(
                         retry_after = _backoff_s
                     wait_time = min(retry_after, 30)
                     console.print(f"[yellow]API rate-limited ({response.status_code}), retrying in {wait_time}s ({attempt + 1}/{max_retries})...[/yellow]")
+                    logger.warning("AI API rate-limited (%d), retrying in %ds (%d/%d)", response.status_code, wait_time, attempt + 1, max_retries)
                     time.sleep(wait_time)
                 continue
             if response.status_code != 200:

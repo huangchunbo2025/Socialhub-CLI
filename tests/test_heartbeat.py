@@ -52,6 +52,94 @@ class TestHeartbeatLockFilePID:
         assert not stale, "Lock file with live PID should not be stale"
 
 
+class TestPeriodicTaskStatusReset:
+    """Periodic tasks must return to 'pending' after execution."""
+
+    def test_daily_task_resets_to_pending(self, tmp_path):
+        from cli.commands.heartbeat import (
+            _HEARTBEAT_TEMPLATE, save_task_to_heartbeat,
+            update_task_after_execution, parse_heartbeat_tasks,
+            HEARTBEAT_FILE,
+        )
+        # Use a temp heartbeat file
+        import cli.commands.heartbeat as hb_mod
+        orig = hb_mod.HEARTBEAT_FILE
+        hb_mod.HEARTBEAT_FILE = tmp_path / "Heartbeat.md"
+        try:
+            hb_mod.HEARTBEAT_FILE.write_text(_HEARTBEAT_TEMPLATE, encoding="utf-8")
+            save_task_to_heartbeat({
+                "id": "task-daily-1",
+                "name": "Daily Report",
+                "frequency": "Daily 08:30",
+                "command": "sh analytics overview",
+            })
+            # Simulate successful execution
+            update_task_after_execution(
+                "task-daily-1", "done", "Success", frequency="Daily 08:30",
+            )
+            tasks = parse_heartbeat_tasks()
+            task = next(t for t in tasks if t["id"] == "task-daily-1")
+            assert task["status"] == "pending", (
+                f"Periodic daily task should reset to pending, got {task['status']}"
+            )
+        finally:
+            hb_mod.HEARTBEAT_FILE = orig
+
+    def test_failed_weekly_task_resets_to_pending(self, tmp_path):
+        from cli.commands.heartbeat import (
+            _HEARTBEAT_TEMPLATE, save_task_to_heartbeat,
+            update_task_after_execution, parse_heartbeat_tasks,
+        )
+        import cli.commands.heartbeat as hb_mod
+        orig = hb_mod.HEARTBEAT_FILE
+        hb_mod.HEARTBEAT_FILE = tmp_path / "Heartbeat.md"
+        try:
+            hb_mod.HEARTBEAT_FILE.write_text(_HEARTBEAT_TEMPLATE, encoding="utf-8")
+            save_task_to_heartbeat({
+                "id": "task-weekly-1",
+                "name": "Weekly Report",
+                "frequency": "Weekly Fri 15:00",
+                "command": "sh analytics overview",
+            })
+            update_task_after_execution(
+                "task-weekly-1", "failed", "Error",
+                frequency="Weekly Fri 15:00",
+            )
+            tasks = parse_heartbeat_tasks()
+            task = next(t for t in tasks if t["id"] == "task-weekly-1")
+            assert task["status"] == "pending"
+        finally:
+            hb_mod.HEARTBEAT_FILE = orig
+
+
+class TestCheckRecordAppend:
+    """Check records should be appended on every heartbeat check."""
+
+    def test_append_check_record_replaces_placeholder(self):
+        from cli.commands.heartbeat import _append_check_record, _HEARTBEAT_TEMPLATE
+        result = _append_check_record(
+            _HEARTBEAT_TEMPLATE, "2026-04-04 10:00 UTC", 3, 0, "No tasks due",
+        )
+        assert "Waiting for first check" not in result
+        assert "2026-04-04 10:00 UTC" in result
+        assert "No tasks due" in result
+
+    def test_append_check_record_adds_new_row(self):
+        from cli.commands.heartbeat import _append_check_record, _HEARTBEAT_TEMPLATE
+        # First check replaces placeholder
+        content = _append_check_record(
+            _HEARTBEAT_TEMPLATE, "2026-04-04 10:00 UTC", 3, 1, "First",
+        )
+        # Second check appends a new row
+        content = _append_check_record(
+            content, "2026-04-04 11:00 UTC", 3, 0, "Second",
+        )
+        assert "First" in content
+        assert "Second" in content
+        # Both rows should exist
+        assert content.count("2026-04-04") >= 2
+
+
 class TestHeartbeatConcurrentCheckGuard:
     """_CHECK_LOCK must prevent two concurrent heartbeat check calls."""
 

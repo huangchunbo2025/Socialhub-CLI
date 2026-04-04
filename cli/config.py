@@ -3,6 +3,7 @@
 import json
 import logging as _logging
 import os
+import stat
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -54,11 +55,17 @@ class AIConfig(BaseModel):
     def _validate_azure_endpoint(cls, v: str) -> str:
         return _validate_http_url(v)
 
+    @field_validator("openai_base_url")
+    @classmethod
+    def _validate_openai_base_url(cls, v: str) -> str:
+        return _validate_http_url(v)
+
     azure_endpoint: str = Field(default="https://socialhub-openai-service.openai.azure.com", description="Azure OpenAI endpoint")
     azure_api_key: str = Field(default="", description="Azure OpenAI API key")
     azure_deployment: str = Field(default="gpt-4o", description="Azure deployment name")
     azure_api_version: str = Field(default="2024-08-01-preview", description="Azure API version")
     openai_api_key: str = Field(default="", description="OpenAI API key (if using OpenAI)")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI API base URL (for compatible services)")
     openai_model: str = Field(default="gpt-4o-mini", description="OpenAI model name")
     max_tokens: int = Field(default=2048, ge=1, description="Max tokens per AI response")
     temperature: float = Field(default=0.7, description="Sampling temperature (0.0–2.0)")
@@ -88,26 +95,11 @@ class MCPConfig(BaseModel):
     def _validate_url(cls, v: str) -> str:
         return _validate_http_url(v)
 
-    sse_url: str = Field(
-        default_factory=lambda: os.environ.get("MCP_SSE_URL", ""),
-        description="MCP SSE endpoint (or set MCP_SSE_URL env var)"
-    )
-    post_url: str = Field(
-        default_factory=lambda: os.environ.get("MCP_POST_URL", ""),
-        description="MCP message endpoint (or set MCP_POST_URL env var)"
-    )
-    tenant_id: str = Field(
-        default_factory=lambda: os.environ.get("MCP_TENANT_ID", ""),
-        description="MCP tenant ID (or set MCP_TENANT_ID env var)"
-    )
-    database: str = Field(
-        default_factory=lambda: os.environ.get("MCP_DATABASE", ""),
-        description="Default database name (or set MCP_DATABASE env var)"
-    )
-    api_key: str = Field(
-        default_factory=lambda: os.environ.get("MCP_API_KEY", ""),
-        description="MCP API key sent as Authorization: Bearer (or set MCP_API_KEY env var)"
-    )
+    sse_url: str = Field(default="", description="MCP SSE endpoint (or set MCP_SSE_URL env var)")
+    post_url: str = Field(default="", description="MCP message endpoint (or set MCP_POST_URL env var)")
+    tenant_id: str = Field(default="", description="MCP tenant ID (or set MCP_TENANT_ID env var)")
+    database: str = Field(default="", description="Default database name (or set MCP_DATABASE env var)")
+    api_key: str = Field(default="", description="MCP API key sent as Authorization: Bearer (or set MCP_API_KEY env var)")
 
 
 class SessionConfig(BaseModel):
@@ -138,18 +130,9 @@ class TraceConfig(BaseModel):
 class NetworkConfig(BaseModel):
     """Enterprise network configuration (proxy, CA certificates)."""
 
-    http_proxy: str = Field(
-        default_factory=lambda: os.environ.get("HTTP_PROXY", os.environ.get("http_proxy", "")),
-        description="HTTP proxy URL (or set HTTP_PROXY env var)",
-    )
-    https_proxy: str = Field(
-        default_factory=lambda: os.environ.get("HTTPS_PROXY", os.environ.get("https_proxy", "")),
-        description="HTTPS proxy URL (or set HTTPS_PROXY env var)",
-    )
-    no_proxy: str = Field(
-        default_factory=lambda: os.environ.get("NO_PROXY", os.environ.get("no_proxy", "")),
-        description="Comma-separated list of hosts to bypass proxy",
-    )
+    http_proxy: str = Field(default="", description="HTTP proxy URL (or set HTTP_PROXY env var)")
+    https_proxy: str = Field(default="", description="HTTPS proxy URL (or set HTTPS_PROXY env var)")
+    no_proxy: str = Field(default="", description="Comma-separated list of hosts to bypass proxy")
     ca_bundle: str = Field(default="", description="Path to custom CA certificate bundle (.pem or .crt)")
     ssl_verify: bool = Field(default=True, description="Verify SSL certificates (set False only for testing)")
     request_timeout: int = Field(default=30, description="HTTP request timeout in seconds (enterprise proxy may need higher value)")
@@ -158,56 +141,18 @@ class NetworkConfig(BaseModel):
 class SnowflakeConfig(BaseModel):
     """Snowflake sync configuration (read from environment variables)."""
 
-    account: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_ACCOUNT", ""),
-        description="Snowflake account identifier",
-    )
-    account_locator: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_ACCOUNT_LOCATOR", ""),
-        description="Snowflake account locator (optional)",
-    )
-    host: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_HOST", ""),
-        description="Snowflake host override (optional)",
-    )
-    user: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_USER", ""),
-        description="Snowflake username",
-    )
-    password: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_PASSWORD", ""),
-        description="Snowflake password",
-    )
-    authenticator: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_AUTHENTICATOR", ""),
-        description="Snowflake authenticator (e.g. 'externalbrowser')",
-    )
-    warehouse: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_WAREHOUSE", ""),
-        description="Snowflake warehouse name",
-    )
-    database: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_DATABASE", ""),
-        description="Snowflake database name",
-    )
-    schema_name: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_SCHEMA", ""),
-        description="Snowflake schema name",
-    )
-    table: str = Field(
-        default_factory=lambda: os.environ.get(
-            "SNOWFLAKE_SYNC_TABLE", os.environ.get("SNOWFLAKE_TABLE", "MEMBERS_MVP")
-        ),
-        description="Snowflake source table name",
-    )
-    role: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_ROLE", ""),
-        description="Snowflake role",
-    )
-    sort_by: str = Field(
-        default_factory=lambda: os.environ.get("SNOWFLAKE_SYNC_SORT_BY", ""),
-        description="Column to sort sync output by",
-    )
+    account: str = Field(default="", description="Snowflake account identifier")
+    account_locator: str = Field(default="", description="Snowflake account locator (optional)")
+    host: str = Field(default="", description="Snowflake host override (optional)")
+    user: str = Field(default="", description="Snowflake username")
+    password: str = Field(default="", description="Snowflake password")
+    authenticator: str = Field(default="", description="Snowflake authenticator (e.g. 'externalbrowser')")
+    warehouse: str = Field(default="", description="Snowflake warehouse name")
+    database: str = Field(default="", description="Snowflake database name")
+    schema_name: str = Field(default="", description="Snowflake schema name")
+    table: str = Field(default="MEMBERS_MVP", description="Snowflake source table name")
+    role: str = Field(default="", description="Snowflake role")
+    sort_by: str = Field(default="", description="Column to sort sync output by")
 
 
 class OAuthConfig(BaseModel):
@@ -243,6 +188,7 @@ class MemoryConfig(BaseModel):
 class Config(BaseModel):
     """Main configuration model."""
 
+    config_version: int = Field(default=1, description="Config schema version (reserved for future migration logic)")
     mode: str = Field(default="mcp", description="Operation mode: 'api', 'local', or 'mcp'")
 
     @field_validator("mode")
@@ -324,6 +270,7 @@ def _apply_env_overrides(config: Config) -> Config:
         "AZURE_OPENAI_DEPLOYMENT": "azure_deployment",
         "AZURE_OPENAI_API_VERSION": "azure_api_version",
         "OPENAI_API_KEY": "openai_api_key",
+        "OPENAI_BASE_URL": "openai_base_url",
         "OPENAI_MODEL": "openai_model",
     }
     ai_overrides = {
@@ -355,8 +302,38 @@ def _apply_env_overrides(config: Config) -> Config:
     if os.environ.get("SOCIALHUB_SSL_VERIFY"):
         val = os.environ["SOCIALHUB_SSL_VERIFY"].lower()
         network_overrides["ssl_verify"] = val in ("1", "true", "yes")
+    if os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy"):
+        network_overrides["http_proxy"] = os.environ.get("HTTP_PROXY", os.environ.get("http_proxy", ""))
+    if os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"):
+        network_overrides["https_proxy"] = os.environ.get("HTTPS_PROXY", os.environ.get("https_proxy", ""))
+    if os.environ.get("NO_PROXY") or os.environ.get("no_proxy"):
+        network_overrides["no_proxy"] = os.environ.get("NO_PROXY", os.environ.get("no_proxy", ""))
 
-    if not any([mcp_overrides, ai_overrides, oauth_overrides, trace_overrides, network_overrides]):
+    # Snowflake fields
+    snowflake_env_map = {
+        "SNOWFLAKE_ACCOUNT": "account",
+        "SNOWFLAKE_ACCOUNT_LOCATOR": "account_locator",
+        "SNOWFLAKE_HOST": "host",
+        "SNOWFLAKE_USER": "user",
+        "SNOWFLAKE_PASSWORD": "password",
+        "SNOWFLAKE_AUTHENTICATOR": "authenticator",
+        "SNOWFLAKE_WAREHOUSE": "warehouse",
+        "SNOWFLAKE_DATABASE": "database",
+        "SNOWFLAKE_SCHEMA": "schema_name",
+        "SNOWFLAKE_ROLE": "role",
+        "SNOWFLAKE_SYNC_SORT_BY": "sort_by",
+    }
+    snowflake_overrides = {
+        field: os.environ[env_var]
+        for env_var, field in snowflake_env_map.items()
+        if os.environ.get(env_var)
+    }
+    # Special case: SNOWFLAKE_SYNC_TABLE / SNOWFLAKE_TABLE
+    _sf_table = os.environ.get("SNOWFLAKE_SYNC_TABLE", os.environ.get("SNOWFLAKE_TABLE", ""))
+    if _sf_table:
+        snowflake_overrides["table"] = _sf_table
+
+    if not any([mcp_overrides, ai_overrides, oauth_overrides, trace_overrides, network_overrides, snowflake_overrides]):
         return config
 
     base = config.model_dump()
@@ -370,35 +347,61 @@ def _apply_env_overrides(config: Config) -> Config:
         base["trace"].update(trace_overrides)
     if network_overrides:
         base["network"].update(network_overrides)
+    if snowflake_overrides:
+        base["snowflake"].update(snowflake_overrides)
     return Config(**base)
 
 
+_config_cache: Config | None = None
+_config_cache_mtime: float = 0.0
+
+
 def load_config() -> Config:
-    """Load configuration from file, falling back to bundled defaults.
+    """Load configuration with in-process caching.
 
     Priority (highest → lowest): environment variables > config file > bundled defaults.
     """
-    if not CONFIG_FILE.exists():
-        defaults = _load_bundled_defaults()
-        config = Config(**defaults) if defaults else Config()
-        return _apply_env_overrides(config)
+    global _config_cache, _config_cache_mtime
 
     try:
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        return _apply_env_overrides(Config(**data))
-    except Exception as e:
-        _cfg_logger.warning("Failed to load config: %s", e)
+        current_mtime = CONFIG_FILE.stat().st_mtime if CONFIG_FILE.exists() else 0.0
+    except OSError:
+        current_mtime = 0.0
+
+    if _config_cache is not None and current_mtime == _config_cache_mtime:
+        return _config_cache
+
+    if not CONFIG_FILE.exists():
         defaults = _load_bundled_defaults()
-        config = Config(**defaults) if defaults else Config()
-        return _apply_env_overrides(config)
+        result = Config(**defaults) if defaults else Config()
+        result = _apply_env_overrides(result)
+    else:
+        try:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            result = _apply_env_overrides(Config(**data))
+        except Exception as e:
+            _cfg_logger.warning("Failed to load config: %s", e)
+            defaults = _load_bundled_defaults()
+            result = Config(**defaults) if defaults else Config()
+            result = _apply_env_overrides(result)
+
+    _config_cache = result
+    _config_cache_mtime = current_mtime
+    return result
 
 
 def save_config(config: Config) -> None:
     """Save configuration to file."""
+    global _config_cache
     ensure_config_dir()
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config.model_dump(), f, indent=2, ensure_ascii=False)
+    try:
+        CONFIG_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        _cfg_logger.debug("chmod 0600 failed (expected on Windows)")
+    _config_cache = None
 
 
 def get_config_value(key: str) -> Any:
@@ -428,16 +431,21 @@ def set_config_value(key: str, value: str) -> bool:
             current[part] = {}
         current = current[part]
 
-    # Set value (try to parse as int/bool if applicable)
+    # Set value with type coercion
     final_key = parts[-1]
     if value.lower() == "true":
         current[final_key] = True
     elif value.lower() == "false":
         current[final_key] = False
-    elif value.isdigit():
-        current[final_key] = int(value)
     else:
-        current[final_key] = value
+        # Try int, then float, then string
+        try:
+            current[final_key] = int(value)
+        except ValueError:
+            try:
+                current[final_key] = float(value)
+            except ValueError:
+                current[final_key] = value
 
     # Save
     try:

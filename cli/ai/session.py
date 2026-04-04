@@ -76,8 +76,14 @@ class SessionStore:
             raise ValueError(f"Invalid session ID format: {session_id!r}")
         return self._sessions_dir / f"{session_id}.json"
 
-    def new_session(self) -> "Session":
-        """Create a new session with a unique ID."""
+    def new_session(self, persist: bool = True) -> "Session":
+        """Create a new session with a unique ID.
+
+        Args:
+            persist: If True (default), write to disk immediately.
+                     Pass False for ephemeral sessions that will be
+                     saved later via save() after add_turn().
+        """
         now = datetime.now(timezone.utc)
         ts = now.strftime("%Y%m%dT%H%M%S")
         uid = uuid.uuid4().hex[:8]
@@ -89,8 +95,24 @@ class SessionStore:
             messages=[],
             last_active=now_ts,
         )
-        self.save(session)
+        if persist:
+            self.save(session)
         return session
+
+    def load_or_create(
+        self, session_id: str | None,
+    ) -> tuple["Session", list[dict] | None]:
+        """Load an existing session or create an ephemeral one.
+
+        Returns (session, history). history is None for new/ephemeral sessions.
+        Callers should call save() after add_turn() to persist.
+        """
+        if not session_id:
+            return self.new_session(persist=False), None
+        session = self.load(session_id)
+        if session is None:
+            return self.new_session(), None
+        return session, session.get_history()
 
     def load(self, session_id: str) -> Optional["Session"]:
         """Load a session by ID. Returns None if not found, expired, or invalid ID."""

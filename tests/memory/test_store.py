@@ -98,6 +98,24 @@ class TestInsights:
         remaining = list(store._insights_dir.glob("*.json"))
         assert len(remaining) <= 5
 
+    def test_same_day_same_topic_gets_unique_id(self, store):
+        """Same-day same-topic insights must NOT overwrite each other."""
+        date_str = "2026-04-04"
+        id1 = store.make_insight_id("渠道GMV", date_str=date_str)
+        ins1 = Insight(id=id1, date=date_str, topic="渠道GMV", conclusion="Result 1")
+        store.save_insight(ins1)
+
+        id2 = store.make_insight_id("渠道GMV", date_str=date_str)
+        assert id2 != id1, "Second ID should differ to avoid overwrite"
+        ins2 = Insight(id=id2, date=date_str, topic="渠道GMV", conclusion="Result 2")
+        store.save_insight(ins2)
+
+        # Both files should exist
+        loaded = store.load_recent_insights(n=10)
+        conclusions = {i.conclusion for i in loaded}
+        assert "Result 1" in conclusions
+        assert "Result 2" in conclusions
+
     def test_path_traversal_rejected(self, store):
         with pytest.raises(Exception):
             Insight(id="../../../etc/passwd", date="2026-04-01", topic="x", conclusion="y")

@@ -241,7 +241,7 @@ def _compute_compare_range(period: str):
     The previous window is the same duration immediately before the current one.
     Only fixed-length periods are supported (not 'all').
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     days_map = {"today": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
     days = days_map.get(period)
@@ -250,7 +250,7 @@ def _compute_compare_range(period: str):
             f"--compare not supported for period '{period}'. "
             "Use: today, 7d, 30d, 90d, 365d"
         )
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     cur_start = today - timedelta(days=days)
     cur_end = today
     prev_end = cur_start - timedelta(days=1)

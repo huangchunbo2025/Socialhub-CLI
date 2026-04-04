@@ -127,16 +127,17 @@ Exception:
 cli/main.py (entrypoint)
     │
     ├── cli/auth/           Authentication layer
-    │   ├── gate.py
+    │   ├── __init__.py     ← owns SUBPROCESS_AUTH_SKIP_ENV constant
+    │   ├── gate.py         ← uses _find_first_command() for correct option handling
     │   ├── oauth_client.py
-    │   └── token_store.py
+    │   └── token_store.py  ← 5-minute grace period for auth-server outages
     │
     ├── cli/ai/             AI processing layer
     │   ├── sanitizer.py
     │   ├── client.py
     │   ├── parser.py
     │   ├── validator.py
-    │   ├── executor.py
+    │   ├── executor.py     ← imports SUBPROCESS_AUTH_SKIP_ENV from cli/auth/
     │   ├── insights.py
     │   ├── session.py
     │   └── trace.py
@@ -158,6 +159,7 @@ mcp_server/
 
 Key dependency rules:
 - `cli/analytics/mcp_adapter.py` is the only stable boundary through which the MCP server can access analytical capability.
+- `cli/auth/__init__.py` owns the `SUBPROCESS_AUTH_SKIP_ENV` constant. `cli/ai/executor.py` imports it from `cli/auth/` rather than defining it locally, keeping auth constants in one place.
 - The AI layer is intentionally stateless or function-oriented where possible to keep testing simpler.
 - `cli/config.py` is the single source of runtime configuration.
 
@@ -171,11 +173,12 @@ Key dependency rules:
 
 ```python
 def cli_entrypoint(query: str):
-    # Layer 1: registered command routing
-    if first_token(query) in VALID_COMMANDS:
+    # Layer 1: registered command routing (skips leading global options)
+    cmd = _find_first_command(args)  # skips --output-format, -v, --session etc.
+    if cmd in VALID_COMMANDS:
         return typer_app(query)
 
-    # Layer 2: command replay shortcuts
+    # Layer 2: command replay shortcuts (exact match only)
     if query.strip().lower() in REPEAT_PHRASES:
         return replay_last_command()
 
@@ -196,7 +199,7 @@ def cli_entrypoint(query: str):
         render(response)
 ```
 
-This route stack exists to keep common registered commands fast, preserve repeatability for known workflows, and only invoke AI when the query shape actually requires interpretation.
+The routing engine uses `_find_first_command()` to skip any leading global options (such as `--output-format`, `-v`, or `--session`) before identifying the sub-command token. This keeps common registered commands fast, preserves repeatability for known workflows, and only invokes AI when the query shape actually requires interpretation.
 
 #### Key global variables
 
@@ -205,7 +208,7 @@ _AUTH_EXEMPT_COMMANDS = {"auth", "config", "--help", "-h", "--version", "-v"}
 REPEAT_PHRASES = {"repeat", "again", "redo", "!!", "重复", "再来一次"}
 ```
 
-These ensure bootstrapping commands stay usable before authentication succeeds and that common analyst repetition patterns remain low-friction.
+`REPEAT_PHRASES` matching is exact-match only (not substring), so inputs like `"repeat analytics"` will not trigger a replay. These sets ensure bootstrapping commands stay usable before authentication succeeds and that common analyst repetition patterns remain low-friction.
 
 ### 3.2 AI Processing Layer (`cli/ai/`)
 
@@ -244,18 +247,19 @@ The AI pipeline is explicitly split into:
 
 #### Session state model
 
+Sessions use lazy persistence (`persist=False` by default) — no disk write occurs until `add_turn()` followed by `save()`. Single-turn queries create ephemeral sessions so that memory extraction (insights and summaries) still runs even for one-off queries. Both `main.py` and `commands/ai.py` share session creation logic through `SessionStore.load_or_create()`.
+
 ```text
-          create
+       create (ephemeral, no disk write)
             │
             ▼
-       ┌─────────┐
-       │ ACTIVE  │  TTL = 24h
-       └─────────┘
-            │ timeout / delete
-            ▼
-       ┌─────────┐
-       │ EXPIRED │
-       └─────────┘
+       ┌──────────┐      add_turn + save
+       │ IN-MEMORY │ ──────────────────────► PERSISTED (disk)
+       └──────────┘                              │ TTL=24h
+                                                 ▼
+                                            ┌─────────┐
+                                            │ EXPIRED │
+                                            └─────────┘
 ```
 
 Session files are stored under `~/.socialhub/sessions/{session_id}.json` and protected with file locking to reduce multi-process contention.
@@ -279,7 +283,8 @@ This prevents unstable downstream paths from repeatedly degrading the user exper
 
 ```python
 class SocialhubConfig(BaseModel):
-    ai: AIConfig
+    config_version: int = 1          # schema migration marker
+    ai: AIConfig                     # includes openai_base_url for OpenAI-compatible services
     mcp: MCPConfig
     network: NetworkConfig
     session: SessionConfig
@@ -290,17 +295,52 @@ class SocialhubConfig(BaseModel):
 
 The configuration hierarchy is designed to keep operational concerns separated without creating multiple competing configuration sources.
 
+Additional runtime behaviors:
+- **Schema migration**: `config_version` enables forward-compatible schema evolution. Loaders can detect and upgrade older config files on read.
+- **OpenAI-compatible services**: `AIConfig.openai_base_url` allows pointing the OpenAI provider at any compatible endpoint.
+- **mtime-based caching**: `load_config()` checks file mtime and avoids redundant disk reads within the same process.
+- **File permissions**: config files are saved with `0o600` permissions to prevent other local users from reading secrets.
+- **Unified env overrides**: all environment variable overrides are applied in `_apply_env_overrides()` as a single source of truth. Field-level `default_factory` no longer reads environment variables directly.
+
 #### Configuration precedence
 
 ```text
-1. Pydantic field defaults
+1. Environment variable overrides (_apply_env_overrides — single entry point)
 2. ~/.socialhub/config.json
-3. Environment variable overrides
+3. Pydantic field defaults / bundled defaults.json
 ```
 
-This model is predictable for architects and practical for deployment teams.
+Environment variables have the highest precedence. All env reads go through `_apply_env_overrides()` so that precedence logic has a single source of truth. This model is predictable for architects and practical for deployment teams.
 
-### 3.4 MCP Server (`mcp_server/`)
+### 3.4 Authentication Layer (`cli/auth/`)
+
+The `SUBPROCESS_AUTH_SKIP_ENV` constant is defined in `cli/auth/__init__.py` and imported by `cli/ai/executor.py`. This keeps all auth-related constants in one module.
+
+The auth gate uses `_find_first_command()` (the same helper as the CLI routing engine) to correctly identify the target command even when global options precede it. This ensures that invocations such as `sh -v auth status` correctly resolve `auth` as auth-exempt.
+
+The token store includes a 5-minute grace period for brief auth-server outages. If the auth server is unreachable but the cached token was valid within the last 5 minutes, the CLI allows the operation to proceed rather than failing immediately.
+
+### 3.5 Memory System (`cli/memory/`)
+
+The memory system spans four layers: L4 preferences, L3 analysis insights, L2 session summaries, and L4 business context.
+
+Key behavioral details:
+- **`is_empty` check**: now inspects `business_context` fields (industry, peak_seasons, kpi_baselines) and active campaigns in addition to preferences and insights/summaries. This prevents the system from treating a profile with business context as empty.
+- **`make_insight_id` uniqueness**: insight IDs include numeric suffixes to prevent same-day same-topic overwrites. Multiple insights on the same topic within one day each receive a distinct ID.
+- **Single-turn memory extraction**: single-turn queries now create ephemeral sessions (no immediate disk write) so that the memory extractor still runs. Insights and summaries are extracted even from one-off queries.
+- **Lazy session persistence**: sessions are created with `persist=False`. No disk write occurs until `add_turn()` followed by `save()`.
+
+### 3.6 Heartbeat Scheduler (`cli/commands/heartbeat.py`)
+
+The heartbeat scheduler manages periodic health checks and scheduled tasks.
+
+Key behaviors:
+- **Auto-reset after execution**: periodic tasks (daily, weekly, hourly) automatically reset to `pending` status after execution completes, enabling the next scheduled run.
+- **Per-task locking**: manual `sh heartbeat run` acquires a per-task lock to prevent concurrent execution of the same task.
+- **Audit trail**: check records are appended on every check invocation (not just the first), building an audit trail of all executions over time.
+- **Batch I/O**: all mutations are accumulated in memory during a run cycle and flushed with a single file write at the end, reducing disk I/O.
+
+### 3.7 MCP Server (`mcp_server/`)
 
 #### Middleware stack
 
@@ -366,7 +406,7 @@ _tenant_id_var: ContextVar[str] = ContextVar("tenant_id", default="")
 
 `ContextVar` was selected instead of `threading.local()` because the request model is asyncio-based. The isolation boundary must therefore follow the request task, not the process thread.
 
-### 3.5 Analytics Adapter (`cli/analytics/mcp_adapter.py`)
+### 3.8 Analytics Adapter (`cli/analytics/mcp_adapter.py`)
 
 This is one of the most important architectural boundaries in the system.
 
@@ -503,6 +543,10 @@ The audit layer exists to support:
 - incident investigation
 - policy validation
 - post-failure reconstruction
+
+### 5.6 API key logging policy
+
+MCP auth log messages include only a truncated key prefix (`key[:4]+"***"`) to reduce exposure risk. The previous format (`key[:8]`) was shortened because eight characters could be sufficient to brute-force short keys or narrow the search space in a log leak.
 
 ---
 
@@ -646,6 +690,10 @@ This split keeps the user-facing discovery surface easy to operate while preserv
 | MCP cache-miss response | < 10s P95 | ⚠️ | depends on StarRocks |
 | Skill install time | < 30s | ✅ | network-bound |
 | MCP concurrency | 50 analytical executions | ✅ | semaphore bounded |
+
+#### Analytics timezone convention
+
+All analytics date computations use `datetime.now(timezone.utc)` consistently. Previous code paths used naive local time, which could produce incorrect date boundaries depending on the operator's timezone. UTC is now the single time reference for all analytical functions.
 
 ### 9.2 Reliability design
 
@@ -804,6 +852,7 @@ Current technical debt includes:
 - limited observability depth
 - single-worker MCP service constraint
 - monkey-patch isolation trade-offs
+- OAuth token validation in MCP server auth (`_extract_tenant_id_from_token`) is an explicit stub — API Key auth is the only supported mode. The stub is protected by a 503 rejection when `MCP_API_KEYS` is not configured, so it cannot be reached in production.
 
 These are known and documented design choices, not hidden defects.
 

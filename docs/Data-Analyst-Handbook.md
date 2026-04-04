@@ -153,6 +153,25 @@ sh analytics overview    # → 直接命令
 sh "看看概览"            # → AI 解析后执行相同命令
 ```
 
+**Smart Mode 支持前置全局选项：**
+
+自然语言查询前可以加 `--output-format` 等全局选项，CLI 会正确识别并应用：
+
+```bash
+sh --output-format json "分析留存"    # 正确工作，输出 JSON 格式
+sh --output-format csv "各渠道订单"   # 同样支持
+```
+
+**重复/重放只做精确匹配：**
+
+`again`、`retry`、`!!` 等重放触发词必须是完整查询才会触发重放。如果包含其他内容，则被当作新请求处理：
+
+```bash
+sh "again"                         # → 重放上一次查询
+sh "!!"                            # → 重放上一次查询
+sh "分析留存 again by channel"      # → 当作新请求处理，不会触发重放
+```
+
 ### 3.2 通用参数说明
 
 几乎所有分析命令都支持以下通用参数：
@@ -825,7 +844,27 @@ sh session resume sess_20260401_def456
 sh session delete sess_20260401_def456
 ```
 
-### 7.3 多轮对话的最佳实践
+### 7.3 记忆系统增强
+
+**单轮查询也能积累记忆：**
+
+即使不使用 `--session` 显式开启会话，CLI 也会创建临时会话来提取洞察和摘要。你不需要刻意开启会话就能获得个性化上下文——系统会自动记住之前分析中的关键发现。
+
+**记忆系统识别业务上下文：**
+
+如果你通过 `sh memory set` 配置了行业、旺季、KPI 基准等业务上下文信息，这些现在会被注入 AI 上下文中，让分析建议更贴合你的业务实际：
+
+```bash
+# 设置业务上下文（这些信息会被 AI 在分析时参考）
+sh memory set business.industry "美妆护肤"
+sh memory set business.peak_season "双十一、618、38节"
+sh memory set business.kpi_benchmark.retention_30d "40%"
+sh memory set business.kpi_benchmark.aov "¥180"
+```
+
+> **说明：** 之前只有分析偏好（如默认时间范围、输出格式）会被注入 AI 上下文，现在行业、旺季、KPI 基准等业务上下文也会被一并注入。
+
+### 7.4 多轮对话的最佳实践
 
 **适合多轮对话的场景：**
 - 探索性分析（不确定结论，需要逐步深入）
@@ -871,22 +910,22 @@ sh session delete sess_20260401_def456
 - 每小时监控大促期间的实时数据
 - 每日自动检测数据异常
 
+**重要行为变更：**
+
+- **周期任务现在真正重复执行：** Daily 和 Weekly 任务执行完成后会自动重置为 pending 状态，下次到点会再次执行。之前的行为是执行一次后就不再调度。
+- **手动执行加锁保护：** `sh heartbeat run <id>` 现在会加锁，防止和定时检查（`sh heartbeat check`）并发执行同一任务，避免重复运行。
+- **检查历史可审计：** 每次 `sh heartbeat check` 都会在检查记录表中追加一条记录，方便回溯调度历史。
+
 ### 8.2 基础用法
 
 ```bash
-# 添加每日 9 点自动日报
-sh heartbeat add \
-  --name="daily-overview" \
-  --cron="0 9 * * *" \
-  --command="sh analytics overview --period=today --compare"
+# 添加每日 8:30 自动日报（使用 --schedule 自然语言描述周期）
+sh heartbeat add --name="每日概览" --schedule="每天 08:30" --command="sh analytics overview --period=today --compare"
 
-# 添加每周一早 8 点周报
-sh heartbeat add \
-  --name="weekly-report" \
-  --cron="0 8 * * 1" \
-  --command="sh analytics overview --period=last_week --compare"
+# 添加每周五下午 3 点周报
+sh heartbeat add --name="周报分析" --schedule="每周五 15:00" --command="sh analytics overview --period=7d"
 
-# 添加每日异常检测
+# 也可以继续使用 cron 表达式（适合高级调度需求）
 sh heartbeat add \
   --name="daily-anomaly-check" \
   --cron="0 8,14,20 * * *" \
@@ -1277,6 +1316,21 @@ sh auth login
 sh auth status
 ```
 
+> **Token 宽限期：** 认证服务短暂中断（< 5 分钟）不会立即锁定用户，已有 token 在宽限期内仍然有效。
+
+**问题：登录时密码输入不可见 / 无法粘贴**
+
+部分终端（如 PowerShell）的密码输入可能不可靠。可以使用显示密码模式：
+
+```bash
+# 方式一：命令行参数
+sh auth login --show-password
+
+# 方式二：环境变量
+export SOCIALHUB_SHOW_PASSWORD=1
+sh auth login
+```
+
 ---
 
 ### 12.2 数据问题
@@ -1295,6 +1349,10 @@ sh config get mcp.tenant_id
 # 查看数据口径（使用 SQL 直连验证）
 sh mcp query "SELECT status, COUNT(*) FROM dwd_v_order WHERE order_date >= '2026-03-01' GROUP BY status"
 ```
+
+**问题："今天"查询的数据差一天**
+
+分析层统一使用 UTC 时区进行日期计算。如果你所在时区为 UTC+8，在北京时间凌晨 0:00-8:00 之间查询"今天"的数据时，分析层的"今天"仍然是 UTC 的前一天。这是预期行为，不是数据缺失。
 
 **问题：某天数据为空**
 

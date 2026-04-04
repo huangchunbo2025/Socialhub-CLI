@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from ..auth.prompts import prompt_password
 from ..output.table import print_error, print_info, print_success, print_warning
 from ..skills.loader import SkillLoader, SkillLoadError
 from ..skills.manager import SkillManager, SkillManagerError
@@ -23,12 +24,17 @@ console = Console()
 def login_store(
     email: str | None = typer.Option(None, "--email", "-e", help="Account email"),
     password: str | None = typer.Option(None, "--password", "-p", help="Account password"),
+    show_password: bool = typer.Option(
+        False,
+        "--show-password",
+        help="Show typed password instead of hiding it during interactive prompt",
+    ),
 ) -> None:
     """Log in to SocialHub.AI Skills Store to sync your skill library."""
     if not email:
         email = typer.prompt("Email")
     if not password:
-        password = typer.prompt("Password", hide_input=True)
+        password = prompt_password(explicit_visible=show_password)
 
     try:
         with SkillsStoreClient() as client:

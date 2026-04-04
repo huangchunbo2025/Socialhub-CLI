@@ -5,7 +5,7 @@
 ---
 
 **文档类型：** 架构说明（Architecture Reference）
-**版本：** v2.0
+**版本：** v2.1
 **日期：** 2026 年 4 月
 **适用对象：** 软件架构师、高级工程师、技术评审委员会
 **保密级别：** 内部
@@ -188,14 +188,17 @@ mcp_server/                 独立进程，共享 cli/ 代码
 
 #### 三层路由引擎
 
+路由引擎使用 `_find_first_command()` 跳过前置全局选项（如 `--output-format`, `-v`, `--session`）后再识别子命令，确保 `sh -v analytics overview` 等带前置选项的调用能正确路由。
+
 ```python
 # 伪代码展示路由逻辑
 def cli_entrypoint(query: str):
     # Layer 1: 注册命令路由（O(1) set lookup）
-    if first_token(query) in VALID_COMMANDS:
+    # _find_first_command() 跳过全局选项后匹配子命令
+    if _find_first_command(query) in VALID_COMMANDS:
         return typer_app(query)          # 直接交由 Typer 处理，零 AI 开销
 
-    # Layer 2: 历史命令快捷键
+    # Layer 2: 历史命令快捷键（精确匹配）
     if query.strip().lower() in REPEAT_PHRASES:
         return replay_last_command()     # 读 history.json，重播
 
@@ -234,6 +237,7 @@ _AUTH_EXEMPT_COMMANDS = {"auth", "config", "--help", "-h", "--version", "-v"}
 # 这些命令不经过 OAuth 认证，避免鸡生蛋问题
 
 REPEAT_PHRASES = {"repeat", "again", "redo", "!!", "重复", "再来一次"}
+# 注意：REPEAT_PHRASES 只做精确匹配（不再做子串匹配），避免误触发
 ```
 
 ### 3.2 AI 处理层（cli/ai/）
@@ -319,6 +323,17 @@ REPEAT_PHRASES = {"repeat", "again", "redo", "!!", "重复", "再来一次"}
 并发安全：每次读写使用 filelock（避免多进程竞争）
 ```
 
+**Session 模型改进：**
+- `SessionStore.load_or_create()` 共享方法：统一 session 的加载/创建逻辑，避免各调用方重复实现
+- 临时 session：单轮查询创建临时 session 以触发记忆持久化，但使用懒持久化策略（`persist=False`），直到 `add_turn()` + `save()` 时才写盘，避免空 session 文件堆积
+
+#### 记忆系统（cli/memory/）
+
+- `is_empty` 现在同时检查 `business_context` 和 `active campaigns`，确保有业务上下文时不被误判为空记忆
+- `make_insight_id` 生成唯一洞察 ID：使用数字后缀（如 `retention-2026-04-04-1`）防止同一天同主题的洞察互相覆盖
+- 单轮查询创建临时 session 以触发记忆持久化（洞察提取依赖 session 中的对话记录）
+- Session 使用懒持久化：`persist=False` 创建后不立即写盘，直到 `add_turn` + `save` 时才持久化
+
 #### 断路器（executor.py）
 
 ```python
@@ -342,6 +357,7 @@ class CircuitBreaker:
 
 ```python
 class SocialhubConfig(BaseModel):
+    config_version: int = 1           # schema 迁移版本号
     ai: AIConfig
     mcp: MCPConfig
     network: NetworkConfig
@@ -356,6 +372,7 @@ class AIConfig(BaseModel):
     azure_api_key: Optional[str] = None
     azure_deployment: Optional[str] = None
     openai_api_key: Optional[str] = None
+    openai_base_url: Optional[str] = None   # 支持 OpenAI 兼容服务（如 vLLM、LocalAI）
     max_retries: int = 3
     timeout: int = 120
 
@@ -367,21 +384,30 @@ class MCPConfig(BaseModel):
     database: Optional[str] = None
 ```
 
+#### 配置加载与持久化
+
+- `load_config()` 使用 mtime 缓存：如果文件修改时间未变，直接返回缓存的配置对象，避免重复磁盘读取
+- 保存时设置文件权限 `0o600`，防止其他用户读取敏感配置
+- `config_version` 字段用于 schema 迁移：当配置结构变化时，通过版本号触发自动迁移逻辑
+
 #### 配置优先级（从低到高）
 
 ```
-1. Pydantic 字段默认值
+1. Pydantic 字段默认值 / 内置 defaults.json
 2. ~/.socialhub/config.json（用户持久化配置）
-3. 环境变量（_apply_env_overrides() 统一处理）
+3. 环境变量覆盖（_apply_env_overrides — 单一入口）
 
 def _apply_env_overrides(config: SocialhubConfig) -> SocialhubConfig:
     """
+    所有环境变量覆盖统一在此函数中处理（不再在 default_factory 中读取 env）。
+
     环境变量映射：
     AI_PROVIDER               → config.ai.provider
     AZURE_OPENAI_ENDPOINT     → config.ai.azure_endpoint
     AZURE_OPENAI_API_KEY      → config.ai.azure_api_key
     AZURE_OPENAI_DEPLOYMENT   → config.ai.azure_deployment
     OPENAI_API_KEY            → config.ai.openai_api_key
+    OPENAI_BASE_URL           → config.ai.openai_base_url
     MCP_SSE_URL               → config.mcp.sse_url
     MCP_POST_URL              → config.mcp.post_url
     MCP_TENANT_ID             → config.mcp.tenant_id
@@ -390,7 +416,27 @@ def _apply_env_overrides(config: SocialhubConfig) -> SocialhubConfig:
     """
 ```
 
-### 3.4 MCP Server（mcp_server/）
+### 3.4 认证层（cli/auth/）
+
+#### Auth Gate 路由
+
+Auth gate 使用与路由引擎相同的 `_find_first_command()` 正确处理带前置选项的命令（如 `sh -v auth status`），确保豁免命令在带全局选项时仍能正确识别。
+
+```python
+_AUTH_EXEMPT_COMMANDS = {"auth", "config", "--help", "-h", "--version", "-v"}
+# Auth gate 调用 _find_first_command() 提取真实子命令后再判断是否豁免
+```
+
+#### 关键常量
+
+- `SUBPROCESS_AUTH_SKIP_ENV` 常量定义在 `cli/auth/__init__.py`，用于标识子进程场景下跳过认证检查
+
+#### Token 存储
+
+- Token 持久化到 `~/.socialhub/auth/` 目录
+- Token 刷新检查增加 **5 分钟宽限期**：即在 token 实际过期前 5 分钟即触发刷新，避免边界条件下的认证失败
+
+### 3.5 MCP Server（mcp_server/）
 
 #### 中间件栈（Starlette ASGI）
 
@@ -514,7 +560,7 @@ def get_current_tenant() -> str:
 - `threading.local` 在 asyncio 环境下是"线程级别"的，多个协程共享同一个值
 - `ContextVar` 是"任务级别"的，每个 asyncio Task 有独立的值
 
-### 3.5 Analytics Adapter（cli/analytics/mcp_adapter.py）
+### 3.6 Analytics Adapter（cli/analytics/mcp_adapter.py）
 
 这是系统中最重要的**架构边界**之一：
 
@@ -547,6 +593,20 @@ def get_orders(period: str, group_by: str = "channel", ...) -> str:
 
 # ... 16 个工具对应 16 个适配器函数
 ```
+
+### 3.7 Heartbeat 调度器（cli/commands/heartbeat.py）
+
+Heartbeat 是 CLI 内置的周期任务调度器，用于定时执行分析/报告等自动化任务。
+
+**核心行为：**
+- 周期任务执行完成后自动重置状态为 `pending`，确保下一轮调度能正确触发
+- 手动 `run` 命令加 per-task lock 防止并发执行（同一任务不能同时运行两个实例）
+- 每次检查都追加检查记录（不只是首次），便于审计和排查调度问题
+- **批量 I/O 优化**：内存中积累变更，单次写入磁盘，减少频繁的文件 I/O 开销
+
+### 3.8 分析层时区约定
+
+所有 analytics 日期计算统一使用 `datetime.now(timezone.utc)`，避免因服务器时区设置不一致导致的日期边界计算错误。
 
 ---
 
@@ -686,6 +746,7 @@ M365 Copilot    http_app.py    auth.py      server.py    mcp_adapter    StarRock
 │  · 所有外部通信强制 HTTPS（TLS 1.2+）                                  │
 │  · Skills 下载 verify=True（即使全局 ssl_verify=False 也不例外）       │
 │  · API Key 认证（hmac.compare_digest 防时序攻击）                      │
+│  · API Key 日志脱敏：仅输出 key[:4]+"***"（缩短前缀，减少泄露面）     │
 │  · OAuth2 Bearer Token                                               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -1462,7 +1523,7 @@ def run(command: str, arguments: dict) -> int:
 | ID | 描述 | 风险 | 优先级 |
 |----|------|------|--------|
 | TD-001 | **缓存不支持水平扩展** | MCP Server 无法多实例部署 | 高 |
-| TD-002 | **OAuth token 无签名验证** | 无法验证 token 真实性，依赖 X-Tenant-Id | 高 |
+| TD-002 | **OAuth token 验证是显式 stub** | MCP Server 当前仅支持 API Key 认证，OAuth token 验证为显式 stub 实现 | 高 |
 | TD-003 | **CRL 无自动同步** | 吊销列表更新不及时 | 中 |
 | TD-004 | **Skills 串行执行** | 全局锁导致无法并发执行多个 Skill | 中 |
 | TD-005 | **无 Prometheus 指标** | 缺乏可观测性，无法设置告警 | 中 |
@@ -1546,8 +1607,14 @@ def sync_crl():
   cli/ai/sanitizer.py             提示注入防护
   cli/ai/validator.py             AI 命令校验引擎
   cli/ai/executor.py              安全命令执行器（shell=False + 断路器）
-  cli/ai/session.py               多轮对话状态管理
+  cli/ai/session.py               多轮对话状态管理（SessionStore.load_or_create）
   cli/ai/trace.py                 AI 决策审计日志
+  cli/auth/__init__.py            认证常量（SUBPROCESS_AUTH_SKIP_ENV）
+  cli/auth/gate.py                认证守门员（_find_first_command 路由）
+  cli/auth/token_store.py         Token 持久化（5 分钟宽限期刷新）
+  cli/memory/manager.py           记忆系统统一入口
+  cli/memory/store.py             记忆存储（is_empty / make_insight_id）
+  cli/commands/heartbeat.py       Heartbeat 调度器（周期任务 + 批量 I/O）
   cli/analytics/mcp_adapter.py   MCP ↔ CLI 适配器（架构边界）
   cli/skills/manager.py           10 步安装流水线
   cli/skills/security.py          密码学验证（Ed25519 + SHA-256 + CRL）
@@ -1590,6 +1657,7 @@ def sync_crl():
 
 ---
 
-*文档版本：v2.0 | 2026 年 4 月*
-*变更记录：v2.0 新增 OAuth2 认证架构、session/trace 模块详解、M365 Token 预算分析*
+*文档版本：v2.1 | 2026 年 4 月*
+*变更记录：v2.1 CLI 路由引擎改进、配置层 mtime 缓存与 schema 迁移、认证层细节、记忆系统与 Session 模型改进、Heartbeat 调度器行为、分析层时区统一、安全日志脱敏*
+*前版记录：v2.0 新增 OAuth2 认证架构、session/trace 模块详解、M365 Token 预算分析*
 *下次审阅：重大架构变更时（预计 2026 Q3 Redis 引入后）*

@@ -84,10 +84,10 @@ def _compute_date_range(period: str):
     Returns (start_date, end_date) tuple. start_date is None for 'all' period.
     Dates are Python date objects, safe for SQL interpolation.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     period = _validate_period(period)
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
 
     if period == "all":
         return None, today

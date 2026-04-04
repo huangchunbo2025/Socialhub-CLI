@@ -143,7 +143,19 @@ class MemoryContext(BaseModel):
             or self.user_profile.analysis.preferred_dimensions
             or self.user_profile.analysis.key_metrics
         )
-        return not has_preferences and not self.recent_insights and not self.recent_summaries
+        has_business = (
+            bool(self.business_context.industry)
+            or bool(self.business_context.peak_seasons)
+            or bool(self.business_context.kpi_baselines)
+        )
+        has_campaigns = bool(self.active_campaigns)
+        return (
+            not has_preferences
+            and not has_business
+            and not has_campaigns
+            and not self.recent_insights
+            and not self.recent_summaries
+        )
 
 
 # ---------------------------------------------------------------------------

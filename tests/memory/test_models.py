@@ -61,6 +61,41 @@ class TestMemoryContext:
         ctx.user_profile.analysis.preferred_dimensions = ["channel"]
         assert ctx.is_empty is False
 
+    def test_not_empty_with_business_context_industry(self):
+        from cli.memory.models import BusinessContext
+        ctx = MemoryContext()
+        ctx.business_context = BusinessContext(industry="fashion")
+        assert ctx.is_empty is False
+
+    def test_not_empty_with_business_context_kpi(self):
+        from cli.memory.models import BusinessContext
+        ctx = MemoryContext()
+        ctx.business_context = BusinessContext(kpi_baselines={"gmv_daily": 500000})
+        assert ctx.is_empty is False
+
+    def test_not_empty_with_active_campaigns(self):
+        ctx = MemoryContext(
+            campaigns=[
+                Campaign(
+                    id="c1", name="Active",
+                    period=CampaignPeriod(start="2099-01-01", end="2099-12-31"),
+                ),
+            ]
+        )
+        assert ctx.is_empty is False
+
+    def test_empty_with_only_archived_campaigns(self):
+        ctx = MemoryContext(
+            campaigns=[
+                Campaign(
+                    id="c1", name="Old",
+                    period=CampaignPeriod(start="2020-01-01", end="2020-12-31"),
+                ),
+            ]
+        )
+        # Only archived campaigns → still considered empty (no active context)
+        assert ctx.is_empty is True
+
 
 class TestInsightValidation:
     def test_valid_id(self):

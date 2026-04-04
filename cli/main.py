@@ -95,6 +95,30 @@ def version_callback(value: bool) -> None:
 # Commands exempt from OAuth2 auth gate
 _AUTH_EXEMPT_COMMANDS = {"auth", "config", "--help", "-h", "--version", "-v"}
 
+# Global options that Typer handles before the sub-command
+_GLOBAL_OPTIONS_WITH_VALUE = {"--output-format", "-c", "--session"}
+_GLOBAL_OPTIONS_FLAGS = {"--help", "-h", "--version", "-v"}
+
+
+def _find_first_command(args: list[str]) -> str | None:
+    """Skip leading global options/flags to find the first sub-command token.
+
+    Returns the command name, or None if args contain only options.
+    """
+    skip_next = False
+    for a in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if a in _GLOBAL_OPTIONS_WITH_VALUE:
+            skip_next = True
+            continue
+        if a.startswith("-"):
+            # Any other flag (e.g. --no-memory, unknown flags) — skip
+            continue
+        return a  # first non-option token is the command
+    return None
+
 
 @app.callback()
 def main(
@@ -145,8 +169,8 @@ def _run_auth_gate() -> None:
     args = sys.argv[1:]
     if not args:
         return
-    first_arg = args[0]
-    if first_arg in _AUTH_EXEMPT_COMMANDS:
+    cmd = _find_first_command(args)
+    if cmd is None or cmd in _AUTH_EXEMPT_COMMANDS:
         return
     from .auth.gate import ensure_authenticated
 
@@ -163,7 +187,7 @@ def load_history() -> dict:
     return {"last_query": "", "last_commands": []}
 
 
-def save_history(query: str, commands: list = None) -> None:
+def save_history(query: str, commands: list | None = None) -> None:
     """Save command to history."""
     try:
         HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -253,10 +277,14 @@ def _resolve_repeat(query: str) -> str | None:
 
     Returns the actual query string to use, or None if the caller should return
     immediately (command already executed or nothing to do).
+
+    Only triggers when the *entire* query (after stripping) matches a repeat
+    phrase exactly.  Queries like "analyze retention again by channel" are
+    passed through as new requests.
     """
     query_lower = query.lower().strip()
-    if not (query_lower in REPEAT_PHRASES or any(p in query_lower for p in REPEAT_PHRASES)):
-        return query  # not a repeat phrase, pass through unchanged
+    if query_lower not in REPEAT_PHRASES:
+        return query  # not an exact repeat phrase, pass through unchanged
 
     hist = load_history()
     last_commands = hist.get("last_commands", [])
@@ -282,19 +310,16 @@ def _resolve_repeat(query: str) -> str | None:
 
 
 def _load_session(session_id: str | None):
-    """Load session and history. Returns (session, session_history, store)."""
-    if not session_id:
-        return None, None, None
+    """Load or create session. Returns (session, session_history, store)."""
     from .ai.session import SessionStore
 
     store = SessionStore()
-    session = store.load(session_id)
-    if session is None:
+    session, history = store.load_or_create(session_id)
+    if session_id and history is None:
         console.print(
             f"[yellow]Session '{session_id}' not found or expired. Starting fresh.[/yellow]"
         )
-        return None, None, store
-    return session, session.get_history(), store
+    return session, history, store
 
 
 def _load_memory(no_memory: bool):
@@ -326,7 +351,7 @@ def _save_session_turn(
     no_memory: bool,
 ) -> None:
     """Persist one Q&A conversation turn and optional memory summary."""
-    if not (session_id and session is not None and store is not None):
+    if session is None or store is None:
         return
     from .config import load_config as _lc
 
@@ -408,7 +433,7 @@ def _handle_plan_response(
     )
 
     # D7: write plan execution results back to session so future turns have context
-    if plan_summary and session_id and session is not None and store is not None:
+    if plan_summary and session is not None and store is not None:
         from .config import load_config as _lc
 
         session.add_turn(
@@ -479,8 +504,12 @@ def _run_smart_mode(query: str, session_id: str | None, no_memory: bool) -> None
         display_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
         _handle_plan_response(display_response, steps, query, session, store, session_id, usage, memory_manager=memory_manager)
     else:
-        console.print(Panel(Markdown(response), title="AI Assistant", border_style="cyan"))
-        _handle_inline_command(response, query)
+        # Strip control markers that weren't successfully parsed
+        clean_response = response.replace("[PLAN_START]", "").replace("[PLAN_END]", "")
+        clean_response = clean_response.replace("[SCHEDULE_TASK]", "")
+        clean_response = clean_response.replace("[/SCHEDULE_TASK]", "")
+        console.print(Panel(Markdown(clean_response), title="AI Assistant", border_style="cyan"))
+        _handle_inline_command(clean_response, query)
 
 
 # ---------------------------------------------------------------------------
@@ -496,8 +525,11 @@ def cli() -> None:
         show_welcome()
         return
 
-    first_arg = args[0]
-    if first_arg in VALID_COMMANDS:
+    # Find the actual command, skipping leading global options like
+    # --output-format, -v, --session so that
+    # `sh --output-format json analytics overview` is correctly routed.
+    cmd = _find_first_command(args)
+    if cmd is not None and cmd in VALID_COMMANDS:
         app()
         return
 

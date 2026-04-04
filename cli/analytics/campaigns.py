@@ -605,6 +605,7 @@ def _print_campaign_roi(rows: list, period: str, window_days: int) -> None:
 
 def _get_mcp_campaign_postmortem(config, campaign_id: str) -> dict:
     """Fetch post-mortem data for a single campaign."""
+    from datetime import datetime, timezone
     safe_id = _sanitize_string_input(campaign_id, 50)
     mcp_config = MCPClientConfig(
         sse_url=config.mcp.sse_url,
@@ -674,7 +675,7 @@ def _get_mcp_campaign_postmortem(config, campaign_id: str) -> dict:
         "roi":         roi,
         "tiers":       tiers,
         "trend":       trend,
-        "generated":   __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated":   datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     }
 
 

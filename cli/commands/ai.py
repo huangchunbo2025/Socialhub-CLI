@@ -46,18 +46,12 @@ def ai_chat(
         raise typer.Exit(1)
     query = sanitize_user_input(query)
 
-    # Load session history if session_id provided
-    session = None
-    session_history = None
-    store = None
-    if session_id:
-        from ..ai.session import SessionStore
-        store = SessionStore()
-        session = store.load(session_id)
-        if session is None:
-            console.print(f"[yellow]Session '{session_id}' not found or expired. Starting fresh.[/yellow]")
-        else:
-            session_history = session.get_history()
+    # Load or create session (ephemeral for single-turn memory persistence)
+    from ..ai.session import SessionStore
+    store = SessionStore()
+    session, session_history = store.load_or_create(session_id)
+    if session_id and session_history is None:
+        console.print(f"[yellow]Session '{session_id}' not found or expired. Starting fresh.[/yellow]")
 
     # Load memory context and build personalized system prompt (P3: inject shared tracer)
     _memory_manager = None
@@ -74,8 +68,8 @@ def ai_chat(
 
     response, _usage = call_ai_api(query, api_key, session_history=session_history, system_prompt=_effective_system_prompt)
 
-    # Save session turn
-    if session_id and session is not None and store is not None:
+    # Save session turn and extract memory
+    if session is not None and store is not None:
         from ..config import load_config as _lc
         session.add_turn(query, response, max_history=_lc().session.max_history)
         store.save(session)

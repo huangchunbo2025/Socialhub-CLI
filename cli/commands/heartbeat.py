@@ -52,6 +52,7 @@ def _patch_heartbeat_content(
     note_safe: str,
     now: str,
     update_status: bool = False,
+    override_status: str | None = None,
 ) -> str:
     """Apply all in-memory mutations to a Heartbeat.md content string.
 
@@ -76,16 +77,15 @@ def _patch_heartbeat_content(
         if "| - | - | - | No records |" in line or "| - | - | - | 暂无执行记录 |" in line:
             lines[i] = f"| {now} | {task_id} | {status} | {note_safe} |"
             continue
-        if "| - | - | - | Waiting for first check |" in line or "| - | - | - | 等待首次检查 |" in line:
-            lines[i] = f"| {now} | - | 1 | Task: {task_id} |"
-            continue
+        # Check Record placeholder is now handled by _append_check_record()
         if update_status:
             if f"- **ID**: {task_id}" in line:
                 in_target_task = True
             elif in_target_task and line.startswith("### "):
                 in_target_task = False
             elif in_target_task and "- **Status**:" in line:
-                lines[i] = f"- **Status**: `{status}`"
+                effective = override_status if override_status is not None else status
+                lines[i] = f"- **Status**: `{effective}`"
                 in_target_task = False
 
     return "\n".join(lines)
@@ -366,16 +366,63 @@ def update_execution_log(task_id: str, status: str, note: str = "") -> None:
         tmp.unlink(missing_ok=True)
 
 
-def update_task_after_execution(task_id: str, status: str, note: str = "") -> None:
-    """Write execution log entry AND update task Status in a single atomic read-write."""
+def _append_check_record(
+    content: str, now: str, pending_count: int, executed_count: int, note: str,
+) -> str:
+    """Append a row to the Heartbeat Check Record table."""
+    check_marker = _resolve_marker(
+        content,
+        "| Check Time | Pending | Executed | Note |",
+        "| 检查时间 | 待执行 | 已执行 | 备注 |",
+    )
+    new_row = f"| {now} | {pending_count} | {executed_count} | {_escape_note(note)} |"
+    lines = content.split("\n")
+
+    # First pass: replace placeholder if present
+    for i, line in enumerate(lines):
+        if "| - | - | - | Waiting for first check |" in line or "| - | - | - | 等待首次检查 |" in line:
+            lines[i] = new_row
+            return "\n".join(lines)
+
+    # Second pass: append after header+separator
+    for i, line in enumerate(lines):
+        if check_marker in line and i + 1 < len(lines) and lines[i + 1].startswith("|---"):
+            lines.insert(i + 2, new_row)
+            return "\n".join(lines)
+
+    return content
+
+
+def _is_periodic(frequency: str) -> bool:
+    """Return True if the frequency represents a recurring schedule."""
+    schedule = parse_frequency(frequency)
+    return schedule["type"] in ("daily", "weekly", "hourly")
+
+
+def update_task_after_execution(
+    task_id: str, status: str, note: str = "", frequency: str = "",
+) -> None:
+    """Write execution log entry AND update task Status in a single atomic read-write.
+
+    For periodic tasks (daily/weekly/hourly), the status is always reset to
+    ``pending`` after logging the result so the task is eligible for the next
+    scheduled run.  One-off tasks retain the ``done``/``failed`` status.
+    """
     if not HEARTBEAT_FILE.exists():
         return
+
+    # Determine the persisted status: periodic tasks always go back to pending
+    persisted_status = status
+    if _is_periodic(frequency) and status in ("done", "failed"):
+        persisted_status = "pending"
+
     try:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         content = _patch_heartbeat_content(
             HEARTBEAT_FILE.read_text(encoding="utf-8"),
             task_id, status, _escape_note(note), now,
             update_status=True,
+            override_status=persisted_status,
         )
         tmp = _heartbeat_tmp_path()
         try:
@@ -459,8 +506,23 @@ def check_tasks(
         elif should_run_task(task, now):
             due_tasks.append(task)
 
+    pending_count = sum(1 for t in tasks if t["status"] == "pending")
+
     if not due_tasks:
         console.print("[green]No tasks due for execution.[/green]")
+        # Record the check even when nothing ran
+        try:
+            now_str = now.strftime("%Y-%m-%d %H:%M UTC")
+            content = HEARTBEAT_FILE.read_text(encoding="utf-8")
+            content = _append_check_record(content, now_str, pending_count, 0, "No tasks due")
+            tmp = _heartbeat_tmp_path()
+            try:
+                tmp.write_text(content, encoding="utf-8")
+                tmp.replace(HEARTBEAT_FILE)
+            finally:
+                tmp.unlink(missing_ok=True)
+        except Exception as _e:
+            logger.debug("Failed to write check record: %s", _e)
         _CHECK_LOCK.release()
         return
 
@@ -477,6 +539,12 @@ def check_tasks(
     lock_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        # Accumulate all mutations on a single in-memory content string
+        # to avoid N+1 read-write cycles of Heartbeat.md.
+        content = HEARTBEAT_FILE.read_text(encoding="utf-8")
+        now_str = now.strftime("%Y-%m-%d %H:%M UTC")
+        executed_count = 0
+
         for task in due_tasks:
             console.print(f"[bold]Task: {task['name']}[/bold] (ID: {task['id']})")
             console.print(f"  Schedule: {task['frequency']}")
@@ -492,7 +560,6 @@ def check_tasks(
                 continue
 
             try:
-                # Execute the task
                 step_start = time.time()
                 success, output = execute_task(task)
             finally:
@@ -501,13 +568,24 @@ def check_tasks(
                 except OSError:
                     pass
 
+            executed_count += 1
+            freq = task.get("frequency", "")
             if success:
                 console.print("  [green][OK] Task completed[/green]")
-                update_task_after_execution(task["id"], "done", "Success")
+                status = "done"
+                note_text = "Success"
             else:
                 console.print("  [red][FAIL] Task failed[/red]")
                 console.print(f"  Error: {output[:200]}")
-                update_task_after_execution(task["id"], "failed", output[:50])
+                status = "failed"
+                note_text = output[:50]
+
+            # Apply mutations in memory (no disk I/O per task)
+            persisted_status = "pending" if _is_periodic(freq) and status in ("done", "failed") else status
+            content = _patch_heartbeat_content(
+                content, task["id"], status, _escape_note(note_text), now_str,
+                update_status=True, override_status=persisted_status,
+            )
 
             if _tracer is not None:
                 try:
@@ -524,6 +602,19 @@ def check_tasks(
             if output:
                 console.print(output)
             console.print()
+
+        # Append check record and flush all mutations to disk in one write
+        try:
+            note = f"Executed {executed_count} task(s)" if not dry_run else "Dry run"
+            content = _append_check_record(content, now_str, pending_count, executed_count, note)
+            tmp = _heartbeat_tmp_path()
+            try:
+                tmp.write_text(content, encoding="utf-8")
+                tmp.replace(HEARTBEAT_FILE)
+            finally:
+                tmp.unlink(missing_ok=True)
+        except Exception as _e:
+            logger.debug("Failed to write heartbeat file: %s", _e)
     finally:
         _CHECK_LOCK.release()
 
@@ -584,16 +675,36 @@ def run_task(
 
     console.print(f"[bold]Running task: {task['name']}[/bold]")
 
-    success, output = execute_task(task)
+    # Acquire per-task lock to prevent concurrent execution with heartbeat check
+    lock_dir = Path.home() / ".socialhub" / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_dir / f"{task_id}.lock"
+    if not _acquire_task_lock(lock_file):
+        console.print("[yellow]Task is already running (lock held by another process)[/yellow]")
+        raise typer.Exit(1)
+
+    try:
+        success, output = execute_task(task)
+    finally:
+        try:
+            lock_file.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     if success:
         console.print("\n[green][OK] Task completed successfully[/green]")
-        update_task_after_execution(task_id, "done", "Manual run")
+        update_task_after_execution(
+            task_id, "done", "Manual run",
+            frequency=task.get("frequency", ""),
+        )
     else:
         console.print("\n[red][FAIL] Task failed[/red]")
         if output:
             console.print(f"[dim]{output[:200]}[/dim]")
-        update_task_after_execution(task_id, "failed", "Manual run failed")
+        update_task_after_execution(
+            task_id, "failed", "Manual run failed",
+            frequency=task.get("frequency", ""),
+        )
 
     if success and output:
         console.print(output, markup=False)
