@@ -1,0 +1,69 @@
+"""ORM models for MCP Server."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from mcp_server.db import Base
+
+
+class TenantBigQueryCredential(Base):
+    """Stores encrypted BigQuery Service Account credentials per tenant."""
+
+    __tablename__ = "tenant_bigquery_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    credential_type: Mapped[str] = mapped_column(String(50), nullable=False, default="bigquery_emarsys")
+    customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    gcp_project_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    dataset_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    service_account_json: Mapped[str] = mapped_column(Text, nullable=False)  # Fernet encrypted
+    tables_found: Mapped[str | None] = mapped_column(Text, nullable=True)    # JSON array string
+    datasets_found: Mapped[str | None] = mapped_column(Text, nullable=True)  # comma-separated dataset IDs
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class TenantApiKey(Base):
+    """API Keys for MCP client authentication, managed per tenant via portal."""
+
+    __tablename__ = "tenant_api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(10), nullable=False)   # first 8 chars, for display
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # SHA-256 hex
+    key_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)  # plain-text key for portal copy
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TenantSocialHubCredential(Base):
+    """Stores encrypted SocialHub app_id/app_secret per tenant for upstream MCP gateway auth."""
+
+    __tablename__ = "tenant_socialhub_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    auth_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    app_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    app_secret: Mapped[str] = mapped_column(Text, nullable=False)  # Fernet encrypted
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

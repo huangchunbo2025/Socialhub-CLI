@@ -1,0 +1,133 @@
+# docker-compose.yml — 本地/自托管完整部署
+#
+# 与 render.yaml 对应关系：
+#   postgres          → render.yaml databases.skills-store-postgres（合并：两库共享一个实例）
+#   mcp-server        → render.yaml services[0] socialhub-mcp
+#   skills-store-backend → render.yaml services[1] skills-store-backend
+#
+# 使用方式：
+#   1. cp .env.docker.example .env.docker  # 填写敏感变量
+#   2. docker compose up -d
+#
+# 密钥文件（skills-store 签名用）：
+#   将 ed25519 私钥放到 ./secrets/ed25519-private.pem（容器内挂载只读）
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL：单实例，两个 database
+  #   socialhub_mcp  → mcp-server
+  #   skills_store   → skills-store-backend
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres        # 默认库，两个业务库由 init-db.sql 创建
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5433:5432"     # 宿主机 5432 已被本地 PG 占用，对外暴露 5433 供调试
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # MCP Server — 对应 render.yaml services[0] socialhub-mcp
+  # ---------------------------------------------------------------------------
+  mcp-server:
+    build:
+      context: .
+      dockerfile: docker/mcp-server.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8091:8090"
+    env_file:
+      - .env.docker
+    environment:
+      # 数据库连接（覆盖 .env.docker 中的 DATABASE_URL，指向本地 postgres 容器）
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/socialhub_mcp
+      # 以下对应 render.yaml 中 value: 直接写死的非敏感配置
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: INFO
+      ALLOWED_ORIGINS: ""          # 按需在 .env.docker 中追加，与 render.yaml 保持一致
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Skills Store Backend — 对应 render.yaml services[1] skills-store-backend
+  # ---------------------------------------------------------------------------
+  skills-store-backend:
+    build:
+      context: skills-store
+      dockerfile: ../docker/skills-store.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+    env_file:
+      - .env.docker
+    environment:
+      # 数据库连接（覆盖 .env.docker 中的 DATABASE_URL，指向本地 postgres 容器）
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/skills_store
+      # Alembic 同步驱动连接串（psycopg），迁移时使用
+      ALEMBIC_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/skills_store
+      # 以下对应 render.yaml 中 value: 直接写死的非敏感配置
+      APP_ENV: production
+      JWT_EXPIRE_HOURS: "24"
+      PACKAGE_STORAGE_MODE: local
+      PACKAGE_STORAGE_ROOT: ./data/packages
+      ED25519_PRIVATE_KEY_PATH: ./secrets/ed25519-private.pem   # 不存在时自动生成
+      ED25519_PUBLIC_KEY_ID: ed25519-main
+    volumes:
+      - skills_store_data:/app/data/packages
+      - skills_store_secrets:/app/secrets   # 可写，首次启动自动生成 ed25519 密钥
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Emarsys Sync Daemon — 对应 render.yaml services socialhub-sync-emarsys
+  # 无 HTTP 端口，纯后台 worker
+  # ---------------------------------------------------------------------------
+  emarsys-sync:
+    build:
+      context: .
+      dockerfile: docker/emarsys-sync.Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      # 数据库连接（与 mcp-server 共用 socialhub_mcp 库）
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/socialhub_mcp
+      # StarRocks 连接（覆盖 .env.docker，本地调试时可指向测试 StarRocks）
+      STARROCKS_PORT: "9030"
+      STARROCKS_HTTP_PORT: "8030"
+      # 同步参数
+      SYNC_INTERVAL_MINUTES: "60"
+      SYNC_MAX_CONCURRENT_TENANTS: "3"
+      SYNC_BATCH_SIZE: "10000"
+      SYNC_STATE_PATH: "/data/emarsys_sync"
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: INFO
+    volumes:
+      - emarsys_sync_data:/data/emarsys_sync   # run_summary.json 持久化
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  skills_store_data:
+  skills_store_secrets:
+  emarsys_sync_data:
