@@ -42,6 +42,7 @@ class SummaryWriter:
         for tr in tenant_results:
             summary["tenants"][tr.tenant_id] = {
                 "success": tr.success_count,
+                "skipped": tr.skipped_count,
                 "failed": tr.failed_count,
                 "failed_tables": tr.failed_tables,
                 "rows_read": tr.rows_read,
