@@ -18,10 +18,10 @@ def _make_manager():
 def test_refresh_views_executes_ddl_for_each_event_key():
     manager, cursor = _make_manager()
     manager.refresh_all_views()
-    # 21 event keys → 21 DDL executions + 1 USE statement = 22 total
+    # 48 event keys → 48 DDL executions + 1 USE statement = 49 total
     # But the test checks for DDL executions (excluding USE):
-    # Actually let's check total calls >= 21
-    assert cursor.execute.call_count >= 21
+    # Actually let's check total calls >= 48
+    assert cursor.execute.call_count >= 48
 
 
 def test_refresh_views_ddl_contains_create_or_replace():
@@ -32,7 +32,7 @@ def test_refresh_views_ddl_contains_create_or_replace():
         for call_args in cursor.execute.call_args_list
         if "CREATE OR REPLACE VIEW" in call_args[0][0]
     ]
-    assert len(ddl_calls) == 21
+    assert len(ddl_calls) == 48
 
 
 def test_refresh_views_uses_correct_database():
