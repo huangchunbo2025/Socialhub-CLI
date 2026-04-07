@@ -31,6 +31,10 @@ class MCPConnectionConfig:
     tenant_id: str = ""  # Required - no hardcoded default
     timeout: int = 120
     api_key: str = ""  # Optional: sent as Authorization: Bearer <api_key>
+    token: str = ""  # SocialHub Bearer token，由 TokenManager 注入（HTTP 模式）
+    das_database: str = ""  # dwd/ads/dws/dim 表所在库，由 server.py 按租户注入
+    dts_database: str = ""  # vdm_ 表所在库
+    datanow_database: str = ""  # t_/v_ 表所在库
 
 
 # Backward-compatibility alias — existing code importing ``MCPConfig`` continues to work.
@@ -42,6 +46,17 @@ class MCPClient:
 
     def __init__(self, config: MCPConfig | None = None):
         self.config = config or MCPConfig()
+        # 从 thread-local 读取 token / 数据库名（server.py 在进入 executor 前注入）
+        import threading as _threading
+        _tl = _threading.current_thread().__dict__
+        if not self.config.token:
+            self.config.token = _tl.get("_sh_mcp_token", "") or ""
+        if not self.config.das_database:
+            self.config.das_database = _tl.get("_sh_das_database", "") or ""
+        if not self.config.dts_database:
+            self.config.dts_database = _tl.get("_sh_dts_database", "") or ""
+        if not self.config.datanow_database:
+            self.config.datanow_database = _tl.get("_sh_datanow_database", "") or ""
         self._session_id: str | None = None
         self._sse_thread: threading.Thread | None = None
         self._running = False
