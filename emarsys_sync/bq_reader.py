@@ -25,6 +25,7 @@ def build_incremental_query(
     table_full: str,
     watermark: datetime | None,
     batch_size: int,
+    time_col: str | None = "event_time",
 ) -> str:
     """Build a BigQuery SQL query for incremental read.
 
@@ -32,8 +33,10 @@ def build_incremental_query(
         project: GCP project ID.
         dataset: BigQuery dataset ID.
         table_full: Full table name including account_id suffix.
-        watermark: Last synced event_time; None means read from beginning.
+        watermark: Last synced timestamp; None means read from beginning.
         batch_size: Maximum rows to return.
+        time_col: Column used for incremental filtering and ordering.
+            Pass None to do a full table scan (no WHERE / ORDER BY).
 
     Returns:
         SQL string.
@@ -41,17 +44,23 @@ def build_incremental_query(
     table_ref = f"`{project}.{dataset}.{table_full}`"
     base = f"SELECT * FROM {table_ref}"
 
+    if time_col is None:
+        # Full scan — no incremental filter
+        base += f" LIMIT {batch_size}"
+        return base
+
     is_engagement = table_full.startswith("engagement_events")
 
     if watermark and is_engagement:
         date_str = watermark.date().isoformat()
         base += (
-            f" WHERE event_time > '{watermark.isoformat()}' AND partitiontime = DATE('{date_str}')"
+            f" WHERE {time_col} > '{watermark.isoformat()}'"
+            f" AND partitiontime = DATE('{date_str}')"
         )
     elif watermark:
-        base += f" WHERE event_time > '{watermark.isoformat()}'"
+        base += f" WHERE {time_col} > '{watermark.isoformat()}'"
 
-    base += " ORDER BY event_time"
+    base += f" ORDER BY {time_col}"
     base += f" LIMIT {batch_size}"
     return base
 
@@ -128,13 +137,15 @@ class BqReader:
         *,
         account_id: str,
         watermark: datetime | None,
+        time_col: str | None = "event_time",
     ) -> list[dict[str, Any]]:
         """Read a batch of rows from a BQ table newer than watermark.
 
         Args:
             table_name: Table name without account_id suffix (e.g. ``email_sends``).
             account_id: Emarsys account/customer ID (table name suffix).
-            watermark: Last synced event_time; None reads from the beginning.
+            watermark: Last synced timestamp; None reads from the beginning.
+            time_col: Column used for incremental filtering. Pass None for full scan.
 
         Returns:
             List of rows as dicts.
@@ -149,6 +160,7 @@ class BqReader:
             table_full=table_full,
             watermark=watermark,
             batch_size=self._batch_size,
+            time_col=time_col,
         )
         logger.debug("BQ query: %s", sql)
         try:

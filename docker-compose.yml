@@ -20,7 +20,7 @@ services:
   #   skills_store   → skills-store-backend
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -96,7 +96,38 @@ services:
       postgres:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # Emarsys Sync Daemon — 对应 render.yaml services socialhub-sync-emarsys
+  # 无 HTTP 端口，纯后台 worker
+  # ---------------------------------------------------------------------------
+  emarsys-sync:
+    build:
+      context: .
+      dockerfile: docker/emarsys-sync.Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      # 数据库连接（与 mcp-server 共用 socialhub_mcp 库）
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/socialhub_mcp
+      # StarRocks 连接（覆盖 .env.docker，本地调试时可指向测试 StarRocks）
+      STARROCKS_PORT: "9030"
+      STARROCKS_HTTP_PORT: "8030"
+      # 同步参数
+      SYNC_INTERVAL_MINUTES: "60"
+      SYNC_MAX_CONCURRENT_TENANTS: "3"
+      SYNC_BATCH_SIZE: "10000"
+      SYNC_STATE_PATH: "/data/emarsys_sync"
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: INFO
+    volumes:
+      - emarsys_sync_data:/data/emarsys_sync   # run_summary.json 持久化
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   skills_store_data:
   skills_store_secrets:
+  emarsys_sync_data:

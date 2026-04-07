@@ -1,0 +1,22 @@
+# docker-compose.test.yml — 集成测试专用 overlay
+#
+# 用法（与主 docker-compose.yml 叠加）：
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
+#
+# test-runner 仅依赖 postgres（BQ 凭证存于库中）；StarRocks 通过 VPN 内网访问。
+
+services:
+  test-runner:
+    build:
+      context: .
+      dockerfile: docker/test-runner.Dockerfile
+    env_file:
+      - .env.docker
+    environment:
+      # 覆盖 DATABASE_URL，指向 compose 内部 postgres 容器
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/socialhub_mcp
+      # MCP Server 地址（回归测试用）
+      MCP_SERVER_URL: http://mcp-server:8090
+    depends_on:
+      postgres:
+        condition: service_healthy

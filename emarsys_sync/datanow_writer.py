@@ -101,6 +101,7 @@ class DatanowWriter:
             "format": "json",
             "strip_outer_array": "true",
             "timeout": str(_STREAM_LOAD_TIMEOUT),
+            "Expect": "100-continue",
         }
 
         resp = httpx.put(

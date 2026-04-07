@@ -79,7 +79,7 @@ class Runner:
         Returns:
             List of TenantResult, one per tenant.
         """
-        fernet_key = os.environ["FERNET_KEY"].encode()
+        fernet_key = os.environ["CREDENTIAL_ENCRYPT_KEY"].encode()
         sr_host = os.environ["STARROCKS_HOST"]
         sr_port = int(os.environ.get("STARROCKS_PORT", "9030"))
         sr_http_port = int(os.environ.get("STARROCKS_HTTP_PORT", "8030"))

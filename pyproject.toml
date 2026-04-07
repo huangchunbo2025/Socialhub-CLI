@@ -53,9 +53,11 @@ snowflake = [
 ]
 sync = [
     "pymysql>=1.1.0",
+    "python-dateutil>=2.8.0",
 ]
 dev = [
     "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
@@ -76,7 +78,7 @@ Repository = "https://github.com/socialhub-ai/cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*", "mcp_server*"]
+include = ["cli*", "mcp_server*", "emarsys_sync*"]
 
 [tool.setuptools.package-data]
 "cli" = ["defaults.json"]
@@ -102,3 +104,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=cli --cov-report=term-missing"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
