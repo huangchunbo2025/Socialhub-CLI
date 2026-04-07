@@ -73,6 +73,7 @@ def test_list_api_keys(client):
     fake_key.id = 1
     fake_key.name = "My MCP Key"
     fake_key.key_prefix = "sh_abc123"
+    fake_key.key_raw = "sh_abc123def456789abcdef"
     fake_key.created_at = datetime(2026, 4, 1, tzinfo=timezone.utc)
     fake_key.last_used_at = None
     fake_key.revoked_at = None
