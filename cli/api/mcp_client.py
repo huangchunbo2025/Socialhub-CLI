@@ -4,6 +4,8 @@ import json
 import logging
 import queue
 import threading
+import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -178,6 +180,9 @@ class MCPClient:
     def _sse_listener(self):
         """Listen for SSE events from MCP server."""
         try:
+            _sse_headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
+            if self.config.token:
+                _sse_headers["Authorization"] = f"Bearer {self.config.token}"
             with httpx.stream(
                 "GET",
                 self.config.sse_url,
@@ -516,7 +521,8 @@ class MCPClient:
 
     def query(self, sql: str, timeout: int = 60, database: str | None = None) -> Any:
         """Execute SQL query via analytics_executeQuery tool."""
-        args = {"sql": sql}  # Note: parameter name is 'sql', not 'query'
+        sql = self._rewrite_sql(sql)
+        args = {"sql": sql}
         if database:
             args["database"] = database
         return self.call_tool("analytics_executeQuery", args, timeout=timeout)

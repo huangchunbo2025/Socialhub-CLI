@@ -125,6 +125,9 @@ class TraceConfig(BaseModel):
         default_factory=lambda: str(Path.home() / ".socialhub"),
         description="Directory for trace log files",
     )
+    das_database: str = Field(default="", description="DAS database name for current tenant (dwd/ads/dws/dim tables)")
+    dts_database: str = Field(default="", description="DTS database name for current tenant (vdm tables)")
+    datanow_database: str = Field(default="", description="DataNow database name for current tenant")
 
 
 class NetworkConfig(BaseModel):
@@ -185,6 +188,31 @@ class MemoryConfig(BaseModel):
     extractor_timeout_s: int = Field(default=30, description="LLM extractor timeout in seconds")
 
 
+
+
+class StarRocksConfig(BaseModel):
+    """StarRocks database connection configuration."""
+
+    host: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_HOST", "localhost"),
+        description="StarRocks host (or set STARROCKS_HOST env var)",
+    )
+    port: int = Field(
+        default_factory=lambda: int(os.environ.get("STARROCKS_HTTP_PORT", "8030")),
+        description="StarRocks HTTP port (or set STARROCKS_HTTP_PORT env var)",
+    )
+    user: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_USER", "root"),
+        description="StarRocks user (or set STARROCKS_USER env var)",
+    )
+    password: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_PASSWORD", ""),
+        description="StarRocks password (or set STARROCKS_PASSWORD env var)",
+    )
+    db_prefix: str = Field(
+        default_factory=lambda: os.environ.get("STARROCKS_DB_PREFIX", "socialhub"),
+        description="StarRocks database prefix (or set STARROCKS_DB_PREFIX env var)",
+    )
 
 
 class StarRocksConfig(BaseModel):

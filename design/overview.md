@@ -273,23 +273,43 @@ socialhub analytics chart dashboard --output=Doc/dashboard.png
 
 ## MCP Database
 
-MCP (Model Context Protocol) directly connects to StarRocks analytics database for real-time data queries.
+MCP (Model Context Protocol) connects to the SocialHub Analytics Gateway for real-time data queries. SQL is automatically rewritten to prefix table names with the correct database based on table prefix rules or explicit env var configuration.
 
 ### Basic Commands
 
 ```bash
-# List all tables
-socialhub mcp tables --database=das_demoen
+# List all tables (databases resolved from env vars)
+socialhub mcp tables
 
 # View table schema
-socialhub mcp schema dwd_v_order --database=das_demoen
+socialhub mcp schema dwd_v_order
 
 # Interactive SQL
 socialhub mcp sql
 
-# Execute query
-socialhub mcp query "SELECT COUNT(*) FROM dwd_v_order" --database=das_demoen
+# Execute query (database prefix auto-injected by SQL rewriter)
+socialhub mcp query "SELECT COUNT(*) FROM dwd_v_order"
 ```
+
+### Database Routing
+
+Tables are automatically routed to the correct database:
+
+| Table Prefix | Database | Env Var |
+|---|---|---|
+| `ads_` `dwd_` `dim_` `dws_` | DAS | `DAS_DATABASE` |
+| `vdm_` | DTS | `DTS_DATABASE` |
+| `t_` `v_` | DataNow | `DATANOW_DATABASE` |
+
+Configure per-tenant mappings via environment variables:
+
+```bash
+DAS_DATABASE=uat:das_test,prod:das_prod
+DTS_DATABASE=uat:dts_test
+DATANOW_DATABASE=uat:datanow_test
+```
+
+If not configured, defaults to `das_{tenant_id}` / `dts_{tenant_id}` / `datanow_{tenant_id}`.
 
 ### Common Tables
 

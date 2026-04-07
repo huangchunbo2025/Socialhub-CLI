@@ -40,6 +40,66 @@ services:
         sync: false
         # 上游 MCP POST 端点
 
+      - key: DATABASE_URL
+        sync: false
+        # PostgreSQL 连接串：postgresql+asyncpg://user:pass@host/db
+
+      - key: CREDENTIAL_ENCRYPT_KEY
+        sync: false
+        # Fernet 加密 key，用 Fernet.generate_key() 生成，base64 格式
+
+      - key: SOCIALHUB_AUTH_URL
+        sync: false
+        # SocialHub 认证 API 地址（如 https://api.socialhub.io）
+        # 门户登录 POST /auth/login 使用，未设置则 /auth/login 返回 503
+
+      - key: PORTAL_JWT_SECRET
+        sync: false
+        # JWT 签名密钥（建议设置，否则重启后所有门户会话失效）
+
+      - key: DAS_DATABASE
+        sync: false
+        # 各租户 DAS 库映射，格式：tenant_id:database，多个用逗号分隔
+        # 例：uat:das_test,prod:das_prod
+        # 不设置则默认 das_{tenant_id}
+        # 对应 ads_/dwd_/dim_/dws_ 前缀表的查询库
+
+      - key: DTS_DATABASE
+        sync: false
+        # 各租户 DTS 库映射，格式同 DAS_DATABASE
+        # 不设置则默认 dts_{tenant_id}
+        # 对应 vdm_ 前缀表的查询库
+
+      - key: DATANOW_DATABASE
+        sync: false
+        # 各租户 DataNow 库映射，格式同 DAS_DATABASE
+        # 不设置则默认 datanow_{tenant_id}
+        # 对应 t_/v_ 前缀表的查询库
+
+      - key: MCP_TENANT_CREDS
+        sync: false
+        # SocialHub App 凭证 fallback（优先级低于 Portal DB 配置）
+        # 格式：tenant_id:app_id:app_secret，多个用逗号分隔
+
+      - key: MCP_AUTH_URL
+        sync: false
+        # 覆盖 token_manager 使用的 auth_url，优先级高于 SOCIALHUB_AUTH_URL
+        # 不设置则自动 fallback 到 SOCIALHUB_AUTH_URL
+
+      - key: DAS_TABLES
+        sync: false
+        # SQL 显式表路由（优先级高于前缀规则）
+        # 格式：table1,table2,prefix_*（支持通配符）
+        # 不设置则完全走前缀规则
+
+      - key: DTS_TABLES
+        sync: false
+        # 同 DAS_TABLES，适用于 DTS 库中不符合 vdm_ 规则的表
+
+      - key: DATANOW_TABLES
+        sync: false
+        # 同 DAS_TABLES，适用于 DataNow 库中不符合 t_/v_ 规则的表
+
       # -----------------------------------------------------------------------
       # 非敏感配置：直接写入 render.yaml
       # -----------------------------------------------------------------------
@@ -85,6 +145,92 @@ services:
         fromDatabase:
           name: skills-store-postgres
           property: connectionString
+      - key: ALEMBIC_DATABASE_URL
+        sync: false
+        # Alembic 迁移使用同步 psycopg 驱动，格式：postgresql+psycopg://user:pass@host/db
+        # Render connectionString 格式为 postgres://...，需手动转换驱动前缀后在 Dashboard 填写
+
+  # ---------------------------------------------------------------------------
+  # Emarsys Sync Daemon — 独立 worker，增量同步 BQ → StarRocks
+  # 无 HTTP 端点，type: worker（Render 不分配端口）
+  # ---------------------------------------------------------------------------
+  - type: worker
+    name: socialhub-sync-emarsys
+    runtime: python
+    plan: starter           # 需要长期驻留，不能用 free 计划（会休眠）
+    region: oregon
+    branch: main
+    buildCommand: pip install -e ".[sync]"
+    startCommand: socialhub-sync-emarsys
+    autoDeploy: true
+
+    envVars:
+      # -----------------------------------------------------------------------
+      # 敏感变量：sync: false，在 Render Dashboard 手动填写
+      # -----------------------------------------------------------------------
+      - key: DATABASE_URL
+        sync: false
+        # PostgreSQL 连接串（与 socialhub-mcp 共用同一库 socialhub_mcp）
+        # asyncpg 格式：postgresql+asyncpg://user:pass@host/socialhub_mcp
+
+      - key: CREDENTIAL_ENCRYPT_KEY
+        sync: false
+        # Fernet 加密 key，与 socialhub-mcp 保持一致，用于解密 BQ SA JSON
+
+      - key: STARROCKS_HOST
+        sync: false
+        # StarRocks FE 地址（内网 IP 或域名）
+
+      - key: STARROCKS_USER
+        sync: false
+        # StarRocks 数据库用户名
+
+      - key: STARROCKS_PASSWORD
+        sync: false
+        # StarRocks 数据库密码
+
+      - key: DTS_DATABASE
+        sync: false
+        # 各租户 DTS 库映射，格式：tenant_id:database_name，多个逗号分隔
+        # 不设置则默认 dts_{tenant_id}
+
+      - key: DATANOW_DATABASE
+        sync: false
+        # 各租户 DataNow 库映射，格式：tenant_id:database_name，多个逗号分隔
+        # 不设置则默认 datanow_{tenant_id}
+
+      # -----------------------------------------------------------------------
+      # 非敏感配置：直接写入 render.yaml
+      # -----------------------------------------------------------------------
+      - key: STARROCKS_PORT
+        value: "9030"
+        # StarRocks MySQL 协议端口（pymysql DDL 连接用）
+
+      - key: STARROCKS_HTTP_PORT
+        value: "8030"
+        # StarRocks Stream Load HTTP 端口（数据写入用）
+
+      - key: SYNC_INTERVAL_MINUTES
+        value: "60"
+        # 两次全量同步之间的间隔（分钟），发送 SIGUSR1 可手动立即触发
+
+      - key: SYNC_MAX_CONCURRENT_TENANTS
+        value: "3"
+        # asyncio.Semaphore 并发 tenant 数上限
+
+      - key: SYNC_BATCH_SIZE
+        value: "10000"
+        # 每次 BigQuery 增量读取的最大行数
+
+      - key: SYNC_STATE_PATH
+        value: "/data/emarsys_sync"
+        # run_summary.json 写入目录（Render Disk 挂载点）
+
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+      - key: LOG_LEVEL
+        value: "INFO"
 
 databases:
   - name: skills-store-postgres

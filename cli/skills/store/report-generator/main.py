@@ -528,21 +528,34 @@ def _validate_output_path(output: str, allowed_extensions: set[str] = None) -> P
     except (OSError, RuntimeError) as e:
         raise ValueError(f"Invalid path: {e}")
 
-    # SECURITY: Check if it's within user's home or current directory
+    # SECURITY: Check if it's within user's home, current directory, or temp directory
     cwd = Path.cwd().resolve()
     home = Path.home().resolve()
+    import tempfile as _tempfile
+    tmp_dir = Path(_tempfile.gettempdir()).resolve()
 
-    # Allow paths under current working directory or home directory
-    try:
-        resolved.relative_to(cwd)
-    except ValueError:
+    allowed_bases = [cwd, home, tmp_dir]
+    # On macOS, /tmp symlinks to /private/tmp and gettempdir may return /var/folders
+    # which resolves to /private/var/folders — add /private as an extra allowed prefix.
+    private_tmp = Path("/private/tmp").resolve() if Path("/private/tmp").exists() else None
+    if private_tmp:
+        allowed_bases.append(private_tmp)
+    private_var_folders = Path("/private/var/folders")
+    if private_var_folders.exists():
+        allowed_bases.append(private_var_folders.resolve())
+
+    # Allow paths under any of the allowed bases
+    for base in allowed_bases:
         try:
-            resolved.relative_to(home)
+            resolved.relative_to(base)
+            break
         except ValueError:
-            raise ValueError(
-                f"Output path must be within current directory ({cwd}) "
-                f"or home directory ({home})"
-            )
+            continue
+    else:
+        raise ValueError(
+            f"Output path must be within current directory ({cwd}), "
+            f"home directory ({home}), or temp directory ({tmp_dir})"
+        )
 
     # SECURITY: Block system directories (platform-specific)
     blocked_dirs = ["/etc", "/bin", "/sbin", "/usr", "/var", "/root",

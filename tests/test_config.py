@@ -1,6 +1,7 @@
 """Tests for configuration management."""
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -10,6 +11,7 @@ import pytest
 from cli.config import (
     Config,
     _apply_env_overrides,
+    StarRocksConfig,
     get_config_value,
     load_config,
     save_config,

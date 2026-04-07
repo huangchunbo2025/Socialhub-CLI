@@ -1059,6 +1059,20 @@ def create_server() -> Server:
             from mcp_server.token_manager import get_cred, get_cached_token_sync
             cred = await get_cred(tid)
 
+            # 在 async 上下文中读取 tenant_id（ContextVar 在此处可用）
+            # 必须在 run_in_executor 之前读取，线程池中 ContextVar 可能因 MCP SDK
+            # 创建新 async context 而丢失
+            from mcp_server.auth import _get_tenant_id
+            tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
+
+            if not tid:
+                logger.warning("tenant_id 未设置，tool=%s", name)
+                return _err("Tenant not configured. Contact IT administrator.")
+
+            # 在 async 上下文中获取凭证（DB 查询是异步的），供 _run() 同步使用
+            from mcp_server.token_manager import get_cred, get_cached_token_sync
+            cred = await get_cred(tid)
+
             def _run():
                 import threading as _threading
                 if not _analytics_ready.wait(timeout=120):

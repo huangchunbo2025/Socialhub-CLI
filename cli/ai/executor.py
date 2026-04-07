@@ -203,6 +203,38 @@ def execute_plan(
         model=_model,
     )
 
+        task_number = len(re.findall(r"### \d+\.", content)) + 1
+        task_entry = f"""
+### {task_number}. {task.get('name', 'New Task')}
+- **ID**: {task.get('id', 'task-' + datetime.now().strftime('%Y%m%d%H%M%S'))}
+- **Frequency**: {task.get('frequency', 'Daily 00:00')}
+- **Status**: `pending`
+- **Command**:
+  ```bash
+  {task.get('command', 'sh analytics overview')}
+  ```
+- **Description**: {task.get('description', '')}
+- **AI Insights**: {task.get('insights', 'false')}
+
+---
+
+"""
+
+        if insert_marker in content:
+            content = content.replace(insert_marker, task_entry + insert_marker)
+        else:
+            content += task_entry
+
+        heartbeat_path.write_text(content, encoding="utf-8")
+        return True
+
+    except Exception as e:
+        console.print(f"[red]Failed to save scheduled task: {e}[/red]")
+        return False
+
+
+def execute_plan(steps: list[dict], original_query: str = "") -> None:
+    """Execute a multi-step plan with progress display."""
     console.print(f"\n[bold cyan]Executing {len(steps)} steps...[/bold cyan]\n")
 
     all_results = []

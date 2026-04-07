@@ -46,7 +46,11 @@ htmlcov/
 # Local config
 .env
 .env.local
+.env.docker
 *.local.json
+
+# Docker secrets
+secrets/
 
 # OS
 .DS_Store
