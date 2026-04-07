@@ -18,6 +18,17 @@ from mcp_server.sync.models import SyncStateStore, TenantSyncConfig
 
 logger = logging.getLogger(__name__)
 
+# Per-table BQ time column used for incremental reads.
+# Tables not listed here default to "event_time".
+# None means full table scan (no time filter) — only for small tables without a time column.
+_TABLE_TIME_COL: dict[str, str | None] = {
+    "contents": "loaded_at",
+    "sessions": "start_time",
+    "si_contacts": "load_date",
+    "si_purchases": "load_date",
+    "reporting_email": None,  # no time column — full scan
+}
+
 # All Emarsys BQ table names (without account suffix).
 # Tables with no DTS/DataNow mapping are still listed here so BQ existence
 # is checked and missing tables are gracefully skipped via TableNotFoundError.
@@ -334,18 +345,27 @@ class TenantSyncer:
         cfg = self._config
         tr = TableResult(table_name=table_name)
 
+        # Skip tables with no DTS or DataNow mapping
+        has_dts = table_name in DTS_TABLES
+        has_datanow = table_name in DATANOW_TABLES
+        if not has_dts and not has_datanow:
+            logger.debug("No mapping for table, skipped: %s/%s", cfg.tenant_id, table_name)
+            tr.skipped = True
+            return tr
+
         watermark = await self._state_store.get_watermark(cfg.tenant_id, dataset_id, table_name)
+        time_col = _TABLE_TIME_COL.get(table_name, "event_time")
 
         try:
             rows = bq_reader.read_incremental(
-                table_name, account_id=account_id, watermark=watermark
+                table_name, account_id=account_id, watermark=watermark, time_col=time_col
             )
             tr.rows_read = len(rows)
             if not rows:
                 return tr
 
-            # Determine max event_time for watermark update
-            event_times = [r.get("event_time") for r in rows if r.get("event_time")]
+            # Determine max timestamp for watermark update (use table-specific time column)
+            event_times = [r.get(time_col) for r in rows if time_col and r.get(time_col)]
             new_watermark: datetime | None = None
             if event_times:
                 max_ts = max(event_times)
