@@ -11,7 +11,11 @@ from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 
-_SCOPES = ["https://www.googleapis.com/auth/bigquery.readonly"]
+_SCOPES = ["https://www.googleapis.com/auth/bigquery"]
+
+
+class TableNotFoundError(Exception):
+    """Raised when the BQ table does not exist in the dataset."""
 
 
 def build_incremental_query(
@@ -97,6 +101,27 @@ class BqReader:
         client = bigquery.Client(project=project, credentials=creds)
         return cls(client=client, project=project, dataset=dataset, batch_size=batch_size)
 
+    @staticmethod
+    def list_emarsys_datasets(
+        sa_json: dict[str, Any],
+        project: str,
+    ) -> list[str]:
+        """List all BigQuery datasets whose ID starts with ``emarsys_``.
+
+        Args:
+            sa_json: Decrypted Service Account JSON.
+            project: GCP project ID.
+
+        Returns:
+            Sorted list of dataset IDs (e.g. ``['emarsys_12345', 'emarsys_67890']``).
+        """
+        creds = service_account.Credentials.from_service_account_info(sa_json, scopes=_SCOPES)
+        client = bigquery.Client(project=project, credentials=creds)
+        datasets = list(client.list_datasets(project=project))
+        return sorted(
+            ds.dataset_id for ds in datasets if ds.dataset_id.startswith("emarsys_")
+        )
+
     def read_incremental(
         self,
         table_name: str,
@@ -130,5 +155,10 @@ class BqReader:
             result = self._client.query(sql).result()
             return [dict(row) for row in result]
         except Exception as exc:
+            err_str = str(exc)
+            if "notFound" in err_str or "404" in err_str or "Not Found" in err_str:
+                raise TableNotFoundError(
+                    f"{table_full} not found in dataset {self._dataset}"
+                ) from exc
             logger.error("BQ read failed for %s.%s: %s", self._dataset, table_full, exc)
             raise
