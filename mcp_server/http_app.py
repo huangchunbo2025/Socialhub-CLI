@@ -33,7 +33,18 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
-from mcp_server.auth import APIKeyMiddleware, _request_id_var
+from pathlib import Path
+
+from starlette.responses import HTMLResponse
+
+from mcp_server.auth import APIKeyMiddleware
+from mcp_server.db import close_db, init_db
+from mcp_server.routers.api_keys import create_api_key, list_api_keys, revoke_api_key
+from mcp_server.routers.auth_portal import login
+from mcp_server.routers.credentials import delete_credentials, get_credentials, upload_credentials
+from mcp_server.routers.mcp_credentials import (
+    get_mcp_credentials, upsert_mcp_credentials, delete_mcp_credentials,
+)
 from mcp_server.server import create_server
 
 logger = logging.getLogger(__name__)
@@ -52,7 +63,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             request.url.path,
             request.headers.get("user-agent", "-"),
         )
-        token = _request_id_var.set(request_id)
         try:
             response = await call_next(request)
         except Exception:
@@ -64,8 +74,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 int((time.time() - started) * 1000),
             )
             raise
-        finally:
-            _request_id_var.reset(token)
 
         response.headers["X-Request-Id"] = request_id
         logger.info(
@@ -149,6 +157,17 @@ async def health(request: Request) -> JSONResponse:
     )
 
 
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+async def ui(request: Request) -> HTMLResponse:
+    """GET /ui — serve customer portal HTML."""
+    html_path = _STATIC_DIR / "ui.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>UI not found</h1>", status_code=404)
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
 # ---------------------------------------------------------------------------
 # MCP Session Manager（进程级单例）
 # ---------------------------------------------------------------------------
@@ -190,6 +209,13 @@ async def lifespan(app: Starlette):  # type: ignore[type-arg]
     import threading
     from mcp_server.server import _load_analytics, probe_upstream_mcp
 
+    # 启动时校验关键配置
+    if not os.getenv("CREDENTIAL_ENCRYPT_KEY"):
+        logger.warning(
+            "CREDENTIAL_ENCRYPT_KEY is not set — credential encryption/decryption will fail at runtime. "
+            "Generate a key with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+
     # 上游健康检查：通过 asyncio.to_thread 避免阻塞事件循环（同步 HTTP 请求最长 15s）
     try:
         ok, message = await asyncio.to_thread(probe_upstream_mcp)
@@ -204,11 +230,19 @@ async def lifespan(app: Starlette):  # type: ignore[type-arg]
     threading.Thread(target=_load_analytics, daemon=True).start()
     logger.info("Analytics preload thread started")
 
+    # 初始化数据库
+    try:
+        await init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.warning("Database init failed (non-fatal): %s", e)
+
     # 启动 MCP session manager
     async with _session_manager.run():
         logger.info("StreamableHTTPSessionManager started (stateless=True)")
         yield
 
+    await close_db()
     logger.info("HTTP MCP app shutting down")
 
 
@@ -219,6 +253,17 @@ async def lifespan(app: Starlette):  # type: ignore[type-arg]
 _app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
+        Route("/ui", ui, methods=["GET"]),
+        Route("/auth/login", login, methods=["POST"]),
+        Route("/credentials/mcp", get_mcp_credentials, methods=["GET"]),
+        Route("/credentials/mcp", upsert_mcp_credentials, methods=["PUT"]),
+        Route("/credentials/mcp", delete_mcp_credentials, methods=["DELETE"]),
+        Route("/credentials/bigquery", upload_credentials, methods=["POST"]),
+        Route("/credentials/bigquery", get_credentials, methods=["GET"]),
+        Route("/credentials/bigquery", delete_credentials, methods=["DELETE"]),
+        Route("/api-keys", create_api_key, methods=["POST"]),
+        Route("/api-keys", list_api_keys, methods=["GET"]),
+        Route("/api-keys/{key_id}", revoke_api_key, methods=["DELETE"]),
         Mount("/mcp", app=_session_manager.handle_request),
     ],
     lifespan=lifespan,

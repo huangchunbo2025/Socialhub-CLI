@@ -13,9 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
 import time
 from collections import OrderedDict
+from functools import lru_cache
 from typing import Any
 
 from mcp.server import Server
@@ -24,22 +24,11 @@ from mcp.types import Tool, TextContent, CallToolResult
 
 from cli.api.mcp_client import MCPError
 from cli.config import load_config
+import threading
 
 _config_cache: Any = None
 _config_lock = threading.Lock()
-
-
-def _get_config() -> Any:
-    """Return cached config — reads disk once per server process."""
-    global _config_cache
-    if _config_cache is None:
-        with _config_lock:
-            if _config_cache is None:
-                _config_cache = load_config()
-    return _config_cache
-
-_analytics_loaded = False
-_analytics_ready = threading.Event()
+_thread_local = threading.local()
 
 
 class _BoundedTTLCache:
@@ -76,17 +65,60 @@ class _BoundedTTLCache:
                 self._store.popitem(last=False)  # evict least-recently-used entry
 
 
-# Results cache: key -> (result, timestamp)
 _CACHE_TTL = 900  # seconds (15 minutes)
 _cache = _BoundedTTLCache(maxsize=200, ttl=_CACHE_TTL)
+
+
+@lru_cache(maxsize=256)
+def _resolve_tenant_db(env_var: str, tenant_id: str, prefix: str) -> str:
+    """Resolve database name for a tenant from env var or default rule.
+
+    Env var format: DAS_DATABASE=uat:das_test,dev:das_dev
+    Default: {prefix}_{tenant_id}
+    """
+    raw = os.getenv(env_var, "")
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            tid, db = entry.split(":", 1)
+            if tid.strip() == tenant_id:
+                return db.strip()
+    return f"{prefix}_{tenant_id}"
+
+
+def _get_config() -> Any:
+    """Return config, patched with per-request tenant_id/database if set via thread-local.
+
+    HTTP mode: each tool call sets _thread_local.tenant_id = tid (from API Key) before
+    entering the executor thread, so every handler gets a config scoped to that tenant.
+    stdio mode: thread-local is not set, falls back to global config as before.
+    """
+    global _config_cache
+    if _config_cache is None:
+        with _config_lock:
+            if _config_cache is None:
+                _config_cache = load_config()
+
+    tid = getattr(_thread_local, "tenant_id", None)
+    if not tid:
+        return _config_cache
+
+    import copy
+    patched = copy.copy(_config_cache)
+    mcp = copy.copy(_config_cache.mcp)
+    mcp.tenant_id = tid
+    mcp.database = ""  # 上游按 tenant_id 自动路由，不传数据库名
+    patched.mcp = mcp
+    return patched
+
+_analytics_loaded = False
+_analytics_ready = threading.Event()
+
+# Results cache: key -> (result, timestamp)
+_cache: dict[str, tuple[list, float]] = {}
+_CACHE_TTL = 900  # seconds (15 minutes)
 _inflight: dict[str, threading.Event] = {}
 _inflight_lock = threading.Lock()
-# Stores error messages from failed in-flight owners so followers can distinguish
-# owner failure from stale cache after a timeout.
-_inflight_errors: dict[str, str] = {}
-_inflight_errors_lock = threading.Lock()
-# Semaphore: caps concurrent analytics computations regardless of inflight dedup
-_HANDLER_SEMAPHORE = threading.Semaphore(50)
 
 
 def _cache_key(name: str, args: dict, tenant_id: str = "") -> str:
@@ -99,10 +131,17 @@ def _cache_key(name: str, args: dict, tenant_id: str = "") -> str:
     return f"{tenant_id}:{name}:{json.dumps(args, sort_keys=True)}"
 
 
+def _get_cached_result(key: str) -> list | None:
+    cached = _cache.get(key)
+    if cached and time.time() - cached[1] < _CACHE_TTL:
+        return cached[0]
+    return None
+
+
 def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     """Reuse cached or in-flight work for identical tool requests."""
     key = _cache_key(name, args, tenant_id)
-    cached = _cache.get(key)
+    cached = _get_cached_result(key)
     if cached is not None:
         logger.info("MCP tool cache hit: %s", name)
         return cached
@@ -110,13 +149,6 @@ def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     with _inflight_lock:
         event = _inflight.get(key)
         if event is None:
-            if len(_inflight) >= 500:
-                # Evict entries whose events are already set (request completed)
-                stale = [k for k, v in _inflight.items() if v.is_set()]
-                for k in stale:
-                    del _inflight[k]
-                if len(_inflight) >= 500:
-                    raise MCPError("Too many concurrent in-flight requests (limit 500)")
             event = threading.Event()
             _inflight[key] = event
             is_owner = True
@@ -126,32 +158,16 @@ def _run_with_cache(name: str, args: dict, tenant_id: str, compute_fn) -> list:
     if not is_owner:
         logger.info("MCP tool waiting on in-flight result: %s", name)
         if event.wait(timeout=180):
-            with _inflight_errors_lock:
-                err_msg = _inflight_errors.pop(key, None)
-            if err_msg is not None:
-                logger.warning("MCP tool in-flight owner failed for %s: %s", name, err_msg)
-                raise MCPError(f"In-flight computation failed: {err_msg}")
-            cached = _cache.get(key)
+            cached = _get_cached_result(key)
             if cached is not None:
                 logger.info("MCP tool cache hit after wait: %s", name)
                 return cached
         logger.warning("MCP tool in-flight wait expired or cache missing: %s", name)
-        # Fall through: retry the computation when owner timed out without storing an error
 
     try:
-        with _HANDLER_SEMAPHORE:
-            result = compute_fn()
-        _cache.set(key, result)
+        result = compute_fn()
+        _cache[key] = (result, time.time())
         return result
-    except Exception as exc:
-        if is_owner:
-            with _inflight_errors_lock:
-                if len(_inflight_errors) >= 500:
-                    # Evict oldest entries when the error dict grows too large
-                    oldest = next(iter(_inflight_errors))
-                    del _inflight_errors[oldest]
-                _inflight_errors[key] = str(exc)
-        raise
     finally:
         if is_owner:
             with _inflight_lock:
@@ -184,7 +200,7 @@ def _warm_cache() -> None:
         ]
         def _run_one(item: tuple) -> None:
             # _warm_cache 仅供 stdio 模式调用（__main__.py _run_stdio），HTTP 模式的 lifespan 不调用此函数
-            warm_tid = _get_config().mcp.tenant_id
+            warm_tid = os.getenv("MCP_TENANT_ID", "")
             if not warm_tid:
                 logging.getLogger(__name__).debug("Cache warm skipped: MCP_TENANT_ID not set")
                 return
@@ -215,7 +231,7 @@ def _load_analytics() -> None:
     if _analytics_loaded:
         return
     try:
-        from cli.analytics.mcp_adapter import (
+        from cli.commands.analytics import (
             _get_mcp_overview,
             _get_mcp_customers,
             _get_mcp_customer_source,
@@ -242,8 +258,8 @@ def _load_analytics() -> None:
             _get_mcp_loyalty,
             _get_mcp_repurchase,
             _get_mcp_repurchase_path,
-            _mcp_segment_analyze,
         )
+        from cli.commands.segments import _mcp_segment_analyze
         g = globals()
         for fn in [
             _get_mcp_overview, _get_mcp_customers, _get_mcp_customer_source,
@@ -284,11 +300,9 @@ def probe_upstream_mcp(timeout: int = 15) -> tuple[bool, str]:
             timeout=timeout,
         ))
         client.connect(show_status=False)
-        try:
-            client.initialize()
-            tools = client.list_tools()
-        finally:
-            client.disconnect()
+        client.initialize()
+        tools = client.list_tools()
+        client.disconnect()
         return True, f"upstream reachable, tools={len(tools)}"
     except Exception as e:
         return False, str(e)
@@ -301,10 +315,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_overview",
         description=(
-            "业务整体 KPI 概览（GMV、订单量、AOV、活跃客户、新客、积分、优惠券核销率）。"
-            "适用：日/周/月经营汇报、业务整体表现快照、环比增长趋势。"
-            "不要在需要客户明细或单个订单详情时调用。"
-            "参数：period（today/7d/30d/90d/365d/ytd，默认 30d）、compare（是否附环比对比）。"
+            "Top-level business KPI dashboard — call this tool for daily/weekly/monthly business reviews, "
+            "operational summaries, or when the user asks 'how is the business doing', 'show me today's numbers', "
+            "'give me a business overview', or any request for a high-level performance snapshot. "
+            "Returns GMV (gross merchandise value), total orders, AOV (average order value), active customers, "
+            "new customers, coupon redemption rate, loyalty points issued and consumed, and message delivery rate. "
+            "Set compare=true to include prior-period delta so you can show growth/decline trends."
         ),
         inputSchema={
             "type": "object",
@@ -326,10 +342,13 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_customers",
         description=(
-            "客户规模与增长汇总（注册数、买家数、新客获取、会员占比、来源渠道、性别分布）。"
-            "适用：客户基数报告、新客增长趋势、会员占比分析。"
-            "不要在需要搜索特定客户时调用；不要在需要 RFM 分层时调用（用 analytics_rfm）。"
-            "参数：period（分析周期）、include_source（来源渠道）、include_gender（性别分布）。"
+            "Customer base and growth metrics — call this tool when the user asks about customer counts, "
+            "member growth, new vs returning customers, how many registered users or buyers there are, "
+            "or where customers come from. "
+            "Returns total registered customers, total buyers (customers who have ordered at least once), "
+            "active buyers in period, member vs non-member split, and new customer acquisitions. "
+            "Set include_source=true to add acquisition channel breakdown (which channels bring the most customers). "
+            "Set include_gender=true to add gender distribution of the customer base."
         ),
         inputSchema={
             "type": "object",
@@ -356,10 +375,14 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_orders",
         description=(
-            "订单与销售趋势分析（GMV、订单量、AOV、渠道/省份/商品分组、退货率）。"
-            "适用：销售业绩报告、渠道对比、区域分析、商品排行、退货分析。"
-            "不要在需要单个订单详情或物流状态时调用。"
-            "参数：period、group_by（channel/province/product）、include_returns（退货数据）。"
+            "Order and sales analytics — call this tool when the user asks about sales performance, "
+            "revenue trends, order volume, channel breakdown, regional/province analysis, product rankings, "
+            "repurchase rate, or return/refund rates. "
+            "Returns GMV, order count, AOV, unique customers, new vs returning buyer split, and daily order trend. "
+            "Set group_by='channel' for sales by sales channel (Tmall, JD, WeChat Mini Program, offline, etc.). "
+            "Set group_by='province' for regional/geographic sales breakdown. "
+            "Set group_by='product' for top products by revenue. "
+            "Set include_returns=true to add return and refund order breakdown by channel."
         ),
         inputSchema={
             "type": "object",
@@ -386,10 +409,11 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_retention",
         description=(
-            "客户留存率分析（30 天/90 天/180 天复购留存，基于同期队列）。"
-            "适用：留存趋势分析、短期与长期复购对比、买家回流率评估。"
-            "不要在需要实时数据或单个客户复购记录时调用；计算基于历史队列，结果非实时。"
-            "参数：days（留存窗口列表，如 [30, 90, 180]）。"
+            "Cohort-based customer retention rates — call this tool when the user asks about retention, "
+            "how many customers come back, buyer loyalty over time, or whether customers are returning to purchase again. "
+            "For each specified day window (e.g. 7, 30, 90 days), shows: total customers who bought in that window, "
+            "how many made a second purchase within that window, and the retention rate percentage. "
+            "Use multiple windows (e.g. [7, 30, 90]) to see short-term vs long-term retention patterns."
         ),
         inputSchema={
             "type": "object",
@@ -429,10 +453,13 @@ TOOLS: list[Tool] = [
     Tool(
         name="analytics_rfm",
         description=(
-            "RFM 客户分层（近度 R、频次 F、金额 M），识别高价值/流失风险/沉睡客户群。"
-            "适用：VIP 分层、流失预警、高价值客户识别、精准营销人群圈选。"
-            "不要在只需要简单汇总时调用（用 analytics_overview）；此工具计算较耗时，建议在需要分层明细时才调用。"
-            "参数：segment_filter（分层名过滤，可选）、top_limit（返回 Top-N 客户，0 表示仅汇总）。"
+            "RFM (Recency, Frequency, Monetary) customer segmentation — call this tool when the user asks "
+            "about RFM analysis, customer segmentation, customer tiers, high-value customers, loyal customers, "
+            "at-risk customers, or customer loyalty scoring. "
+            "Returns live segment distribution (Champions, Loyal Customers, Potential Loyalists, New Customers, "
+            "Cant Lose Them, Need Attention, About to Sleep, Hibernating) with headcount, average spend, "
+            "order frequency, and recency per segment. "
+            "Use segment_filter to drill into one segment; use top_limit to list the top-N customers."
         ),
         inputSchema={
             "type": "object",
@@ -782,15 +809,6 @@ TOOLS: list[Tool] = [
 ]
 
 
-def _get_tool_definitions() -> list[Tool]:
-    """Return the static Tool list for schema consistency testing.
-
-    Must be importable without any running MCP Server instance, database
-    connection, or environment variables — pure in-process access to TOOLS.
-    """
-    return TOOLS
-
-
 # ---------------------------------------------------------------------------
 # Tool name → handler mapping
 # ---------------------------------------------------------------------------
@@ -950,9 +968,7 @@ def _handle_analytics_repurchase(args: dict) -> list[TextContent]:
 
 def _handle_analytics_anomaly(args: dict) -> list[TextContent]:
     config = _get_config()
-    metric = args.get("metric")
-    if not metric:
-        return _err("Missing required argument: metric")
+    metric = args["metric"]
     lookback = args.get("lookback_days", 30)
     detect = args.get("detect_days", 7)
     data = _get_mcp_anomaly(config, metric, lookback, detect)
@@ -961,10 +977,7 @@ def _handle_analytics_anomaly(args: dict) -> list[TextContent]:
 
 def _handle_analytics_segment(args: dict) -> list[TextContent]:
     config = _get_config()
-    group_id = args.get("group_id")
-    if group_id is None:
-        return _err("Missing required argument: group_id")
-    group_id = str(group_id)
+    group_id = str(args["group_id"])
     period = args.get("period", "30d")
     max_members = args.get("max_members", 500)
     data = _mcp_segment_analyze(config, group_id, period, max_members)
@@ -1030,39 +1043,61 @@ def create_server() -> Server:
             args = arguments or {}
             loop = asyncio.get_running_loop()
             started = time.time()
-            logger.info("MCP tool call started: %s arg_keys=%s", name, sorted(args.keys()))
+            logger.info("MCP tool call started: %s req_id=%s args=%s", name, req_id or "-", json.dumps(args, ensure_ascii=False, sort_keys=True))
+
+            # 在 async 上下文中读取 tenant_id（ContextVar 在此处可用）
+            # 必须在 run_in_executor 之前读取，线程池中 ContextVar 可能因 MCP SDK
+            # 创建新 async context 而丢失
+            from mcp_server.auth import _get_tenant_id, _get_request_id
+            tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
+
+            if not tid:
+                logger.warning("tenant_id 未设置，tool=%s", name)
+                return _err("Tenant not configured. Contact IT administrator.")
+
+            # 在 async 上下文中获取凭证（DB 查询是异步的），供 _run() 同步使用
+            from mcp_server.token_manager import get_cred, get_cached_token_sync
+            cred = await get_cred(tid)
 
             def _run():
+                import threading as _threading
                 if not _analytics_ready.wait(timeout=120):
                     return _err("Analytics failed to load within 120s")
 
-                if not _analytics_loaded:
-                    logger.error("Analytics not loaded for tool=%s; check startup logs for import errors", name)
-                    return _err("Analytics failed to initialize. Check server logs.")
+                # 将 API Key 映射的 tenant_id 注入 thread-local，
+                # 使 _get_config() 在本线程返回该租户的 mcp 配置
+                _thread_local.tenant_id = tid
+                try:
+                    # 注入 SocialHub token 到当前线程 dict，供 MCPClient 读取
+                    if cred:
+                        try:
+                            token = get_cached_token_sync(tid, cred)
+                            _threading.current_thread().__dict__["_sh_mcp_token"] = token
+                        except Exception as _e:
+                            logger.warning("SocialHub token 获取失败 tenant=%s: %s", tid, _e)
+                            _threading.current_thread().__dict__["_sh_mcp_token"] = ""
+                    else:
+                        logger.warning("tenant=%s 未配置 SocialHub 凭证，upstream 请求将无 token", tid)
+                        _threading.current_thread().__dict__["_sh_mcp_token"] = ""
 
-                # 从 ContextVar 读取 tenant_id 和 request_id（HTTP 模式由中间件注入）
-                # stdio 模式回退到环境变量 MCP_TENANT_ID（延迟导入避免循环依赖）
-                from mcp_server.auth import _get_tenant_id, _get_request_id
-                tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
-                req_id = _get_request_id()
+                    # 注入数据库名（env var 优先，否则按默认规则 {prefix}_{tenant_id}）
+                    _tl = _threading.current_thread().__dict__
+                    _tl["_sh_das_database"]     = _resolve_tenant_db("DAS_DATABASE", tid, "das")
+                    _tl["_sh_dts_database"]     = _resolve_tenant_db("DTS_DATABASE", tid, "dts")
+                    _tl["_sh_datanow_database"] = _resolve_tenant_db("DATANOW_DATABASE", tid, "datanow")
 
-                if not tid:
-                    logger.warning("tenant_id 未设置，tool=%s req_id=%s", name, req_id or "-")
-                    return _err("Tenant not configured. Contact IT administrator.")
-
-                logger.info(
-                    "MCP tool executing: %s tenant=%s req_id=%s",
-                    name, tid, req_id or "-",
-                )
-                # 静默删除客户端传入的 tenant_id（以 API Key 映射的 tenant_id 为准）
-                safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
-                return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
+                    safe_args = {k: v for k, v in args.items() if k != "tenant_id"}
+                    return _run_with_cache(name, safe_args, tid, lambda: handler(safe_args))
+                finally:
+                    _thread_local.tenant_id = None
+                    _tl = _threading.current_thread().__dict__
+                    _tl.pop("_sh_mcp_token", None)
+                    _tl.pop("_sh_das_database", None)
+                    _tl.pop("_sh_dts_database", None)
+                    _tl.pop("_sh_datanow_database", None)
 
             result = await loop.run_in_executor(None, _run)
-            logger.info(
-                "MCP tool call finished: %s elapsed_ms=%s",
-                name, int((time.time() - started) * 1000),
-            )
+            logger.info("MCP tool call finished: %s elapsed_ms=%s", name, int((time.time() - started) * 1000))
             return result
         except MCPError as e:
             logger.error("MCP database error in %s: %s", name, e)
@@ -1071,6 +1106,6 @@ def create_server() -> Server:
             return _err(f"Invalid input: {e}")
         except Exception as e:
             logger.exception("Unexpected error in tool %s", name)
-            return _err(f"Unexpected error: {type(e).__name__}")
+            return _err(f"Unexpected error: {e}")
 
     return server
