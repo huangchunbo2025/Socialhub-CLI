@@ -74,7 +74,11 @@ def test_tc14_mcp_server_initialize_with_valid_key() -> None:
     try:
         resp = httpx.post(
             f"{_MCP_URL}/mcp",
-            headers={"X-API-Key": _API_KEY, "Content-Type": "application/json"},
+            headers={
+                "X-API-Key": _API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
             content=json.dumps(payload),
             timeout=15,
             follow_redirects=True,

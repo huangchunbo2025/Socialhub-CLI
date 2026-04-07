@@ -97,6 +97,8 @@ async def test_tc08_email_sends_count_bq_vs_starrocks(
     assert sr_count >= 0, (
         f"StarRocks {first_tenant.dts_database}.vdm_t_message_record 不可访问"
     )
+    if bq_count == 0:
+        pytest.skip("BQ email_sends 表查询返回 0（表不存在或 account_id 未配置），跳过行数对比")
     # StarRocks 是增量同步，行数可以少于 BQ，但不能多于 BQ（说明有重复写入或错误）
     assert sr_count <= bq_count, (
         f"StarRocks 行数({sr_count}) 超过 BQ 总量({bq_count})，可能存在重复写入"

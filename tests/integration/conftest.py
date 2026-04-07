@@ -102,3 +102,19 @@ async def tenant_configs(pg_pool: asyncpg.Pool) -> list[TenantSyncConfig]:
 def first_tenant(tenant_configs: list[TenantSyncConfig]) -> TenantSyncConfig:
     """取第一个租户配置（大多数 TC 只需一个租户）."""
     return tenant_configs[0]
+
+
+# ---------------------------------------------------------------------------
+# Watermark 管理
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def clear_watermarks(pg_pool: asyncpg.Pool, first_tenant: TenantSyncConfig) -> None:
+    """测试前清除该租户的所有 watermark，确保同步从头读取."""
+    async with pg_pool.acquire() as conn:
+        deleted = await conn.execute(
+            "DELETE FROM emarsys_sync_state WHERE tenant_id = $1",
+            first_tenant.tenant_id,
+        )
+    print(f"\n[fixture] cleared watermarks for {first_tenant.tenant_id}: {deleted}")

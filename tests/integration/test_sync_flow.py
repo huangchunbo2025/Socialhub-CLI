@@ -106,9 +106,9 @@ async def test_tc04_tenant_config_loaded(first_tenant: TenantSyncConfig) -> None
 
 
 async def test_tc05_full_sync_no_failed_tables(
-    first_tenant: TenantSyncConfig, pg_pool: asyncpg.Pool
+    first_tenant: TenantSyncConfig, pg_pool: asyncpg.Pool, clear_watermarks: None
 ) -> None:
-    """TenantSyncer.sync() 全量同步，所有表无错误."""
+    """TenantSyncer.sync() 全量同步（清空 watermark），所有表无错误且读到行."""
     syncer = _make_syncer(first_tenant, pg_pool, batch_size=500)
     result = await syncer.sync()
 
@@ -124,7 +124,7 @@ async def test_tc05_full_sync_no_failed_tables(
         pytest.fail("以下表同步失败:\n" + "\n".join(details))
 
     assert result.rows_read > 0, (
-        "BQ 中未读到任何行 — 确认 BQ 数据集中有数据"
+        "BQ 中未读到任何行 — 确认 BQ 数据集中有数据且 SA 有读权限"
     )
 
 
@@ -136,7 +136,11 @@ async def test_tc05_full_sync_no_failed_tables(
 async def test_tc06_watermark_persisted_after_sync(
     first_tenant: TenantSyncConfig, pg_pool: asyncpg.Pool
 ) -> None:
-    """同步后 emarsys_sync_state 中至少一个表有 watermark."""
+    """tc05 同步后 emarsys_sync_state 中至少一个表有 watermark.
+
+    依赖 tc05（已清空 watermark 并完成一次全量同步），
+    验证 watermark 确实被持久化到 PostgreSQL。
+    """
     async with pg_pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT COUNT(*) AS cnt FROM emarsys_sync_state "
@@ -144,7 +148,8 @@ async def test_tc06_watermark_persisted_after_sync(
             first_tenant.tenant_id,
         )
     assert row and row["cnt"] > 0, (
-        "emarsys_sync_state 中无任何 watermark — 确认 BQ 表有数据且 event_time 字段有值"
+        "emarsys_sync_state 中无任何 watermark — tc05 同步后应写入 watermark，"
+        "请确认 BQ 表有数据且时间字段有值"
     )
 
 
