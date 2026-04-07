@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -15,12 +16,42 @@ logger = logging.getLogger(__name__)
 _STREAM_LOAD_TIMEOUT = 120  # seconds
 
 
+def _sr_default(obj: Any) -> str:
+    """JSON serializer for StarRocks stream load.
+
+    StarRocks datetime columns require 'YYYY-MM-DD HH:MM:SS' format.
+    ISO-format strings with timezone offset (e.g. '+00:00') are rejected.
+    """
+    if isinstance(obj, datetime):
+        return obj.strftime("%Y-%m-%d %H:%M:%S")
+    return str(obj)
+
+
+def _normalize_dt(value: Any) -> Any:
+    """Convert ISO datetime strings to StarRocks-compatible format."""
+    if not isinstance(value, str):
+        return value
+    # Detect ISO-format datetime strings (contain 'T' and a date part)
+    if "T" in value and len(value) >= 19:
+        try:
+            from dateutil.parser import parse as _dtparse  # noqa: PLC0415
+            return _dtparse(value).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    return value
+
+
+def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalize datetime string values in a mapped row for StarRocks."""
+    return {k: _normalize_dt(v) for k, v in row.items()}
+
+
 def build_stream_load_url(host: str, http_port: int, database: str, table: str) -> str:
     """Build the StarRocks Stream Load endpoint URL.
 
     Args:
         host: StarRocks FE host.
-        http_port: StarRocks HTTP port (default 8030).
+        http_port: StarRocks HTTP port (default 8040 BE port).
         database: Target database name.
         table: Target table name.
 
@@ -34,8 +65,8 @@ class DtsWriter:
     """Writes transformed rows into StarRocks dts_ tables via Stream Load.
 
     Args:
-        host: StarRocks FE host.
-        http_port: StarRocks HTTP API port (default 8030).
+        host: StarRocks BE host.
+        http_port: StarRocks HTTP API port (default 8040).
         user: StarRocks username.
         password: StarRocks password.
         database: Target dts_ database name.
@@ -77,7 +108,7 @@ class DtsWriter:
             return 0
 
         target_table = mapped[0]["target_table"]
-        param_rows = [m["row"] for m in mapped]
+        param_rows = [_normalize_row(m["row"]) for m in mapped]
 
         url = build_stream_load_url(self._host, self._http_port, self._database, target_table)
         headers = {
@@ -91,10 +122,17 @@ class DtsWriter:
             url,
             auth=self._auth,
             headers=headers,
-            content=json.dumps(param_rows, default=str).encode(),
+            content=json.dumps(param_rows, default=_sr_default).encode(),
             timeout=_STREAM_LOAD_TIMEOUT + 10,
+            follow_redirects=True,
         )
-        result = resp.json()
+        try:
+            result = resp.json()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Stream Load non-JSON response (HTTP {resp.status_code}) "
+                f"for {self._database}.{target_table}: {resp.text[:200]}"
+            ) from exc
         if result.get("Status") not in ("Success", "Publish Timeout"):
             raise RuntimeError(
                 f"Stream Load failed for {self._database}.{target_table}: "

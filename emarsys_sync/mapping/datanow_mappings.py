@@ -541,6 +541,79 @@ SLOT_MAPS: dict[str, dict[str, str]] = {
 }
 
 
+# Primary-key BQ fields used to generate event_id per table.
+# event_id = SHA-1 hash of (tenant_id, table_name, pk_field_values…) → UUID v5-style hex string.
+_TABLE_EVENT_ID_FIELDS: dict[str, list[str]] = {
+    # Email
+    "email_sends":         ["contact_id", "message_id", "launch_id"],
+    "email_opens":         ["contact_id", "message_id", "launch_id"],
+    "email_clicks":        ["contact_id", "message_id", "link_id"],
+    "email_bounces":       ["contact_id", "message_id", "launch_id"],
+    "email_cancels":       ["contact_id", "message_id"],
+    "email_complaints":    ["contact_id", "message_id"],
+    "email_unsubscribes":  ["contact_id", "message_id"],
+    # Web Push
+    "web_push_sends":      ["contact_id", "event_time"],
+    "web_push_clicks":     ["contact_id", "event_time"],
+    "web_push_not_sends":  ["contact_id", "event_time"],
+    "web_push_custom_events": ["contact_id", "event_time"],
+    # Mobile Push
+    "push_sends":          ["contact_id", "campaign_id", "event_time"],
+    "push_not_sends":      ["contact_id", "campaign_id", "event_time"],
+    "push_opens":          ["contact_id", "campaign_id", "event_time"],
+    "push_custom_events":  ["contact_id", "event_time"],
+    # In-App
+    "inapp_views":         ["contact_id", "campaign_id", "event_time"],
+    "inapp_clicks":        ["contact_id", "campaign_id", "event_time"],
+    "inapp_audience_changes": ["contact_id", "event_time"],
+    # Inbox
+    "inbox_sends":         ["contact_id", "campaign_id", "event_time"],
+    "inbox_not_sends":     ["contact_id", "campaign_id", "event_time"],
+    "inbox_tag_changes":   ["contact_id", "event_time"],
+    # Sessions
+    "sessions":            ["session_id"],
+    "session_categories":  ["session_id", "event_time"],
+    "session_purchases":   ["session_id", "event_time"],
+    "session_tags":        ["session_id", "event_time"],
+    "session_views":       ["session_id", "event_time"],
+    # Others
+    "external_events":     ["contact_id", "event_type_id", "event_time"],
+    "custom_events":       ["contact_id", "event_type_id", "event_time"],
+    "engagement_events":   ["contact_id", "event_time"],
+    "wallet_passes":       ["contact_id", "pass_id"],
+    "sms_sends":           ["contact_id", "message_id"],
+    "sms_send_reports":    ["contact_id", "message_id"],
+    "sms_clicks":          ["contact_id", "message_id"],
+    "sms_unsubscribes":    ["contact_id", "event_time"],
+    "webchannel_events_enhanced": ["contact_id", "event_time"],
+    "loyalty_contact_points_state_latest": ["contact_id"],
+    "loyalty_points_earned_redeemed": ["contact_id", "event_time"],
+    "loyalty_vouchers":    ["voucher_id", "contact_id"],
+    "loyalty_exclusive_access": ["contact_id", "event_time"],
+    "loyalty_actions":     ["contact_id", "event_time"],
+    "loyalty_referral_codes": ["code"],
+    "loyalty_referral_purchases": ["contact_id", "event_time"],
+    "revenue_attribution": ["contact_id", "event_time"],
+    "si_contacts":         ["contact_id"],
+    "conversation_opens":  ["contact_id", "event_time"],
+    "conversation_deliveries": ["contact_id", "event_time"],
+    "conversation_clicks": ["contact_id", "event_time"],
+    "conversation_sends":  ["contact_id", "event_time"],
+}
+
+
+def _build_event_id(table_name: str, row: dict[str, Any], tenant_id: str) -> str:
+    """Generate a deterministic event_id from the row's natural primary key."""
+    import hashlib  # noqa: PLC0415
+
+    pk_fields = _TABLE_EVENT_ID_FIELDS.get(table_name, ["contact_id", "event_time"])
+    parts = [tenant_id, table_name] + [str(row.get(f, "")) for f in pk_fields]
+    raw = "|".join(parts).encode()
+    digest = hashlib.sha1(raw).hexdigest()
+    # Format as UUID-like string: 8-4-4-4-12
+    return f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
+
+
 def apply_datanow_mapping(
     table_name: str,
     row: dict[str, Any],
@@ -570,6 +643,7 @@ def apply_datanow_mapping(
     slot_source = _TABLE_SLOT_SOURCE.get(table_name, {})
     result: dict[str, Any] = {
         "event_key": event_key,
+        "event_id": _build_event_id(table_name, row, tenant_id),
         "event_type": "trace",
         "event_time": str(event_time),
         "customer_code": customer_code,

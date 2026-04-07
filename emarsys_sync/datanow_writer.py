@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -13,8 +14,34 @@ from emarsys_sync.mapping.datanow_mappings import apply_datanow_mapping
 logger = logging.getLogger(__name__)
 
 _STREAM_LOAD_TIMEOUT = 120
+
+
+def _sr_default(obj: Any) -> str:
+    """JSON serializer: convert datetime to StarRocks-compatible format."""
+    if isinstance(obj, datetime):
+        return obj.strftime("%Y-%m-%d %H:%M:%S")
+    return str(obj)
+
+
+def _normalize_dt(value: Any) -> Any:
+    """Convert ISO datetime strings to StarRocks-compatible format."""
+    if not isinstance(value, str):
+        return value
+    if "T" in value and len(value) >= 19:
+        try:
+            from dateutil.parser import parse as _dtparse  # noqa: PLC0415
+            return _dtparse(value).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    return value
+
+
+def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalize datetime string values in a mapped row for StarRocks."""
+    return {k: _normalize_dt(v) for k, v in row.items()}
 _FIXED_COLUMNS = [
     "event_key",
+    "event_id",
     "event_type",
     "event_time",
     "customer_code",
@@ -89,9 +116,10 @@ class DatanowWriter:
         if not mapped:
             return 0
 
-        # Normalise: include only columns present (omit None slots)
+        # Normalise: include only columns present (omit None slots), fix datetime format
         param_rows = [
-            {col: m[col] for col in _ALL_COLUMNS if m.get(col) is not None} for m in mapped
+            _normalize_row({col: m[col] for col in _ALL_COLUMNS if m.get(col) is not None})
+            for m in mapped
         ]
 
         url = (
@@ -108,10 +136,17 @@ class DatanowWriter:
             url,
             auth=self._auth,
             headers=headers,
-            content=json.dumps(param_rows, default=str).encode(),
+            content=json.dumps(param_rows, default=_sr_default).encode(),
             timeout=_STREAM_LOAD_TIMEOUT + 10,
+            follow_redirects=True,
         )
-        result = resp.json()
+        try:
+            result = resp.json()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Stream Load non-JSON response (HTTP {resp.status_code}) "
+                f"for {self._database}.t_retailevent: {resp.text[:200]}"
+            ) from exc
         if result.get("Status") not in ("Success", "Publish Timeout"):
             raise RuntimeError(
                 f"Stream Load failed for {self._database}.t_retailevent: "
