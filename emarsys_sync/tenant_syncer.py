@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import pymysql
 
-from emarsys_sync.bq_reader import BqReader
+from emarsys_sync.bq_reader import BqReader, TableNotFoundError
 from emarsys_sync.datanow_writer import DatanowWriter
 from emarsys_sync.dts_writer import DtsWriter
 from emarsys_sync.mapping.datanow_mappings import DATANOW_TABLES
@@ -61,6 +61,7 @@ class TableResult:
     rows_written_dts: int = 0
     rows_written_datanow: int = 0
     error: str | None = None
+    skipped: bool = False  # True = BQ table not found, normal skip
 
     @property
     def success(self) -> bool:
@@ -89,6 +90,11 @@ class TenantResult:
     def failed_tables(self) -> list[str]:
         """Return list of failed table names."""
         return [t.table_name for t in self.table_results if not t.success]
+
+    @property
+    def skipped_count(self) -> int:
+        """Return number of skipped tables (BQ table not found)."""
+        return sum(1 for t in self.table_results if t.skipped)
 
     @property
     def rows_read(self) -> int:
@@ -149,8 +155,35 @@ class TenantSyncer:
             connect_timeout=10,
         )
 
+    def _resolve_datasets(self) -> list[str]:
+        """Resolve dataset IDs to sync.
+
+        If ``dataset_id`` is set, return it as a single-element list.
+        Otherwise, discover all ``emarsys_*`` datasets in the BQ project.
+
+        Returns:
+            List of dataset IDs.
+        """
+        cfg = self._config
+        if cfg.dataset_id:
+            return [cfg.dataset_id]
+
+        logger.info(
+            "Tenant %s: dataset_id is empty, discovering emarsys_* datasets in project %s",
+            cfg.tenant_id,
+            cfg.gcp_project_id,
+        )
+        datasets = BqReader.list_emarsys_datasets(
+            sa_json=cfg.sa_json, project=cfg.gcp_project_id
+        )
+        logger.info("Tenant %s: found %d datasets: %s", cfg.tenant_id, len(datasets), datasets)
+        return datasets
+
     async def sync(self) -> TenantResult:
         """Run a full incremental sync for this tenant.
+
+        When ``dataset_id`` is empty, automatically discovers all ``emarsys_*``
+        datasets in the BQ project and syncs each one.
 
         Returns:
             TenantResult with per-table outcomes.
@@ -158,12 +191,10 @@ class TenantSyncer:
         cfg = self._config
         result = TenantResult(tenant_id=cfg.tenant_id)
 
-        bq_reader = BqReader.from_sa_json(
-            sa_json=cfg.sa_json,
-            project=cfg.gcp_project_id,
-            dataset=cfg.dataset_id,
-            batch_size=self._batch_size,
-        )
+        datasets = self._resolve_datasets()
+        if not datasets:
+            logger.warning("Tenant %s: no emarsys_* datasets found, skipping", cfg.tenant_id)
+            return result
 
         dts_writer = DtsWriter(
             host=self._sr_host,
@@ -184,15 +215,23 @@ class TenantSyncer:
         view_manager = ViewManager(conn=sr_conn, database=cfg.datanow_database)
 
         try:
-            for table_name in ALL_EMARSYS_TABLES:
-                table_result = await self._sync_table(
-                    table_name=table_name,
-                    account_id=cfg.account_id or "",
-                    bq_reader=bq_reader,
-                    dts_writer=dts_writer,
-                    datanow_writer=datanow_writer,
+            for dataset_id in datasets:
+                bq_reader = BqReader.from_sa_json(
+                    sa_json=cfg.sa_json,
+                    project=cfg.gcp_project_id,
+                    dataset=dataset_id,
+                    batch_size=self._batch_size,
                 )
-                result.table_results.append(table_result)
+                for table_name in ALL_EMARSYS_TABLES:
+                    table_result = await self._sync_table(
+                        table_name=table_name,
+                        account_id=cfg.account_id or "",
+                        dataset_id=dataset_id,
+                        bq_reader=bq_reader,
+                        dts_writer=dts_writer,
+                        datanow_writer=datanow_writer,
+                    )
+                    result.table_results.append(table_result)
 
             # Refresh views after all tables done
             try:
@@ -216,6 +255,7 @@ class TenantSyncer:
         *,
         table_name: str,
         account_id: str,
+        dataset_id: str,
         bq_reader: BqReader,
         dts_writer: DtsWriter,
         datanow_writer: DatanowWriter,
@@ -225,6 +265,7 @@ class TenantSyncer:
         Args:
             table_name: BQ table name without account suffix.
             account_id: Emarsys account ID (table name suffix).
+            dataset_id: BigQuery dataset ID for this sync iteration.
             bq_reader: Configured BigQuery reader.
             dts_writer: Configured dts_ stream load writer.
             datanow_writer: Configured datanow_ stream load writer.
@@ -235,7 +276,7 @@ class TenantSyncer:
         cfg = self._config
         tr = TableResult(table_name=table_name)
 
-        watermark = await self._state_store.get_watermark(cfg.tenant_id, cfg.dataset_id, table_name)
+        watermark = await self._state_store.get_watermark(cfg.tenant_id, dataset_id, table_name)
 
         try:
             rows = bq_reader.read_incremental(
@@ -287,12 +328,18 @@ class TenantSyncer:
             if dts_ok and datanow_ok and new_watermark:
                 await self._state_store.update_watermark(
                     cfg.tenant_id,
-                    cfg.dataset_id,
+                    dataset_id,
                     table_name,
                     new_watermark,
                     rows_delta=tr.rows_read,
                 )
 
+        except TableNotFoundError:
+            logger.debug(
+                "BQ table not found, skipped: %s/%s", cfg.tenant_id, table_name
+            )
+            tr.skipped = True
+            return tr
         except Exception as exc:
             logger.error("BQ read failed %s/%s: %s", cfg.tenant_id, table_name, exc)
             tr.error = f"bq: {exc}"
