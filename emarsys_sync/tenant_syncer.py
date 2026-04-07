@@ -18,37 +18,95 @@ from mcp_server.sync.models import SyncStateStore, TenantSyncConfig
 
 logger = logging.getLogger(__name__)
 
-# All 29 Emarsys BQ table names (without account suffix)
+# All Emarsys BQ table names (without account suffix).
+# Tables with no DTS/DataNow mapping are still listed here so BQ existence
+# is checked and missing tables are gracefully skipped via TableNotFoundError.
 ALL_EMARSYS_TABLES: list[str] = [
-    "email_campaigns_v2",
-    "email_sends",
-    "email_opens",
-    "email_clicks",
-    "email_bounces",
-    "email_cancels",
-    "email_complaints",
-    "email_unsubscribes",
-    "web_push_campaigns",
-    "web_push_sends",
-    "web_push_clicks",
-    "web_push_not_sends",
-    "web_push_custom_events",
-    "sms_sends",
-    "sms_deliveries",
-    "sms_clicks",
-    "sms_bounces",
+    # ── Email ─────────────────────────────────────────────────────────────
+    "email_campaigns_v2",          # DTS → vdm_t_activity
+    "email_campaign_categories",   # no mapping
+    "email_sends",                 # DTS + DataNow
+    "email_opens",                 # DTS + DataNow
+    "email_clicks",                # DTS + DataNow
+    "email_bounces",               # DTS + DataNow
+    "email_cancels",               # DataNow only
+    "email_complaints",            # DataNow only
+    "email_unsubscribes",          # DTS + DataNow
+    "contents",                    # no mapping (no contact_id, 60-day TTL)
+    # ── Web Push ──────────────────────────────────────────────────────────
+    "web_push_campaigns",          # no mapping
+    "web_push_sends",              # DataNow only
+    "web_push_clicks",             # DataNow only
+    "web_push_not_sends",          # DataNow only
+    "web_push_custom_events",      # DataNow only (new)
+    # ── Mobile Push (new naming) ──────────────────────────────────────────
+    "push_campaigns",              # DTS → vdm_t_activity (new)
+    "push_sends",                  # DataNow only (new)
+    "push_not_sends",              # DataNow only (new)
+    "push_opens",                  # DataNow only (new)
+    "push_custom_events",          # DataNow only (new)
+    # ── Mobile Push (legacy, kept for backward compat) ────────────────────
     "mobile_push_sends",
     "mobile_push_deliveries",
     "mobile_push_opens",
-    "engagement_events",
-    "predict_clicks",
-    "loyalty_contact_points_state_latest",
-    "loyalty_points_earned_redeemed",
-    "conversation_opens",
-    "conversation_deliveries",
-    "conversation_clicks",
-    "conversation_sends",
-    "products_latest_state",
+    # ── In-App ────────────────────────────────────────────────────────────
+    "inapp_campaigns",             # DTS → vdm_t_activity (new)
+    "inapp_views",                 # DataNow only (new)
+    "inapp_clicks",                # DataNow only (new)
+    "inapp_audience_changes",      # DataNow only (new)
+    # ── Inbox ─────────────────────────────────────────────────────────────
+    "inbox_campaigns",             # DTS → vdm_t_activity (new)
+    "inbox_sends",                 # DataNow only (new)
+    "inbox_not_sends",             # DataNow only (new)
+    "inbox_tag_changes",           # DataNow only (new)
+    # ── Wallet ────────────────────────────────────────────────────────────
+    "wallet_campaigns",            # DTS → vdm_t_activity (new)
+    "wallet_passes",               # DataNow only (new)
+    # ── SMS ───────────────────────────────────────────────────────────────
+    "sms_campaigns",               # DTS → vdm_t_activity (new)
+    "sms_send_reports",            # DataNow only (new)
+    "sms_sends",                   # DataNow only (updated)
+    "sms_clicks",                  # DataNow only (updated)
+    "sms_unsubscribes",            # DataNow only (new)
+    "sms_deliveries",              # legacy — no mapping in v2
+    "sms_bounces",                 # legacy — no mapping in v2
+    # ── Web Channel ───────────────────────────────────────────────────────
+    "webchannel_events_enhanced",  # DataNow only (new)
+    # ── Sessions ──────────────────────────────────────────────────────────
+    "sessions",                    # DataNow only (new)
+    "session_categories",          # DataNow only (new)
+    "session_purchases",           # DataNow only (new)
+    "session_tags",                # DataNow only (new)
+    "session_views",               # DataNow only (new)
+    # ── Events ────────────────────────────────────────────────────────────
+    "external_events",             # DataNow only (new)
+    "custom_events",               # DataNow only (new)
+    "automation_node_executions",  # no mapping (contact_id nested in participants)
+    "engagement_events",           # DataNow only (updated)
+    # ── Loyalty ───────────────────────────────────────────────────────────
+    "loyalty_contact_points_state_latest",  # DTS + DataNow (updated)
+    "loyalty_points_earned_redeemed",       # DTS + DataNow (updated)
+    "loyalty_vouchers",            # DataNow only (new)
+    "loyalty_exclusive_access",    # DataNow only (new)
+    "loyalty_actions",             # DataNow only (new)
+    "loyalty_referral_codes",      # DataNow only (new)
+    "loyalty_referral_purchases",  # DataNow only (new)
+    # ── Analytics ─────────────────────────────────────────────────────────
+    "revenue_attribution",         # DataNow only (new)
+    "si_contacts",                 # DataNow only (new)
+    "si_purchases",                # no mapping (no standard contact_id)
+    "reporting_email",             # no mapping (aggregate data)
+    # ── Conversation ──────────────────────────────────────────────────────
+    "conversation_opens",          # DataNow only (updated)
+    "conversation_deliveries",     # DataNow only (updated)
+    "conversation_clicks",         # DataNow only (updated)
+    "conversation_sends",          # DataNow only (updated)
+    "conversation_messages",       # no mapping (contact_id absent)
+    # ── Product ───────────────────────────────────────────────────────────
+    "products_latest_state",       # DTS → vdm_t_product (updated)
+    "products_change_history",     # no mapping
+    # ── Predict ───────────────────────────────────────────────────────────
+    "predict_clicks",              # legacy — no mapping in v2
 ]
 
 
