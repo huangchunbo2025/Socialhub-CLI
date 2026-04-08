@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socialhub-mcp-server
+  labels:
+    app.kubernetes.io/name: socialhub-mcp-server
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: socialhub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: socialhub-mcp-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: socialhub-mcp-server
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: socialhub
+    spec:
+      serviceAccountName: socialhub
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: harbor-registry-conf
+      containers:
+        - name: mcp-server
+          image: harbor.easesaas.com/marpro/socialhub-mcp-server:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8090
+              protocol: TCP
+          env:
+            # 数据库（socialhub_mcp 库）
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: MCP_DATABASE_URL
+            # 认证
+            - name: MCP_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: MCP_API_KEYS
+            - name: CREDENTIAL_ENCRYPT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: CREDENTIAL_ENCRYPT_KEY
+            - name: PORTAL_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: PORTAL_JWT_SECRET
+            # 上游 SocialHub 服务
+            - name: SOCIALHUB_AUTH_URL
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: SOCIALHUB_AUTH_URL
+            - name: MCP_SSE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: MCP_SSE_URL
+            - name: MCP_POST_URL
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: MCP_POST_URL
+            - name: MCP_TENANT_CREDS
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: MCP_TENANT_CREDS
+            # 数据库路由
+            - name: DAS_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: DAS_DATABASE
+            - name: DTS_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: DTS_DATABASE
+            - name: DATANOW_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: DATANOW_DATABASE
+            - name: DAS_TABLES
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: DAS_TABLES
+            - name: DTS_TABLES
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: DTS_TABLES
+            - name: DATANOW_TABLES
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: DATANOW_TABLES
+            # HTTP
+            - name: ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: ALLOWED_ORIGINS
+            # 运行时
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: LOG_LEVEL
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

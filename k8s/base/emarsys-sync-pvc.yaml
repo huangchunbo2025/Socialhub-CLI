@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: emarsys-sync-data
+  labels:
+    app.kubernetes.io/name: socialhub-emarsys-sync
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: socialhub
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -69,3 +69,4 @@ Doc/
 
 # Sensitive config with real credentials (API keys, endpoints)
 cli/defaults.json
+secret.env
