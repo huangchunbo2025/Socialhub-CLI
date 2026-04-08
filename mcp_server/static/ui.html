@@ -336,8 +336,20 @@ function portalHeaders() {
   return { 'Content-Type': 'application/json', 'X-Portal-Token': portalToken };
 }
 
+// 计算 API 基路径，兼容子路径部署（如 /socialhub-mcp/ui）和直接部署（/ui）。
+// 示例：页面在 /socialhub-mcp/ui 时，_API_BASE = "/socialhub-mcp/"
+//        页面在 /ui 时，              _API_BASE = "/"
+const _API_BASE = (() => {
+  const p = location.pathname;
+  if (p.endsWith('/ui')) return p.slice(0, -2);
+  if (p.endsWith('/')) return p;
+  return p + '/';
+})();
+
 async function apiFetch(path, opts = {}) {
-  const res = await fetch(path, opts);
+  // 将绝对路径（/auth/login）转为基路径相对路径（/socialhub-mcp/auth/login）
+  const url = path.startsWith('/') ? _API_BASE + path.slice(1) : path;
+  const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
 }
