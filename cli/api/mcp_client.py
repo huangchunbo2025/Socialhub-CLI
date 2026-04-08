@@ -138,13 +138,20 @@ class MCPClient:
         self._running = True
         self._last_error = None
         self._session_ready.clear()
+        _headers = self._auth_headers()
         logger.info(
             "Connecting to upstream MCP via SSE",
             extra={
                 "sse_url": self.config.sse_url,
                 "post_url": self.config.post_url,
-                "tenant_id": self.config.tenant_id,
+                "tenant_id": _headers.get("tenant_id", ""),
+                "has_bearer": "Authorization" in _headers,
             },
+        )
+        # Debug: print actual headers to stderr so user can verify
+        console.print(
+            f"[dim]MCP headers: tenant_id={_headers.get('tenant_id', '')}, "
+            f"auth={'Bearer ***' + self._auth_token[-8:] if self._auth_token else 'NONE'}[/dim]"
         )
         self._sse_thread = threading.Thread(target=self._sse_listener, daemon=True)
         self._sse_thread.start()
@@ -180,9 +187,6 @@ class MCPClient:
     def _sse_listener(self):
         """Listen for SSE events from MCP server."""
         try:
-            _sse_headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
-            if self.config.token:
-                _sse_headers["Authorization"] = f"Bearer {self.config.token}"
             with httpx.stream(
                 "GET",
                 self.config.sse_url,
@@ -521,7 +525,6 @@ class MCPClient:
 
     def query(self, sql: str, timeout: int = 60, database: str | None = None) -> Any:
         """Execute SQL query via analytics_executeQuery tool."""
-        sql = self._rewrite_sql(sql)
         args = {"sql": sql}
         if database:
             args["database"] = database
