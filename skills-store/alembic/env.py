@@ -10,7 +10,7 @@ from backend.app.models.base import Base
 from backend.app.models import developer, skill, skill_certification, skill_review, skill_version  # noqa: F401
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.alembic_database_url)
+config.set_main_option("sqlalchemy.url", settings.alembic_database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

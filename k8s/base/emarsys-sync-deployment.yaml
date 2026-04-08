@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socialhub-emarsys-sync
+  labels:
+    app.kubernetes.io/name: socialhub-emarsys-sync
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: socialhub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: socialhub-emarsys-sync
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: socialhub-emarsys-sync
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: socialhub
+    spec:
+      serviceAccountName: socialhub
+      terminationGracePeriodSeconds: 60
+      imagePullSecrets:
+        - name: harbor-registry-conf
+      containers:
+        - name: emarsys-sync
+          image: harbor.easesaas.com/marpro/socialhub-emarsys-sync:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # 数据库（与 mcp-server 共用 socialhub_mcp 库）
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: MCP_DATABASE_URL
+            # 凭证加密
+            - name: CREDENTIAL_ENCRYPT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: CREDENTIAL_ENCRYPT_KEY
+            # StarRocks 连接（敏感）
+            - name: STARROCKS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: STARROCKS_HOST
+            - name: STARROCKS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: STARROCKS_USER
+            - name: STARROCKS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: STARROCKS_PASSWORD
+            # StarRocks 端口（非敏感）
+            - name: STARROCKS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: STARROCKS_PORT
+            - name: STARROCKS_HTTP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: STARROCKS_HTTP_PORT
+            # 同步参数
+            - name: SYNC_INTERVAL_MINUTES
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: SYNC_INTERVAL_MINUTES
+            - name: SYNC_MAX_CONCURRENT_TENANTS
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: SYNC_MAX_CONCURRENT_TENANTS
+            - name: SYNC_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: SYNC_BATCH_SIZE
+            - name: SYNC_STATE_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: SYNC_STATE_PATH
+            # 运行时
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: socialhub-config
+                  key: LOG_LEVEL
+          volumeMounts:
+            - name: sync-data
+              mountPath: /data/emarsys_sync
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: sync-data
+          persistentVolumeClaim:
+            claimName: emarsys-sync-data

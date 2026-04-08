@@ -1,4 +1,5 @@
-FROM python:3.11-slim-bookworm
+#FROM python:3.11-slim-bookworm
+FROM registry.easesaas.com/myron/python:3.11-slim-bookworm
 
 WORKDIR /app
 

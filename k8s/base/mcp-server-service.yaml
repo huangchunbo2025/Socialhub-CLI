@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: socialhub-mcp-server
+  labels:
+    app.kubernetes.io/name: socialhub-mcp-server
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: socialhub
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: socialhub-mcp-server
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http
+      protocol: TCP

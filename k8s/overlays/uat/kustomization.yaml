@@ -1,0 +1,74 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: socialhub-cli
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      environment: uat
+    includeSelectors: false
+
+# 镜像由 CI/CD Pipeline 中的 sed 直接写入 base/*/deployment.yaml，此处不再声明 images
+
+configMapGenerator:
+  - name: socialhub-config
+    literals:
+      # MCP Server — 数据库路由
+      - DAS_DATABASE=uat:das_test
+      - DTS_DATABASE=uat:dts_test
+      - DATANOW_DATABASE=uat:datanow_test
+      - DAS_TABLES=
+      - DTS_TABLES=
+      - DATANOW_TABLES=ads_v_rfm
+      # MCP Server — HTTP
+      - ALLOWED_ORIGINS=
+      - LOG_LEVEL=INFO
+      # Skills Store
+      - APP_ENV=production
+      - JWT_EXPIRE_HOURS=24
+      - PACKAGE_STORAGE_MODE=local
+      - PACKAGE_STORAGE_ROOT=./data/packages
+      - ED25519_PRIVATE_KEY_PATH=./secrets/ed25519-private.pem
+      - ED25519_PUBLIC_KEY_ID=ed25519-main
+      # Emarsys Sync
+      - STARROCKS_PORT=9030
+      - STARROCKS_HTTP_PORT=8040
+      - SYNC_INTERVAL_MINUTES=60
+      - SYNC_MAX_CONCURRENT_TENANTS=3
+      - SYNC_BATCH_SIZE=10000
+      - SYNC_STATE_PATH=/data/emarsys_sync
+    options:
+      disableNameSuffixHash: true
+
+secretGenerator:
+  - name: socialhub-secret
+    envs:
+      - secret.env
+    options:
+      disableNameSuffixHash: true
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: socialhub-mcp-server
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: socialhub-skills-store
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: socialhub-emarsys-sync

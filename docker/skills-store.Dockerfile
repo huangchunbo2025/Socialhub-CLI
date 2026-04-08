@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+#FROM python:3.11-slim
+FROM registry.easesaas.com/myron/python:3.11-slim
 
 WORKDIR /app
 
