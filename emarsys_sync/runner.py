@@ -82,7 +82,9 @@ class Runner:
         fernet_key = os.environ["CREDENTIAL_ENCRYPT_KEY"].encode()
         sr_host = os.environ["STARROCKS_HOST"]
         sr_port = int(os.environ.get("STARROCKS_PORT", "9030"))
-        sr_http_port = int(os.environ.get("STARROCKS_HTTP_PORT", "8030"))
+        # STARROCKS_STREAM_LOAD_HOST: BE host for HTTP Stream Load (default: same as sr_host)
+        sr_stream_load_host = os.environ.get("STARROCKS_STREAM_LOAD_HOST", "") or sr_host
+        sr_http_port = int(os.environ.get("STARROCKS_HTTP_PORT", "8040"))
         sr_user = os.environ["STARROCKS_USER"]
         sr_password = os.environ.get("STARROCKS_PASSWORD", "")
         database_url = os.environ["DATABASE_URL"]
@@ -105,6 +107,7 @@ class Runner:
                     config=cfg,
                     sr_host=sr_host,
                     sr_port=sr_port,
+                    sr_stream_load_host=sr_stream_load_host,
                     sr_http_port=sr_http_port,
                     sr_user=sr_user,
                     sr_password=sr_password,

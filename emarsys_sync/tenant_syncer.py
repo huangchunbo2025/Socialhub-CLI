@@ -186,9 +186,12 @@ class TenantSyncer:
 
     Args:
         config: Tenant sync configuration (databases, credentials).
-        sr_host: StarRocks FE host.
-        sr_port: StarRocks MySQL protocol port (for DDL).
-        sr_http_port: StarRocks HTTP port (for Stream Load).
+        sr_host: StarRocks FE host (MySQL protocol, DDL/query).
+        sr_port: StarRocks MySQL protocol port (default 9030).
+        sr_stream_load_host: StarRocks BE host for HTTP Stream Load.
+            Defaults to sr_host when not set. Set explicitly when FE and BE
+            are on different hosts to avoid redirect auth issues.
+        sr_http_port: StarRocks HTTP port for Stream Load (default 8040).
         sr_user: StarRocks username.
         sr_password: StarRocks password.
         state_store: Watermark persistence store.
@@ -200,15 +203,17 @@ class TenantSyncer:
         config: TenantSyncConfig,
         sr_host: str,
         sr_port: int,
-        sr_http_port: int,
-        sr_user: str,
-        sr_password: str,
-        state_store: SyncStateStore,
+        sr_stream_load_host: str = "",
+        sr_http_port: int = 8040,
+        sr_user: str = "",
+        sr_password: str = "",
+        state_store: SyncStateStore | None = None,
         batch_size: int = 10_000,
     ) -> None:
         self._config = config
         self._sr_host = sr_host
         self._sr_port = sr_port
+        self._sr_stream_load_host = sr_stream_load_host or sr_host
         self._sr_http_port = sr_http_port
         self._sr_user = sr_user
         self._sr_password = sr_password
@@ -266,14 +271,14 @@ class TenantSyncer:
             return result
 
         dts_writer = DtsWriter(
-            host=self._sr_host,
+            host=self._sr_stream_load_host,
             http_port=self._sr_http_port,
             user=self._sr_user,
             password=self._sr_password,
             database=cfg.dts_database,
         )
         datanow_writer = DatanowWriter(
-            host=self._sr_host,
+            host=self._sr_stream_load_host,
             http_port=self._sr_http_port,
             user=self._sr_user,
             password=self._sr_password,

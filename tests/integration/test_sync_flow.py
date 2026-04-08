@@ -25,11 +25,13 @@ from mcp_server.sync.models import SyncStateStore, TenantSyncConfig
 
 
 def _make_syncer(cfg: TenantSyncConfig, pg_pool: asyncpg.Pool, batch_size: int = 500) -> TenantSyncer:
+    sr_host = os.environ["STARROCKS_HOST"]
     return TenantSyncer(
         config=cfg,
-        sr_host=os.environ["STARROCKS_HOST"],
+        sr_host=sr_host,
         sr_port=int(os.environ.get("STARROCKS_PORT", "9030")),
-        sr_http_port=int(os.environ.get("STARROCKS_HTTP_PORT", "8030")),
+        sr_stream_load_host=os.environ.get("STARROCKS_STREAM_LOAD_HOST", "") or sr_host,
+        sr_http_port=int(os.environ.get("STARROCKS_HTTP_PORT", "8040")),
         sr_user=os.environ["STARROCKS_USER"],
         sr_password=os.environ.get("STARROCKS_PASSWORD", ""),
         state_store=SyncStateStore(pg_pool),
