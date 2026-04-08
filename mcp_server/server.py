@@ -231,7 +231,7 @@ def _load_analytics() -> None:
     if _analytics_loaded:
         return
     try:
-        from cli.commands.analytics import (
+        from cli.analytics.mcp_adapter import (
             _get_mcp_overview,
             _get_mcp_customers,
             _get_mcp_customer_source,
@@ -259,7 +259,7 @@ def _load_analytics() -> None:
             _get_mcp_repurchase,
             _get_mcp_repurchase_path,
         )
-        from cli.commands.segments import _mcp_segment_analyze
+        from cli.analytics.mcp_adapter import _mcp_segment_analyze
         g = globals()
         for fn in [
             _get_mcp_overview, _get_mcp_customers, _get_mcp_customer_source,
@@ -1043,12 +1043,13 @@ def create_server() -> Server:
             args = arguments or {}
             loop = asyncio.get_running_loop()
             started = time.time()
+            from mcp_server.auth import _get_tenant_id, _get_request_id
+            req_id = _get_request_id()
             logger.info("MCP tool call started: %s req_id=%s args=%s", name, req_id or "-", json.dumps(args, ensure_ascii=False, sort_keys=True))
 
             # 在 async 上下文中读取 tenant_id（ContextVar 在此处可用）
             # 必须在 run_in_executor 之前读取，线程池中 ContextVar 可能因 MCP SDK
             # 创建新 async context 而丢失
-            from mcp_server.auth import _get_tenant_id, _get_request_id
             tid = _get_tenant_id() or os.getenv("MCP_TENANT_ID", "")
 
             if not tid:

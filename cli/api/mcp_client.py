@@ -110,21 +110,23 @@ class MCPClient:
     def _auth_headers(self) -> dict[str, str]:
         """Build auth headers shared by every outbound request.
 
-        Prefer OAuth token from login cache when available.
-        Falls back to config.api_key for backward compatibility.
-        Always includes tenant_id from the same source as the token.
+        Token priority:
+        1. self._auth_token  — CLI 模式：从 oauth_token.json 缓存读取（最高优先级）
+        2. self.config.token — Server 模式：server.py 通过 thread-local 注入的 SocialHub token
+        3. self.config.api_key — 兼容旧路径
         """
-        # Prefer OAuth token from login session
+        # CLI mode: OAuth token from login cache (highest priority)
         if self._auth_token and self._auth_tenant_id:
             return {
                 "tenant_id": self._auth_tenant_id,
                 "Authorization": f"Bearer {self._auth_token}",
             }
 
-        # Fallback to config.api_key (deprecated path)
+        # Server mode or legacy: config.token (thread-local) or config.api_key
         headers: dict[str, str] = {"tenant_id": self.config.tenant_id}
-        if self.config.api_key:
-            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        token = self.config.token or self.config.api_key
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         return headers
 
     def connect(self, show_status: bool = True) -> bool:
