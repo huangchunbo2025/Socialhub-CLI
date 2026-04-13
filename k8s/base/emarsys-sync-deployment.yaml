@@ -45,6 +45,11 @@ spec:
                 secretKeyRef:
                   name: socialhub-secret
                   key: STARROCKS_HOST
+            - name: STARROCKS_STREAM_LOAD_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: socialhub-secret
+                  key: STARROCKS_STREAM_LOAD_HOST
             - name: STARROCKS_USER
               valueFrom:
                 secretKeyRef:

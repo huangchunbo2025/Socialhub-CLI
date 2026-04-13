@@ -369,7 +369,7 @@ OPENAI_API_KEY
 ```
 Name:           socialhub-mcp
 Type:           HTTP
-URL:            https://socialhub-mcp.onrender.com    ← 基础 URL，不含 /mcp
+URL:            https://s1.socialhub.ai/socialhub-mcp    ← 基础 URL，不含 /mcp
 Authentication: NoAuthentication
 ProxyType:      Internet
 
@@ -378,15 +378,21 @@ Additional Properties:
   URL.headers.X-API-Key        =  <your_api_key>
 ```
 
+**Techsun Dev 环境（2026-04-10 已创建）：**
+- URL: `https://s1.socialhub.ai/socialhub-mcp`
+- API Key: `sh_f5aa33c920735d8a7403c8a488792b43`
+
 `URL.headers.X-API-Key` 将 API Key 静态注入到每个请求，`auth.py` 中间件识别后映射到对应 `tenant_id`，认证链路完整。
 
 ### Joule Studio 操作步骤
 
 1. Joule Studio → Agent → **MCP Servers** tab → **Add MCP Server**
 2. 选择 Destination `socialhub-mcp`
-3. **Path**: `/mcp`（默认值，无需修改）
+3. **Path**: **`/mcp/`**（⚠️ 必须带末尾斜杠，Joule 默认是 `/mcp` 无斜杠，但本服务 mount 路径是 `/mcp/`，否则会 307 重定向失败）
 4. 填写 Name 和 Description（Description 影响 Joule 决策何时调用此 Server）
-5. 保存 → Joule 自动发起 `POST <base_url>/mcp` 完成 initialize
+5. 保存 → Joule 自动发起 `POST <base_url>/mcp/` 完成 initialize
+
+> **BTP Destination URL**：`https://s1.socialhub.ai/socialhub-mcp`（不含 `/mcp`，由 Joule Studio 的 Path 字段追加）
 
 ### Joule vs M365 Copilot 对比
 

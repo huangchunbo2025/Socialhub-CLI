@@ -525,8 +525,53 @@ class MCPClient:
 
         return result if result else None
 
+    # Table-prefix → database-slot mapping (must match CLAUDE.md routing rules)
+    _TABLE_PREFIX_TO_DB_SLOT: list[tuple[tuple[str, ...], str]] = [
+        (("ads_", "dwd_", "dim_", "dws_"), "das_database"),
+        (("vdm_",), "dts_database"),
+        (("t_", "v_"), "datanow_database"),
+    ]
+
+    def _resolve_database(self, sql: str) -> str | None:
+        """Determine target database from SQL table prefixes.
+
+        Routing rules (matching CLAUDE.md):
+        - ads_ / dwd_ / dim_ / dws_  → das_database
+        - vdm_                        → dts_database
+        - t_ / v_                     → datanow_database
+        - SQL already has db.table    → no rewrite (return None)
+        """
+        # Extract token(s) immediately after FROM/JOIN keyword.
+        # Tokens containing a dot are already fully-qualified (db.table) — skip them.
+        raw_tokens = re.findall(r'\b(?:FROM|JOIN)\s+(\S+)', sql, re.IGNORECASE)
+        tables: list[str] = []
+        for tok in raw_tokens:
+            # Strip trailing punctuation (comma, closing paren, etc.)
+            tok = re.sub(r'[^a-zA-Z0-9_.]', '', tok)
+            if '.' in tok:
+                # Already qualified: the whole query needs no auto-routing
+                return None
+            if tok:
+                tables.append(tok)
+
+        for table in tables:
+            tl = table.lower()
+            for prefixes, slot in self._TABLE_PREFIX_TO_DB_SLOT:
+                if any(tl.startswith(p) for p in prefixes):
+                    db = getattr(self.config, slot, "") or ""
+                    return db or None
+        return None
+
     def query(self, sql: str, timeout: int = 60, database: str | None = None) -> Any:
-        """Execute SQL query via analytics_executeQuery tool."""
+        """Execute SQL query via analytics_executeQuery tool.
+
+        If *database* is not provided (or is empty), the target database is
+        auto-detected from the table prefixes in *sql* using the thread-local
+        database names injected by server.py (das_database / dts_database /
+        datanow_database).  This implements the routing documented in CLAUDE.md.
+        """
+        if not database:
+            database = self._resolve_database(sql)
         args = {"sql": sql}
         if database:
             args["database"] = database
